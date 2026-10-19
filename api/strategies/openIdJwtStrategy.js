@@ -10,7 +10,9 @@ const {
   findOpenIDUser,
   getOpenIdEmail,
   getOpenIdIssuer,
+  withHeaderTenant,
   normalizeOpenIdIssuer,
+  checkOpenIdTenantClaim,
   buildAuthUserDocCacheKey,
   getAuthUserDocCacheMode,
   getCachedAuthUserDoc,
@@ -149,14 +151,23 @@ const openIdJwtLogin = (openIdConfig) => {
       passReqToCallback: true,
     },
     /**
+     * Runs inside the tenant the trusted proxy named, so the user lookup is tenant-scoped
+     * (fork: tenant-aware OpenID).
      * @param {import('@librechat/api').ServerRequest} req
      * @param {import('openid-client').IDToken} payload
      * @param {import('passport-jwt').VerifyCallback} done
      */
-    async (req, payload, done) => {
+    withHeaderTenant(async (req, payload, done) => {
       try {
         if (!isOpenIdIssuerAllowed(payload, openIdConfig)) {
           done(null, false, { message: 'Invalid issuer' });
+          return;
+        }
+
+        const tenantCheck = checkOpenIdTenantClaim(payload, getTenantId(), process.env);
+        if (!tenantCheck.ok) {
+          logger.warn(`[openIdJwtLogin] Token rejected: ${tenantCheck.error.code}`);
+          done(null, false, { message: 'Invalid tenant' });
           return;
         }
 
@@ -310,7 +321,7 @@ const openIdJwtLogin = (openIdConfig) => {
       } catch (err) {
         done(err, false);
       }
-    },
+    }),
   );
 };
 

@@ -39,6 +39,8 @@ jest.mock('@librechat/api', () => ({
   findOpenIDUser: jest.fn(),
   getOpenIdEmail: jest.requireActual('@librechat/api').getOpenIdEmail,
   getOpenIdIssuer: jest.fn(() => 'https://issuer.example.com'),
+  withHeaderTenant: jest.fn((verify) => verify),
+  checkOpenIdTenantClaim: jest.requireActual('@librechat/api').checkOpenIdTenantClaim,
   normalizeOpenIdIssuer: jest.requireActual('@librechat/api').normalizeOpenIdIssuer,
   buildAuthUserDocCacheKey: jest.fn(() => 'auth-user-doc-key'),
   getAuthUserDocCacheMode: jest.fn(() => 'off'),
@@ -255,6 +257,73 @@ describe('openIdJwtStrategy – token validation', () => {
 
     expect(result).toBeTruthy();
     expect(findOpenIDUser).toHaveBeenCalled();
+  });
+
+  describe('tenant claim (fork: tenant-aware OpenID)', () => {
+    const claim = 'urn:zitadel:iam:user:resourceowner:id';
+    const payload = (tenant) => ({
+      sub: 'oidc-123',
+      email: 'test@example.com',
+      iss: 'https://issuer.example.com',
+      exp: 9999999999,
+      [claim]: tenant,
+    });
+    const req = () => ({ headers: { authorization: 'Bearer tok' }, session: {} });
+    const previous = process.env.OPENID_TENANT_CLAIM;
+
+    beforeEach(() => {
+      process.env.OPENID_TENANT_CLAIM = claim;
+    });
+
+    afterEach(() => {
+      if (previous === undefined) {
+        delete process.env.OPENID_TENANT_CLAIM;
+      } else {
+        process.env.OPENID_TENANT_CLAIM = previous;
+      }
+    });
+
+    it('wraps the verify callback in the trusted header tenant', () => {
+      const { withHeaderTenant } = require('@librechat/api');
+      openIdJwtLogin(mockOpenIdConfig);
+
+      expect(withHeaderTenant).toHaveBeenCalledWith(capturedVerifyCallback);
+    });
+
+    it('rejects a token of another tenant before looking the user up', async () => {
+      mockGetTenantId.mockReturnValue('tenant-b');
+      openIdJwtLogin(mockOpenIdConfig);
+
+      const { user, info } = await invokeVerify(req(), payload('tenant-a'));
+
+      expect(user).toBe(false);
+      expect(info).toEqual({ message: 'Invalid tenant' });
+      expect(findOpenIDUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects a token when the request has no tenant', async () => {
+      openIdJwtLogin(mockOpenIdConfig);
+
+      const { user } = await invokeVerify(req(), payload('tenant-a'));
+
+      expect(user).toBe(false);
+      expect(findOpenIDUser).not.toHaveBeenCalled();
+    });
+
+    it("accepts a token of the request's tenant", async () => {
+      mockGetTenantId.mockReturnValue('tenant-a');
+      findOpenIDUser.mockResolvedValue({
+        user: { _id: { toString: () => 'user-abc' }, role: SystemRoles.USER, provider: 'openid' },
+        error: null,
+        migration: false,
+      });
+      openIdJwtLogin(mockOpenIdConfig);
+
+      const { user } = await invokeVerify(req(), payload('tenant-a'));
+
+      expect(user).toBeTruthy();
+      expect(findOpenIDUser).toHaveBeenCalled();
+    });
   });
 
   describe('credentialsChangedAt revocation', () => {

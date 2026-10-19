@@ -169,6 +169,12 @@ After login, `TENANT_HEADER_MATCH_USER=true` (with `TRUST_TENANT_HEADER=true`) m
 authenticated request check that the user's tenant equals the proxy's `X-Tenant-Id`, so a session
 of one tenant cannot be used through another tenant's hostname (403).
 
+With `OPENID_REUSE_TOKENS=true`, which MCP token forwarding needs, LibreChat authenticates
+requests with the provider's own token (`openidJwt` strategy). Upstream looks that user up before
+any tenant context exists, so strict isolation answers 500 on every authenticated route. The
+fork runs that lookup in the proxy's tenant and applies `OPENID_TENANT_CLAIM` to the bearer
+token as well, so a token of tenant A sent through tenant B's hostname gets 401.
+
 These are environment variables like the rest of upstream's OpenID settings, which all live in
 the environment rather than `librechat.yaml`. Zitadel's login UI does not itself stop a user of
 another organization from signing in; the claim check is what rejects that login (verified
@@ -285,17 +291,24 @@ What exists: MCP headers can carry user fields and OIDC tokens through placehold
 `{{LIBRECHAT_USER_ID}}` and `{{LIBRECHAT_OPENID_ACCESS_TOKEN}}` (`packages/api/src/utils/env.ts`),
 and an on-behalf-of exchange exists in `packages/api/src/mcp/oauth/obo.ts`.
 
+Current setup (verified end to end in `platform-infra`, 2026-10-19): LibreChat runs with
+`OPENID_REUSE_TOKENS=true` and `offline_access`, and each platform MCP server is defined in
+`librechat.yaml` with `Authorization: Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}`. The MCP server
+verifies the Zitadel access token (issuer, signature, audience = LibreChat's client id) and
+reads the tenant from `urn:zitadel:iam:user:resourceowner:id`. Only servers from YAML or tenant
+config receive identity placeholders; servers users create in the UI do not.
+
 Gaps to close in the fork:
 
 - `tenantId` is not available to MCP placeholders (`packages/api/src/utils/headers.ts` covers model
-  endpoints only).
-- The model that triggered a tool call is not passed to the MCP server. It is asserted by LibreChat,
-  not signed by the broker, so the MCP server trusts it only over an authenticated channel between
-  LibreChat and the MCP server (mTLS or a per-deployment secret).
-
-Open decision: forward the user's OIDC access token as is (works today, but its audience is
-LibreChat), or exchange it for a token whose audience is the MCP server (preferred; needs token
-exchange in the broker or the existing OBO path).
+  endpoints only). Not needed by the platform servers, which take the tenant from the token.
+- The model, agent and conversation that triggered a tool call are not passed to the MCP server
+  (`api/server/services/MCP.js`), so the audit entry leaves them empty. They are asserted by
+  LibreChat, not signed by the broker: the MCP server records them and never decides access on
+  them.
+- The forwarded token's audience is LibreChat, so any platform MCP server could replay it to
+  another. An exchanged token whose audience is the MCP server closes that (token exchange in the
+  broker or the existing OBO path).
 
 ### Scopes
 
@@ -305,9 +318,8 @@ exchange in the broker or the existing OBO path).
 - The tenant admin assigns scopes to platform groups in the admin app.
 - Write actions (send mail, create event, upload file) additionally require user confirmation in
   the chat, using upstream's tool approval modes (`docs/tool-approval-modes.md`).
-- Open decision: whether scopes travel as token claims (simple, but stale until re-login) or are
-  read by the MCP server from a per-tenant policy store (current, needs a lookup and cache). The
-  diagram above assumes the policy store.
+- Scopes are read by the MCP server from its policy store (`scope_grants`: tenant, group or user
+  to scope), so a change applies on the next call without re-login (2026-10-19).
 
 ### Audit entry
 
@@ -413,12 +425,17 @@ Decided:
 - Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
   equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
   because `openid-client` accepts only HTTPS issuers.
+- MCP servers in TypeScript on `@anno/mcp-core` (2026-10-19), each with its own Postgres
+  database for scope grants and audit. The audit log is append-only with one hash chain per
+  tenant, so a changed or deleted entry is detectable.
+- Platform token for now: the user's Zitadel access token, forwarded by LibreChat
+  (`OPENID_REUSE_TOKENS`) (2026-10-19). The audience-bound exchanged token stays the target.
+- Scopes from the policy store, not token claims (2026-10-19).
 
 Open:
 
-- Platform token: forwarded OIDC token or audience-bound exchanged token.
-- Scopes as token claims or from a policy store.
-- Where the MCP audit store lives (per-tenant database, shared database with tenant key, or an
-  append-only log service) and how tenants export it.
+- When to move from the forwarded token to an audience-bound exchanged token.
+- How tenants export the MCP audit log, and whether entries are also mirrored to an external
+  append-only store.
 - Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
 - Admin app stack.

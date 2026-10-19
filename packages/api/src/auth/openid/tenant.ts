@@ -1,4 +1,7 @@
+import { getTenantId, tenantStorage } from '@librechat/data-schemas';
+import type { IncomingHttpHeaders } from 'http';
 import { rejectTenantHeader } from '~/middleware/tenantHeader';
+import { isEnabled } from '~/utils';
 
 /** Replaced by the request's tenant id in the `TENANT_DOMAIN_*` and `OPENID_TENANT_SCOPE` templates. */
 export const TENANT_ID_PLACEHOLDER = '{tenantid}';
@@ -89,4 +92,33 @@ export function checkOpenIdTenantClaim(
     return { ok: false, error: { code: 'tenant_mismatch' } };
   }
   return { ok: true };
+}
+
+/**
+ * Runs `fn` in the tenant the trusted reverse proxy named (`X-Tenant-Id`) when no tenant context
+ * is set yet. Authenticated routes take their tenant from the user record after authentication,
+ * so a bearer strategy that finds the user by its OpenID identity (`openidJwt` with
+ * `OPENID_REUSE_TOKENS`) would otherwise query without a tenant, which strict isolation rejects.
+ * Without header trust, without a valid header, or inside an existing tenant, `fn` runs as is.
+ */
+export function runInHeaderTenant<T>(
+  headers: IncomingHttpHeaders,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (getTenantId() || !isEnabled(process.env.TRUST_TENANT_HEADER)) {
+    return fn();
+  }
+  const raw = headers['x-tenant-id'];
+  const tenantId = typeof raw === 'string' ? raw.trim() : '';
+  if (!tenantId || rejectTenantHeader(tenantId)) {
+    return fn();
+  }
+  return tenantStorage.run({ ...tenantStorage.getStore(), tenantId }, fn);
+}
+
+/** Wraps a passport verify callback that receives the request first in `runInHeaderTenant`. */
+export function withHeaderTenant<A extends unknown[], T>(
+  verify: (req: { headers: IncomingHttpHeaders }, ...args: A) => Promise<T>,
+): (req: { headers: IncomingHttpHeaders }, ...args: A) => Promise<T> {
+  return (req, ...args) => runInHeaderTenant(req.headers, () => verify(req, ...args));
 }
