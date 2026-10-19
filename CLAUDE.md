@@ -20,6 +20,12 @@ This is `anno-systems/LibreChat`, a solo-maintained fork of `LibreChat-AI/LibreC
 - Update from upstream with a merge, not a rebase: `git remote add upstream https://github.com/LibreChat-AI/LibreChat.git`, `git fetch upstream main`, `git merge upstream/main`. Upstream's `main` is a pointer to a tested `dev` commit.
 - Pulling upstream happens locally. Cloud sessions only reach the repository attached to them.
 
+## Platform plan
+
+This fork is the base of a multi-tenant platform. The architecture, repositories, roadmap and open
+decisions are in `docs/platform/architecture.md`. Read it before platform work and update it when a
+decision changes.
+
 ## Customizations
 
 Record every deliberate deviation from upstream here, one line each, so merges and conflicts stay explainable.
