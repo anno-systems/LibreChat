@@ -165,6 +165,10 @@ optional settings (`packages/api/src/auth/openid/tenant.ts`); unset, behaviour i
 | `OPENID_TENANT_SCOPE`  | `urn:zitadel:iam:org:id:{tenantid} urn:zitadel:iam:user:resourceowner` | Scopes added per tenant: log in to that organization and include the resource-owner claims          |
 | `OPENID_TENANT_CLAIM`  | `urn:zitadel:iam:user:resourceowner:id`                                | ID token claim that must equal the request tenant; otherwise the login fails before any user lookup |
 
+After login, `TENANT_HEADER_MATCH_USER=true` (with `TRUST_TENANT_HEADER=true`) makes every
+authenticated request check that the user's tenant equals the proxy's `X-Tenant-Id`, so a session
+of one tenant cannot be used through another tenant's hostname (403).
+
 These are environment variables like the rest of upstream's OpenID settings, which all live in
 the environment rather than `librechat.yaml`. Zitadel's login UI does not itself stop a user of
 another organization from signing in; the claim check is what rejects that login (verified

@@ -6,6 +6,8 @@ import type { TenantContext } from '@librechat/data-schemas';
 import type { Response, NextFunction } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { buildSafeRequestLogContext } from './auth';
+import { rejectTenantHeader } from './tenantHeader';
+import { isEnabled } from '~/utils';
 
 type ContextUser = {
   tenantId?: string;
@@ -30,6 +32,7 @@ export type ContextRequest = {
 };
 
 const SYSTEM_TENANT_REJECTION_MESSAGE = 'System tenant is not allowed for request-scoped routes';
+const TENANT_MISMATCH_MESSAGE = 'Session belongs to another tenant';
 
 let _checkedThread = false;
 
@@ -51,6 +54,26 @@ function normalizeContextValue(value?: string): string | undefined {
 
 function getUserId(user: ContextUser): string | undefined {
   return normalizeContextValue(user?.id) ?? normalizeContextValue(user?._id?.toString());
+}
+
+/**
+ * The tenant the trusted reverse proxy named for this request (`X-Tenant-Id`), when
+ * `TENANT_HEADER_MATCH_USER` asks authenticated requests to match it. Undefined when the check
+ * is off or the header is absent or not a valid tenant id.
+ */
+function getHostTenantId(req: ContextRequest): string | undefined {
+  if (
+    !isEnabled(process.env.TRUST_TENANT_HEADER) ||
+    !isEnabled(process.env.TENANT_HEADER_MATCH_USER)
+  ) {
+    return undefined;
+  }
+  const raw = req.headers['x-tenant-id'];
+  const tenantId = typeof raw === 'string' ? raw.trim() : undefined;
+  if (!tenantId || rejectTenantHeader(tenantId)) {
+    return undefined;
+  }
+  return tenantId;
 }
 
 function hasTenantContext(context: TenantContext): boolean {
@@ -125,6 +148,9 @@ export function runWithTenantContext(context: TenantContext, next: NextFunction)
  * - Authenticated request **without** `tenantId`:
  *   - Strict mode (`TENANT_ISOLATION_STRICT=true`) → responds 403
  *   - Non-strict (default) → passes through with user/request context only
+ * - Authenticated request whose tenant differs from the trusted `X-Tenant-Id` (only with
+ *   `TRUST_TENANT_HEADER=true` and `TENANT_HEADER_MATCH_USER=true`) → responds 403, so a
+ *   session of one tenant cannot be used through another tenant's hostname
  * - Unauthenticated request → propagates request context when available
  */
 export function tenantContextMiddleware(
@@ -156,6 +182,15 @@ export function tenantContextMiddleware(
 
   if (!user) {
     runWithTenantContext(context, next);
+    return;
+  }
+
+  const hostTenantId = getHostTenantId(req);
+  if (hostTenantId && hostTenantId !== tenantId) {
+    logger.warn('[tenantContextMiddleware] Rejected a session of another tenant', {
+      path: req.path,
+    });
+    res.status(403).json({ error: TENANT_MISMATCH_MESSAGE });
     return;
   }
 
