@@ -31,6 +31,7 @@ decision changes.
 Record every deliberate deviation from upstream here, one line each, so merges and conflicts stay explainable.
 
 - `.github/workflows/fork-image.yml` (fork-only): on pushes to `main` (same `paths` as `dev-images.yml`) and on manual dispatch, builds `Dockerfile` target `node` for `linux/amd64` and pushes `ghcr.io/<owner>/librechat:latest` and `:sha-<short>` with `GITHUB_TOKEN` only, no Docker Hub.
+- Tenant-aware OpenID (`packages/api/src/auth/openid/tenant.ts`, wired in `api/strategies/openidStrategy.js`, `api/server/routes/oauth.js`, `api/server/controllers/auth/oauth.js`, `api/server/middleware/oauthNavigation.js`): optional `TENANT_DOMAIN_SERVER`, `TENANT_DOMAIN_CLIENT`, `OPENID_TENANT_SCOPE` and `OPENID_TENANT_CLAIM` give each tenant its own callback and redirect URLs, provider scopes, and a claim that must match the request tenant. Unset, behaviour is upstream's.
 
 ## Environment
 

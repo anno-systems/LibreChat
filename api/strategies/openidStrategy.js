@@ -3,7 +3,7 @@ const { get } = require('lodash');
 const passport = require('passport');
 const client = require('openid-client');
 const jwtDecode = require('jsonwebtoken/decode');
-const { hashToken, logger, tenantStorage } = require('@librechat/data-schemas');
+const { hashToken, logger, getTenantId, tenantStorage } = require('@librechat/data-schemas');
 const { Strategy: OpenIDStrategy } = require('openid-client/passport');
 const { CacheKeys, ErrorTypes, SystemRoles } = require('librechat-data-provider');
 const {
@@ -20,7 +20,10 @@ const {
   recordIdpRoleChange,
   applyOpenIDProfile,
   getAvatarSaveParams,
+  getTenantDomains,
   isEmailDomainAllowed,
+  getTenantOpenIdScope,
+  checkOpenIdTenantClaim,
   getAvatarFileStrategy,
   resolveAppConfigForUser,
   getOpenIdProxyDispatcher,
@@ -128,8 +131,20 @@ const getOpenIdAuthorizationAudience = () =>
  * More info: https://github.com/panva/openid-client/pull/713
  */
 class CustomOpenIDStrategy extends OpenIDStrategy {
+  /**
+   * @param {object} options - Strategy options; `tenantAware` resolves the callback URL and
+   * scopes per request tenant (see `TENANT_DOMAIN_SERVER` and `OPENID_TENANT_SCOPE`).
+   * @param {Function} verify
+   */
+  constructor(options, verify) {
+    super(options, verify);
+    this._tenantAware = options.tenantAware === true;
+  }
+
   currentUrl(req) {
-    const hostAndProtocol = process.env.DOMAIN_SERVER;
+    const hostAndProtocol = this._tenantAware
+      ? getTenantDomains(getTenantId(), process.env).server
+      : process.env.DOMAIN_SERVER;
     return new URL(`${hostAndProtocol}${req.originalUrl ?? req.url}`);
   }
 
@@ -137,6 +152,16 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
     const params = super.authorizationRequestParams(req, options);
     if (options?.state && !params.has('state')) {
       params.set('state', options.state);
+    }
+
+    if (this._tenantAware) {
+      const tenantId = getTenantId();
+      const { server } = getTenantDomains(tenantId, process.env);
+      params.set('redirect_uri', `${server}${process.env.OPENID_CALLBACK_URL}`);
+      const scope = getTenantOpenIdScope(process.env.OPENID_SCOPE, tenantId, process.env);
+      if (scope) {
+        params.set('scope', scope);
+      }
     }
 
     const authorizationAudience = getOpenIdAuthorizationAudience();
@@ -845,10 +870,19 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
 
 /**
  * @param {boolean | undefined} [existingUsersOnly]
+ * @param {boolean} [tenantAware] - Reject logins whose tenant claim differs from the request tenant.
  */
-function createOpenIDCallback(existingUsersOnly) {
+function createOpenIDCallback(existingUsersOnly, tenantAware = false) {
   return async (tokenset, done) => {
     try {
+      const claims = tokenset.claims ? tokenset.claims() : tokenset;
+      const tenantCheck = tenantAware
+        ? checkOpenIdTenantClaim(claims, getTenantId(), process.env)
+        : { ok: true };
+      if (!tenantCheck.ok) {
+        logger.warn(`[openidStrategy] Login rejected: ${tenantCheck.error.code}`);
+        return done(null, false, { message: ErrorTypes.AUTH_FAILED });
+      }
       const user = await processOpenIDAuth(tokenset, existingUsersOnly);
       done(null, user);
     } catch (err) {
@@ -950,10 +984,11 @@ async function setupOpenId() {
         config: openidConfig,
         scope: process.env.OPENID_SCOPE,
         callbackURL: process.env.DOMAIN_SERVER + process.env.OPENID_CALLBACK_URL,
+        tenantAware: true,
         clockTolerance: process.env.OPENID_CLOCK_TOLERANCE || 300,
         usePKCE,
       },
-      createOpenIDCallback(),
+      createOpenIDCallback(undefined, true),
     );
     passport.use('openid', openidLogin);
     setupOpenIdAdmin(openidConfig);

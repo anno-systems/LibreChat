@@ -8,6 +8,8 @@ const mockSendOpenIDAuthResponse = jest.fn();
 const mockGetLogStores = jest.fn();
 const mockCheckBan = jest.fn();
 const mockGenerateToken = jest.fn();
+const mockGetTenantId = jest.fn();
+const mockGetTenantDomains = jest.fn();
 const mockLogger = { info: jest.fn(), error: jest.fn() };
 
 jest.mock('librechat-data-provider', () => ({
@@ -16,6 +18,7 @@ jest.mock('librechat-data-provider', () => ({
 
 jest.mock('@librechat/data-schemas', () => ({
   logger: mockLogger,
+  getTenantId: (...args) => mockGetTenantId(...args),
   DEFAULT_SESSION_EXPIRY: 60000,
 }));
 
@@ -24,6 +27,7 @@ jest.mock('@librechat/api', () => ({
   getAdminPanelUrl: (...args) => mockGetAdminPanelUrl(...args),
   isAdminPanelRedirect: (...args) => mockIsAdminPanelRedirect(...args),
   generateAdminExchangeCode: (...args) => mockGenerateAdminExchangeCode(...args),
+  getTenantDomains: (...args) => mockGetTenantDomains(...args),
 }));
 
 jest.mock('~/server/services/PermissionService', () => ({
@@ -173,6 +177,30 @@ describe('createOAuthHandler', () => {
       req,
       res,
     });
+    expect(res.redirect).toHaveBeenCalledWith('http://localhost:3080');
+  });
+
+  it("redirects to the request tenant's client URL by default", async () => {
+    mockGetTenantId.mockReturnValue('acme');
+    mockGetTenantDomains.mockReturnValue({ client: 'https://acme.example.com' });
+    mockIsAdminPanelRedirect.mockReturnValue(false);
+    const res = buildRes();
+
+    await createOAuthHandler()(buildReq(), res, jest.fn());
+
+    expect(mockGetTenantDomains).toHaveBeenCalledWith('acme', process.env);
+    expect(mockSetAuthTokens).toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith('https://acme.example.com');
+  });
+
+  it('keeps an explicit redirect URI over the tenant URL', async () => {
+    mockGetTenantId.mockReturnValue('acme');
+    mockIsAdminPanelRedirect.mockReturnValue(false);
+    const res = buildRes();
+
+    await createOAuthHandler('http://localhost:3080')(buildReq(), res, jest.fn());
+
+    expect(mockGetTenantDomains).not.toHaveBeenCalled();
     expect(res.redirect).toHaveBeenCalledWith('http://localhost:3080');
   });
 

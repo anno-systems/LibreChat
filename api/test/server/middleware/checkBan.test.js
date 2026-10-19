@@ -27,6 +27,7 @@ jest.mock('@librechat/data-schemas', () => ({
     debug: jest.fn(),
     error: jest.fn(),
   },
+  getTenantId: jest.fn(() => undefined),
 }));
 
 jest.mock('@librechat/api', () => ({
@@ -42,6 +43,7 @@ jest.mock('@librechat/api', () => ({
   keyvMongo: {},
   getBanIp: jest.requireActual('../../../../packages/api/src/middleware/ban').getBanIp,
   removePorts: jest.fn((req) => req.ip),
+  getTenantDomains: (_tenantId, settings) => ({ client: settings.DOMAIN_CLIENT }),
   redirectToAuthFailure: (res, { clientDomain, authFailedError }) =>
     res.redirect(`${clientDomain}/login?redirect=false&error=${authFailedError}`),
 }));
