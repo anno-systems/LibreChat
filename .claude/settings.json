@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm ci)",
+      "Bash(npm run lint*)",
+      "Bash(npm run test*)",
+      "Bash(npm run build*)",
+      "Bash(npm run frontend*)",
+      "Bash(npm run static-checks*)",
+      "Bash(npm run sort-imports*)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(bash .claude/scripts/dev-services.sh *)",
+      "Bash(bash .claude/scripts/bootstrap-env.sh)",
+      "Bash(docker ps *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git fetch origin *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git checkout -b *)"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push origin main *)",
+      "Bash(git push origin HEAD:main *)",
+      "Bash(rm -rf /*)",
+      "Read(.env)",
+      "Read(.env.local)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/scripts/cloud-session-start.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
