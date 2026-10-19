@@ -1,4 +1,5 @@
-const { redirectToAuthFailure } = require('@librechat/api');
+const { getTenantId } = require('@librechat/data-schemas');
+const { getTenantDomains, redirectToAuthFailure } = require('@librechat/api');
 
 /**
  * Flags the request as a top-level browser navigation belonging to the OAuth flow.
@@ -21,13 +22,17 @@ const markOAuthNavigation = (req, _res, next) => {
 const isOAuthNavigation = (req) => req?.isOAuthNavigation === true;
 
 /**
- * Sends the browser back to the login page carrying an error code the client localizes.
+ * Sends the browser back to the login page, on the request tenant's own hostname when
+ * `TENANT_DOMAIN_CLIENT` is set, carrying an error code the client localizes.
  *
  * @param {import('express').Response} res
  * @param {string} authFailedError - An `ErrorTypes` value.
  */
 const redirectOAuthFailure = (res, authFailedError) =>
-  redirectToAuthFailure(res, { clientDomain: process.env.DOMAIN_CLIENT, authFailedError });
+  redirectToAuthFailure(res, {
+    clientDomain: getTenantDomains(getTenantId(), process.env).client,
+    authFailedError,
+  });
 
 module.exports = {
   markOAuthNavigation,

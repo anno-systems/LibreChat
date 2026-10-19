@@ -113,6 +113,7 @@ jest.mock('@librechat/data-schemas', () => ({
   tenantStorage: {
     run: jest.fn((_context, fn) => fn()),
   },
+  getTenantId: jest.fn(() => undefined),
   hashToken: jest.fn().mockResolvedValue('hashed-token'),
 }));
 jest.mock('~/cache/getLogStores', () =>
@@ -258,6 +259,11 @@ describe('setupOpenId', () => {
     delete process.env.OPENID_ROLE_SYNC_FALLBACK_ROLE;
     delete process.env.OPENID_ON_BEHALF_FLOW_FOR_USERINFO_REQUIRED;
     delete process.env.OPENID_ON_BEHALF_FLOW_USERINFO_SCOPE;
+    delete process.env.TENANT_DOMAIN_CLIENT;
+    delete process.env.TENANT_DOMAIN_SERVER;
+    delete process.env.OPENID_TENANT_SCOPE;
+    delete process.env.OPENID_TENANT_CLAIM;
+    require('@librechat/data-schemas').getTenantId.mockReturnValue(undefined);
 
     // Default jwtDecode mock returns a token that includes the required role.
     jwtDecode.mockReturnValue({
@@ -374,6 +380,75 @@ describe('setupOpenId', () => {
           dispatcher,
         },
       );
+    });
+  });
+
+  describe('tenant-aware login', () => {
+    const getLoginStrategy = () => require('openid-client/passport').__getStrategyByName('openid');
+    const { getTenantId } = require('@librechat/data-schemas');
+    const claim = 'urn:zitadel:iam:user:resourceowner:id';
+
+    const useTenants = () => {
+      process.env.TENANT_DOMAIN_SERVER = 'https://{tenantid}.example.com';
+      process.env.OPENID_TENANT_SCOPE = 'urn:zitadel:iam:org:id:{tenantid}';
+      process.env.OPENID_TENANT_CLAIM = claim;
+      getTenantId.mockReturnValue('acme');
+    };
+
+    const tenantTokenset = (tenantClaim) => ({
+      ...tokenset,
+      claims: () => ({ ...tokenset.claims(), roles: ['requiredRole'], [claim]: tenantClaim }),
+    });
+
+    it('keeps the deployment callback and scope without tenant settings', () => {
+      const params = getLoginStrategy().authorizationRequestParams({}, {});
+
+      expect(params.get('redirect_uri')).toBe('https://example.com/callback');
+      expect(params.get('scope')).toBe('openid profile email');
+      expect(getLoginStrategy().currentUrl({ originalUrl: '/callback?code=1' }).href).toBe(
+        'https://example.com/callback?code=1',
+      );
+    });
+
+    it("uses the tenant's callback URL and organization scope", () => {
+      useTenants();
+
+      const params = getLoginStrategy().authorizationRequestParams({}, {});
+
+      expect(params.get('redirect_uri')).toBe('https://acme.example.com/callback');
+      expect(params.get('scope')).toBe('openid profile email urn:zitadel:iam:org:id:acme');
+      expect(getLoginStrategy().currentUrl({ originalUrl: '/callback?code=1' }).href).toBe(
+        'https://acme.example.com/callback?code=1',
+      );
+    });
+
+    it('accepts a login whose tenant claim matches the request tenant', async () => {
+      useTenants();
+
+      const { user } = await validate(tenantTokenset('acme'));
+
+      expect(user).toBeTruthy();
+      expect(createUserIfAbsent).toHaveBeenCalled();
+    });
+
+    it('rejects a login from another tenant before touching any user', async () => {
+      useTenants();
+
+      const { user, details } = await validate(tenantTokenset('other'));
+
+      expect(user).toBe(false);
+      expect(details).toEqual({ message: ErrorTypes.AUTH_FAILED });
+      expect(findUser).not.toHaveBeenCalled();
+      expect(createUserIfAbsent).not.toHaveBeenCalled();
+    });
+
+    it('rejects a login without the tenant claim', async () => {
+      useTenants();
+
+      const { user } = await validate(tokenset);
+
+      expect(user).toBe(false);
+      expect(createUserIfAbsent).not.toHaveBeenCalled();
     });
   });
 

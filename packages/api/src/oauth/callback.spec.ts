@@ -43,6 +43,7 @@ function createAuthenticator(
     res: Response,
     next: NextFunction,
   ) => void,
+  extraOptions: Partial<OpenIDCallbackAuthenticatorOptions> = {},
 ) {
   const passport = {
     authenticate: jest.fn((_strategy: 'openid', _options, callback: CallbackFn) => {
@@ -56,6 +57,7 @@ function createAuthenticator(
     logger,
     clientDomain: 'http://client.test',
     authFailedError: 'auth_failed',
+    ...extraOptions,
   };
 
   return {
@@ -244,6 +246,39 @@ describe('OpenID OAuth callback helpers', () => {
       'http://client.test/login?redirect=false&error=auth_failed',
     );
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('redirects failures to the client URL resolved for the request', () => {
+    const req = createRequest();
+    const res = createResponse();
+    const next = createNext();
+    const resolveClientDomain = jest.fn(() => 'http://acme.client.test');
+    const { middleware } = createAuthenticator(
+      (callback) => callback(null, false, { message: 'tenant_mismatch' }),
+      { resolveClientDomain },
+    );
+
+    middleware(req, res, next);
+
+    expect(resolveClientDomain).toHaveBeenCalledWith(req);
+    expect(res.redirect).toHaveBeenCalledWith(
+      'http://acme.client.test/login?redirect=false&error=auth_failed',
+    );
+  });
+
+  it('falls back to clientDomain when the resolver returns nothing', () => {
+    const req = createRequest();
+    const res = createResponse();
+    const { middleware } = createAuthenticator(
+      (callback) => callback(null, false, { message: 'tenant_mismatch' }),
+      { resolveClientDomain: () => undefined },
+    );
+
+    middleware(req, res, createNext());
+
+    expect(res.redirect).toHaveBeenCalledWith(
+      'http://client.test/login?redirect=false&error=auth_failed',
+    );
   });
 
   it('logs login errors and sends them to the error handler', () => {

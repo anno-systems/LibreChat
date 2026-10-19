@@ -59,6 +59,8 @@ export type LogOpenIDCallbackFailureOptions = {
 export type OpenIDCallbackAuthenticatorOptions = AuthFailureRedirectOptions & {
   logger: OAuthCallbackLogger;
   passport: PassportLike;
+  /** Client URL for this request (for example the tenant's own); falls back to `clientDomain`. */
+  resolveClientDomain?: (req: OpenIDCallbackRequest) => string | undefined;
 };
 
 export function redirectToAuthFailure(
@@ -94,12 +96,17 @@ export function createOpenIDCallbackAuthenticator({
   logger,
   clientDomain,
   authFailedError,
+  resolveClientDomain,
 }: OpenIDCallbackAuthenticatorOptions): (
   req: OpenIDCallbackRequest,
   res: Response,
   next: NextFunction,
 ) => unknown {
   return (req: OpenIDCallbackRequest, res: Response, next: NextFunction): unknown => {
+    const failureOptions = {
+      clientDomain: resolveClientDomain?.(req) ?? clientDomain,
+      authFailedError,
+    };
     return passport.authenticate(
       'openid',
       {
@@ -110,7 +117,7 @@ export function createOpenIDCallbackAuthenticator({
         if (err) {
           if (isOAuthProtocolFailure(err, info)) {
             logOpenIDCallbackFailure({ logger, req, err, info });
-            return redirectToAuthFailure(res, { clientDomain, authFailedError });
+            return redirectToAuthFailure(res, failureOptions);
           }
 
           logOpenIDCallbackFailure({ logger, req, err, info, level: 'error' });
@@ -119,7 +126,7 @@ export function createOpenIDCallbackAuthenticator({
 
         if (!user) {
           logOpenIDCallbackFailure({ logger, req, err, info });
-          return redirectToAuthFailure(res, { clientDomain, authFailedError });
+          return redirectToAuthFailure(res, failureOptions);
         }
 
         if (typeof req.logIn !== 'function') {

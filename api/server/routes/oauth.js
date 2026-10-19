@@ -2,12 +2,13 @@
 const express = require('express');
 const passport = require('passport');
 const { randomState } = require('openid-client');
-const { logger } = require('@librechat/data-schemas');
+const { logger, getTenantId } = require('@librechat/data-schemas');
 const { ErrorTypes } = require('librechat-data-provider');
 const {
   buildOAuthFailureLog,
   createOpenIDCallbackAuthenticator,
   createSetBalanceConfig,
+  getTenantDomains,
   getOAuthFailureMessage,
   redirectToAuthFailure,
 } = require('@librechat/api');
@@ -48,6 +49,7 @@ const authenticateOpenIDCallback = createOpenIDCallbackAuthenticator({
   passport,
   logger,
   ...authFailureRedirectOptions,
+  resolveClientDomain: () => getTenantDomains(getTenantId(), process.env).client,
 });
 
 router.get('/error', (req, res) => {

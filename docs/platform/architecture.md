@@ -121,8 +121,12 @@ one identity broker, so LibreChat sees exactly one OIDC issuer.
   organization: connected IdPs (Entra ID, Google Workspace, generic OIDC/SAML), local accounts with
   password reset and MFA, and login-page branding (logo, colors). Keycloak with one realm per tenant
   is the fallback if Zitadel falls short.
-- **Token contents.** The broker issues tokens with `sub`, `email`, `tenant_id` and `groups`.
-  Group membership from the customer IdP is mapped to platform groups in the broker.
+- **Organization id = tenant id.** Each tenant's Zitadel organization is created with the tenant
+  id as its organization id (Zitadel accepts a caller-chosen id), so no mapping table is needed.
+- **Token contents.** The ID token carries `sub`, `email` and Zitadel's resource-owner claims;
+  `urn:zitadel:iam:user:resourceowner:id` is the user's organization, which is the tenant.
+  Group membership from the customer IdP is mapped to platform groups in the broker (not built
+  yet).
 - **Group sync.** Platform groups are mirrored into LibreChat's Group collection so that config
   overrides and ACLs per group work as upstream intends.
 - **Admins.** Tenant admins log in to the admin app through their tenant's organization. The
@@ -147,6 +151,24 @@ sequenceDiagram
     L->>L: check tenant_id claim equals X-Tenant-Id, map groups
     L->>B: session for tenant customer-a
 ```
+
+### Tenant-aware OpenID in the fork
+
+Upstream builds the OpenID callback and redirects from the single `DOMAIN_SERVER` and
+`DOMAIN_CLIENT`, and cannot ask the provider for a tenant's organization. The fork adds four
+optional settings (`packages/api/src/auth/openid/tenant.ts`); unset, behaviour is upstream's:
+
+| Variable               | Example                                                                | Effect                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `TENANT_DOMAIN_SERVER` | `https://{tenantid}.example.com`                                       | OpenID callback URL per tenant                                                                      |
+| `TENANT_DOMAIN_CLIENT` | `https://{tenantid}.example.com`                                       | Redirect after login, failure, rate limit and ban                                                   |
+| `OPENID_TENANT_SCOPE`  | `urn:zitadel:iam:org:id:{tenantid} urn:zitadel:iam:user:resourceowner` | Scopes added per tenant: log in to that organization and include the resource-owner claims          |
+| `OPENID_TENANT_CLAIM`  | `urn:zitadel:iam:user:resourceowner:id`                                | ID token claim that must equal the request tenant; otherwise the login fails before any user lookup |
+
+These are environment variables like the rest of upstream's OpenID settings, which all live in
+the environment rather than `librechat.yaml`. Zitadel's login UI does not itself stop a user of
+another organization from signing in; the claim check is what rejects that login (verified
+end to end in `platform-infra`).
 
 ## Configuration and model catalog
 
@@ -383,6 +405,10 @@ Decided:
   Docker Compose until the stack works end to end.
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
   SharePoint.
+
+- Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
+  equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
+  because `openid-client` accepts only HTTPS issuers.
 
 Open:
 

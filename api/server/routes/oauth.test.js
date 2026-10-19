@@ -169,6 +169,7 @@ describe('OAuth route failure logging', () => {
       logger: mockLogger,
       clientDomain: 'http://client.test',
       authFailedError: 'auth_failed',
+      resolveClientDomain: expect.any(Function),
     });
     expect(mockOpenIDCallbackMiddleware).toHaveBeenCalledWith(
       expect.any(Object),

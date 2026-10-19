@@ -1,8 +1,9 @@
 const { CacheKeys } = require('librechat-data-provider');
-const { logger, DEFAULT_SESSION_EXPIRY } = require('@librechat/data-schemas');
+const { logger, getTenantId, DEFAULT_SESSION_EXPIRY } = require('@librechat/data-schemas');
 const {
   isEnabled,
   getAdminPanelUrl,
+  getTenantDomains,
   isAdminPanelRedirect,
   generateAdminExchangeCode,
 } = require('@librechat/api');
@@ -18,7 +19,11 @@ const domains = {
   server: process.env.DOMAIN_SERVER,
 };
 
-function createOAuthHandler(redirectUri = domains.client) {
+/**
+ * @param {string} [fixedRedirectUri] - Where to send the user after login. Defaults to the
+ * request tenant's client URL (`TENANT_DOMAIN_CLIENT`), else `DOMAIN_CLIENT`.
+ */
+function createOAuthHandler(fixedRedirectUri) {
   /**
    * A handler to process OAuth authentication results.
    * @type {Function}
@@ -36,6 +41,8 @@ function createOAuthHandler(redirectUri = domains.client) {
       if (req.banned) {
         return;
       }
+
+      const redirectUri = fixedRedirectUri ?? getTenantDomains(getTenantId(), process.env).client;
 
       /** Check if this is an admin panel redirect (cross-origin or same-origin subpath) */
       if (isAdminPanelRedirect(redirectUri, getAdminPanelUrl(), domains.client)) {
