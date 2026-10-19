@@ -42,11 +42,22 @@ npm run backend:dev
 - **Git as you**: pushes go through your GitHub connection (credentials stay outside the VM). Commit author and email come from the `GIT_*` variables. Claude also adds a `Claude-Session` trailer to commits; `attribution.sessionUrl: false` turns that off.
 - **Cost**: the VM costs nothing extra, but usage counts against your Max limits. `npm ci`, builds and tests are shell commands and use little. Long debugging and parallel sessions use a lot.
 
-## Not tested yet
+## Tested in a cloud session
 
-Checked against the docs and the repo's files only, not in a real cloud session. Watch these on the first run:
+Confirmed in a real cloud session (2026-10-19, `main` at `9008c47`, 4 vCPU / 16 GB):
 
-- Docker in the setup script: it is not documented whether the daemon can start there. If pre-pulling fails, the hook pulls the image on first use.
-- Extra network domains: found in the `package.json` files. Other downloads, such as Playwright browsers, are not covered.
-- Runtime of the first hook: `npm ci` plus building the workspace packages can take several minutes (the hook has 10). `node_modules` is not part of the environment cache, so every new session repeats it.
-- Node version: `.nvmrc` says 24.16.0 and the setup script installs that. npm 11.16.0 comes from the LibreChat docs, `package.json` pins `npm@11.13.0`.
+- Node 24.16.0 and npm 11.16.0 are on `PATH` (`package.json` still pins `npm@11.13.0`, which caused no problem).
+- The SessionStart hook creates `.env`, starts MongoDB on 127.0.0.1:27017, and runs `npm ci` and `npm run build:packages`. It took about 1 min 50 s (`/tmp/cloud-session-start.log` from 11:33:22 to 11:35:13 UTC, `npm ci` about 1 min of that), well inside its 10 minutes.
+- `npx tsc --noEmit` is clean in `packages/data-provider` (8 s), `packages/data-schemas` (27 s), `packages/api` (69 s), `packages/client` (7 s), `packages/chat` (5 s) and `client` (79 s). `api` has no tsconfig.
+- Tests: `test:packages:data-provider` (14 s), `test:packages:data-schemas` (147 s), `test:packages:chat` (21 s) and `test:client` (744 s, 12097 tests) pass. Running all suites one after another took about 31 minutes and never ran short of memory.
+- Network: `mongodb-memory-server` downloaded MongoDB 8.2.1 (122 MB) through the allowed `fastdl.mongodb.org`. No other domain was missing for typechecks and unit tests.
+
+Known failures that come from the cloud VM, not from a code change:
+
+- **Proxy variables.** The VM sets `HTTPS_PROXY`/`https_proxy` for its egress proxy. LibreChat reads them (`packages/api/src/utils/proxy.ts`) and builds a proxy dispatcher that several tests do not expect: 29 tests in `packages/api` (`src/endpoints/openai/config*.spec.ts`, `src/files/mistral/crud.spec.ts`) and 5 in `api` (`app/clients/tools/structured/specs/imageTools-agent.spec.js`, whose `undici` mock lacks `EnvHttpProxyAgent`). They pass when run with `env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy`. `NO_PROXY='*'` does not help. Unset the variables only for the test run; downloads (npm, the MongoDB binary on first use) need the proxy.
+- **LibreOffice.** The VM image has `soffice` on `PATH`, so the integration block in `packages/api/src/files/documents/libreoffice.spec.ts` runs instead of skipping. Its 3 tests then fail because in-process conversion is switched off in code (`IN_PROCESS_LIBREOFFICE_DISABLED = true`). Upstream CI has no LibreOffice, so it never sees this.
+
+Still not tested:
+
+- Docker in the setup script (pre-pulling the MongoDB image). MongoDB was running when the session started, but the log does not show whether the image came from the setup script cache or from the hook.
+- Other downloads, such as Playwright browsers. Lighthouse and Playwright e2e are not set up here.
