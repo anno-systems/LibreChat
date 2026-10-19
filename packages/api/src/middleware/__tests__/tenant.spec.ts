@@ -282,6 +282,71 @@ describe('tenantContextMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  describe('with TENANT_HEADER_MATCH_USER', () => {
+    beforeEach(() => {
+      process.env.TRUST_TENANT_HEADER = 'true';
+      process.env.TENANT_HEADER_MATCH_USER = 'true';
+    });
+
+    afterEach(() => {
+      delete process.env.TRUST_TENANT_HEADER;
+      delete process.env.TENANT_HEADER_MATCH_USER;
+    });
+
+    const runGuarded = async (req: ServerRequest) => {
+      const res = mockRes();
+      const next: NextFunction = jest.fn();
+      await tenantContextMiddleware(req, res, next);
+      return { res, next };
+    };
+
+    it("accepts a session on its own tenant's hostname", async () => {
+      const req = mockReqWithHeaders({ tenantId: 'tenant-a' }, { 'x-tenant-id': 'tenant-a' });
+
+      expect(await runMiddleware(req, mockRes())).toBe('tenant-a');
+    });
+
+    it("rejects a session on another tenant's hostname", async () => {
+      const { res, next } = await runGuarded(
+        mockReqWithHeaders({ tenantId: 'tenant-a' }, { 'x-tenant-id': 'tenant-b' }),
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Session belongs to another tenant' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("rejects a tenantless session on a tenant's hostname", async () => {
+      const { res, next } = await runGuarded(
+        mockReqWithHeaders({ role: 'user' }, { 'x-tenant-id': 'tenant-b' }),
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('accepts a session without a host header, e.g. from the admin app', async () => {
+      const req = mockReqWithHeaders({ tenantId: 'tenant-a' }, {});
+
+      expect(await runMiddleware(req, mockRes())).toBe('tenant-a');
+    });
+
+    it('ignores the header when the header is not trusted', async () => {
+      delete process.env.TRUST_TENANT_HEADER;
+      const req = mockReqWithHeaders({ tenantId: 'tenant-a' }, { 'x-tenant-id': 'tenant-b' });
+
+      expect(await runMiddleware(req, mockRes())).toBe('tenant-a');
+    });
+  });
+
+  it('keeps upstream behaviour when TENANT_HEADER_MATCH_USER is unset', async () => {
+    process.env.TRUST_TENANT_HEADER = 'true';
+    const req = mockReqWithHeaders({ tenantId: 'tenant-a' }, { 'x-tenant-id': 'tenant-b' });
+
+    expect(await runMiddleware(req, mockRes())).toBe('tenant-a');
+    delete process.env.TRUST_TENANT_HEADER;
+  });
+
   it('different requests get independent tenant contexts', async () => {
     const runRequest = (tid: string) => {
       const req = mockReq({ tenantId: tid, role: 'user' });

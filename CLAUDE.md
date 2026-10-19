@@ -32,6 +32,7 @@ Record every deliberate deviation from upstream here, one line each, so merges a
 
 - `.github/workflows/fork-image.yml` (fork-only): on pushes to `main` (same `paths` as `dev-images.yml`) and on manual dispatch, builds `Dockerfile` target `node` for `linux/amd64` and pushes `ghcr.io/<owner>/librechat:latest` and `:sha-<short>` with `GITHUB_TOKEN` only, no Docker Hub.
 - Tenant-aware OpenID (`packages/api/src/auth/openid/tenant.ts`, wired in `api/strategies/openidStrategy.js`, `api/server/routes/oauth.js`, `api/server/controllers/auth/oauth.js`, `api/server/middleware/oauthNavigation.js`): optional `TENANT_DOMAIN_SERVER`, `TENANT_DOMAIN_CLIENT`, `OPENID_TENANT_SCOPE` and `OPENID_TENANT_CLAIM` give each tenant its own callback and redirect URLs, provider scopes, and a claim that must match the request tenant. Unset, behaviour is upstream's.
+- Tenant host check (`packages/api/src/middleware/tenant.ts`): with `TRUST_TENANT_HEADER=true` and the optional `TENANT_HEADER_MATCH_USER=true`, an authenticated request whose user belongs to another tenant than the proxy's `X-Tenant-Id` gets 403. Unset, behaviour is upstream's.
 
 ## Environment
 
