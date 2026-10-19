@@ -89,6 +89,7 @@ afterEach(() => {
   delete process.env.ALLOW_PASSWORD_RESET;
   delete process.env.ENFORCE_TWO_FACTOR_AUTHENTICATION;
   delete process.env.DOMAIN_SERVER;
+  delete process.env.TENANT_DOMAIN_SERVER;
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
   delete process.env.OPENID_CLIENT_ID;
@@ -317,6 +318,29 @@ describe('GET /api/config', () => {
       expect(response.body.appTitle).toBe('Test App');
       expect(response.body).toHaveProperty('emailLoginEnabled');
       expect(response.body).toHaveProperty('serverDomain');
+    });
+
+    it('should use the tenant server domain when TENANT_DOMAIN_SERVER is set', async () => {
+      mockGetAppConfig.mockResolvedValue(baseAppConfig);
+      mockGetTenantId.mockReturnValue('tenant-a');
+      process.env.DOMAIN_SERVER = 'http://localhost:8080';
+      process.env.TENANT_DOMAIN_SERVER = 'http://{tenantid}.localhost:8080';
+      const app = createApp(null);
+
+      const response = await request(app).get('/api/config');
+
+      expect(response.body.serverDomain).toBe('http://tenant-a.localhost:8080');
+    });
+
+    it('should fall back to DOMAIN_SERVER without a tenant', async () => {
+      mockGetAppConfig.mockResolvedValue(baseAppConfig);
+      process.env.DOMAIN_SERVER = 'http://localhost:8080';
+      process.env.TENANT_DOMAIN_SERVER = 'http://{tenantid}.localhost:8080';
+      const app = createApp(null);
+
+      const response = await request(app).get('/api/config');
+
+      expect(response.body.serverDomain).toBe('http://localhost:8080');
     });
 
     it('should expose the effective two-factor enforcement policy', async () => {
