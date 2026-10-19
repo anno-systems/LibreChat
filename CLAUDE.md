@@ -24,7 +24,7 @@ This is `anno-systems/LibreChat`, a solo-maintained fork of `LibreChat-AI/LibreC
 
 Record every deliberate deviation from upstream here, one line each, so merges and conflicts stay explainable.
 
-- (none yet)
+- `.github/workflows/fork-image.yml` (fork-only): on pushes to `main` (same `paths` as `dev-images.yml`) and on manual dispatch, builds `Dockerfile` target `node` for `linux/amd64` and pushes `ghcr.io/<owner>/librechat:latest` and `:sha-<short>` with `GITHUB_TOKEN` only, no Docker Hub.
 
 ## Environment
 
