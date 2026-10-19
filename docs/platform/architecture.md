@@ -40,8 +40,7 @@ flowchart LR
         Z[Identity broker<br/>Zitadel]
         LC[LibreChat fork]
         DB[(MongoDB)]
-        AP[Tenant admin panel]
-        OC[Operator console]
+        AP[Admin app<br/>tenant admin + operator]
         MCP[Company MCP servers]
         AUD[(MCP audit store)]
         OBJ[(Object storage<br/>logos, files)]
@@ -59,7 +58,6 @@ flowchart LR
     Z --> IdP
     LC --> DB
     AP --> LC
-    OC --> LC
     LC --> M
     LC --> MCP
     MCP --> MS
@@ -72,13 +70,12 @@ flowchart LR
 All repositories live in the `anno-systems` GitHub organization, are planned on one org-level
 GitHub Project ("AI Platform"), and publish images to `ghcr.io/anno-systems/*`.
 
-| Repository         | Contents                                                                                                                                                                                                                         |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `librechat`        | This fork. Tenant claim mapping, branding fields, MCP identity propagation, tool-call audit events, operator API module.                                                                                                         |
-| `admin-panel`      | Tenant admin panel. Planned as a fork of [ClickHouse/librechat-admin-panel](https://github.com/ClickHouse/librechat-admin-panel), which already talks to upstream's `/api/admin/*`. License and change rate still to be checked. |
-| `operator-console` | Operator panel for the platform owner. New application.                                                                                                                                                                          |
-| `mcp-servers`      | Monorepo: a shared core (platform token check, scopes, audit writer, Microsoft OAuth, tenant settings) and one package and image per server.                                                                                     |
-| `platform-infra`   | Deployment: compose or Kubernetes manifests, reverse proxy, Zitadel configuration, per-tenant routing, backups.                                                                                                                  |
+| Repository       | Contents                                                                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `librechat`      | This fork. Tenant claim mapping, branding fields, MCP identity propagation, tool-call audit events, operator API module.                     |
+| `admin-app`      | One admin application for tenant admins and the operator, built new. See [Admin app](#admin-app).                                            |
+| `mcp-servers`    | Monorepo: a shared core (platform token check, scopes, audit writer, Microsoft OAuth, tenant settings) and one package and image per server. |
+| `platform-infra` | Deployment: local Docker Compose stack, Terraform for T Cloud Public, reverse proxy, Zitadel configuration, per-tenant routing, backups.     |
 
 ## Tenancy
 
@@ -128,8 +125,8 @@ one identity broker, so LibreChat sees exactly one OIDC issuer.
   Group membership from the customer IdP is mapped to platform groups in the broker.
 - **Group sync.** Platform groups are mirrored into LibreChat's Group collection so that config
   overrides and ACLs per group work as upstream intends.
-- **Admins.** Tenant admins log in to the tenant admin panel through the same broker. The operator
-  logs in to the operator console through a separate operator organization with mandatory MFA.
+- **Admins.** Tenant admins log in to the admin app through their tenant's organization. The
+  operator logs in through a separate operator organization with mandatory MFA.
 
 ```mermaid
 sequenceDiagram
@@ -168,21 +165,31 @@ The platform builds on that instead of inventing a second config system:
 | User documents       | Tenant admin (rare)              | Exceptions.                                                                                                            |
 
 Open point: upstream has no "model" permission, so "group X may use model Y" is expressed as a
-group-level override of endpoints and model specs. The admin panel hides that detail behind a
+group-level override of endpoints and model specs. The admin app hides that detail behind a
 "models per group" screen.
 
-## Admin surfaces
+## Admin app
 
-|           | Tenant admin panel                                                                                                                       | Operator console                                                                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Users     | Tenant admins of one tenant                                                                                                              | The operator only                                                                                                                                    |
-| Scope     | One tenant, inside its tenant context                                                                                                    | All tenants                                                                                                                                          |
-| Backend   | Upstream `/api/admin/*`, extended where needed                                                                                           | New operator API module in the fork                                                                                                                  |
-| Functions | Users and groups, models per group, agents, enabling MCP servers and assigning scopes, branding, budgets, usage dashboards, audit viewer | Create, suspend and delete tenants; domains; Zitadel organization; plans; model catalog with regions and prices; MCP catalog; health; billing export |
+One application serves both tenant admins and the operator, so there is one codebase, one design
+system and one deployment. It is built new rather than forked: the official
+[ClickHouse/librechat-admin-panel](https://github.com/ClickHouse/librechat-admin-panel) is licensed
+AGPL-3.0, which would oblige us to publish the source of our modified version to every user of it
+over the network, while LibreChat itself is MIT. The new app is written clean-room: it uses
+upstream's documented `/api/admin/*` API but copies no code from the AGPL panel.
 
-The operator API works across tenants (`runAsSystem`), so it is the most sensitive surface in the
-system: operator accounts only, MFA, every call written to the audit log, and not reachable from
-customer domains.
+| Area          | Who sees it                                | Backend                                                                | Functions                                                                                                                                                                   |
+| ------------- | ------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant area   | Tenant admins, limited to their own tenant | Upstream `/api/admin/*` in the tenant's context, extended where needed | Users and groups, models per group, agents, enabling MCP servers and assigning scopes, branding, budgets, usage dashboards, audit viewer                                    |
+| Operator area | The operator only                          | New operator API module in the fork                                    | Create, suspend and delete tenants; domains; Zitadel organization; plans; model catalog with regions and prices; MCP catalog; health; cross-tenant usage and billing export |
+
+Separation rules, because one app now holds both:
+
+- The operator area is enforced by the backend, not by hiding menu items. The operator API accepts
+  only operator tokens from the operator organization, with MFA.
+- The operator area is served only on the operator hostname (for example
+  `admin.<platform-domain>`); on customer domains the app shows the tenant area only.
+- The operator API works across tenants (`runAsSystem`), so it is the most sensitive surface in
+  the system: every call is written to the audit log.
 
 ## Branding
 
@@ -193,7 +200,7 @@ fork as config fields with defaults that reproduce today's behaviour:
 - app title and footer (today env-only, `api/server/routes/config.js`),
 - favicon.
 
-Assets are uploaded through the tenant admin panel to object storage and served by URL, so a new
+Assets are uploaded through the admin app to object storage and served by URL, so a new
 logo never needs a new image. The login page itself is branded in Zitadel per organization.
 
 ## Usage, limits and dashboards
@@ -209,7 +216,8 @@ Added:
   `packages/api/src/middleware/checkBalance.ts`.
 - **Usage endpoints** for dashboards, aggregated by user, group, model and day, gated by the
   existing but unused `read:usage` capability (`packages/data-schemas/src/admin/capabilities.ts`).
-- **Dashboards** in the tenant admin panel; cross-tenant usage and cost in the operator console.
+- **Dashboards** in the tenant area of the admin app; cross-tenant usage and cost in the operator
+  area.
 
 ## MCP platform
 
@@ -268,7 +276,7 @@ exchange in the broker or the existing OBO path).
 - Scopes are named per server and action, for example `outlook.mail.read`, `outlook.mail.send`,
   `outlook.calendar.read`, `sharepoint.site.read`, with optional resource qualifiers (a site, a
   mailbox).
-- The tenant admin assigns scopes to platform groups in the tenant admin panel.
+- The tenant admin assigns scopes to platform groups in the admin app.
 - Write actions (send mail, create event, upload file) additionally require user confirmation in
   the chat, using upstream's tool approval modes (`docs/tool-approval-modes.md`).
 - Open decision: whether scopes travel as token claims (simple, but stale until re-login) or are
@@ -307,7 +315,7 @@ All on Microsoft Graph, sharing one Graph module in the core:
 3. `sharepoint`
 
 Each customer's Entra admin consents once to the platform's app registration in their Microsoft
-tenant; this is an onboarding step and needs a guided flow in the tenant admin panel.
+tenant; this is an onboarding step and needs a guided flow in the admin app.
 
 Later: GitHub, Azure DevOps, then German accounting and payroll (lexoffice/Lexware Office, sevDesk,
 Personio; DATEV requires its partner programme). Payroll data can include special-category data
@@ -315,11 +323,19 @@ Personio; DATEV requires its partner programme). Payroll data can include specia
 
 ## Data residency
 
-- Hosting: EU data centres for all platform components and backups.
-- Models: only EU-region endpoints in the catalog; region shown per model in the tenant admin panel.
+- Hosting: T Cloud Public (Deutsche Telekom, data centres in Germany) for all platform components
+  and backups.
+- Models: only EU-region endpoints in the catalog; region shown per model in the admin app.
 - MCP targets: the data stays in the customer's own systems (Microsoft 365 etc.); the MCP servers
   do not persist it beyond the audit metadata.
 - Telemetry and tracing (for example Langfuse) self-hosted in the EU or off.
+
+## Environments
+
+| Environment | Where               | How                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Local       | The owner's machine | Docker Compose in `platform-infra`: reverse proxy with one hostname per test tenant (for example `tenant-a.localhost`, `tenant-b.localhost`), LibreChat from `ghcr.io/anno-systems/librechat`, MongoDB, Zitadel with its database, later the admin app and MCP servers. All current work targets this. |
+| Production  | T Cloud Public      | Terraform (Open Telekom Cloud provider) in `platform-infra`. Later; the deployment form (VMs with Compose or managed Kubernetes) is decided when we get there.                                                                                                                                         |
 
 ## Fork strategy
 
@@ -342,15 +358,15 @@ fork shrinks over time.
 
 ## Roadmap
 
-| Phase                     | Goal                                                                                                             | Done when                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 1. Tenancy spike          | Two tenants on two domains behind a proxy, strict mode, different models, configuration only                     | Users of A never see data or models of B; tested across conversations, files, agents |
-| 2. Identity               | Zitadel with one organization per tenant, tenant claim check, group sync, local accounts and one federated IdP   | Both login types work per tenant; a cross-tenant login is rejected                   |
-| 3. MCP identity and audit | Tenant id, model id and platform token reach MCP servers; `mcp-servers` core; `outlook-mail` as reference server | A tool call produces a complete audit entry; a missing scope is denied and audited   |
-| 4. Tenant admin panel v1  | Models per group, users and groups, MCP scopes, branding upload                                                  | A tenant admin configures a new tenant without operator help                         |
-| 5. Operator console v1    | Tenant lifecycle, catalog, domains                                                                               | A new tenant goes from signup to first chat through the console                      |
-| 6. Usage and budgets      | Dashboards, group and tenant budgets                                                                             | A tenant admin sees usage per user, group and model and can cap it                   |
-| 7. More MCP servers       | Calendar, SharePoint, then GitHub, Azure DevOps, accounting                                                      | Each ships with scopes, audit and documentation                                      |
+| Phase                          | Goal                                                                                                             | Done when                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1. Tenancy spike               | Two tenants on two local hostnames behind a proxy, strict mode, different models, configuration only             | Users of A never see data or models of B; tested across conversations, files, agents |
+| 2. Identity                    | Zitadel with one organization per tenant, tenant claim check, group sync, local accounts and one federated IdP   | Both login types work per tenant; a cross-tenant login is rejected                   |
+| 3. MCP identity and audit      | Tenant id, model id and platform token reach MCP servers; `mcp-servers` core; `outlook-mail` as reference server | A tool call produces a complete audit entry; a missing scope is denied and audited   |
+| 4. Admin app v1: tenant area   | Models per group, users and groups, MCP scopes, branding upload                                                  | A tenant admin configures a new tenant without operator help                         |
+| 5. Admin app v1: operator area | Tenant lifecycle, catalog, domains                                                                               | A new tenant goes from signup to first chat through the admin app                    |
+| 6. Usage and budgets           | Dashboards, group and tenant budgets                                                                             | A tenant admin sees usage per user, group and model and can cap it                   |
+| 7. More MCP servers            | Calendar, SharePoint, then GitHub, Azure DevOps, accounting                                                      | Each ships with scopes, audit and documentation                                      |
 
 ## Decisions
 
@@ -359,18 +375,20 @@ Decided:
 - Multi-tenant on upstream's tenant isolation, tenant resolved by reverse proxy and checked against
   a token claim.
 - Login through an identity broker, one organization per tenant, both federated IdPs and local
-  accounts. Zitadel preferred.
-- Two admin surfaces: tenant admin panel (fork of the official admin panel, if the license allows)
-  and a separate operator console.
+  accounts. Zitadel for the start (2026-10-19); Keycloak, which the owner has used before, remains
+  the fallback if the hands-on test of per-organization IdPs, branding and token exchange fails.
+- One admin app for tenant admins and the operator, built new (2026-10-19). Not a fork of
+  `ClickHouse/librechat-admin-panel`, because it is AGPL-3.0.
+- Hosting on T Cloud Public, provisioned with Terraform (2026-10-19). All work runs locally with
+  Docker Compose until the stack works end to end.
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
   SharePoint.
 
 Open:
 
-- Zitadel or Keycloak, after a hands-on test of per-organization IdPs, branding and token exchange.
-- License and maintenance status of `ClickHouse/librechat-admin-panel`.
 - Platform token: forwarded OIDC token or audience-bound exchanged token.
 - Scopes as token claims or from a policy store.
 - Where the MCP audit store lives (per-tenant database, shared database with tenant key, or an
   append-only log service) and how tenants export it.
-- Hosting provider and deployment form (compose on a few hosts or Kubernetes).
+- Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
+- Admin app stack.
