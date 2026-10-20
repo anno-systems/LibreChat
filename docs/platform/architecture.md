@@ -175,6 +175,13 @@ any tenant context exists, so strict isolation answers 500 on every authenticate
 fork runs that lookup in the proxy's tenant and applies `OPENID_TENANT_CLAIM` to the bearer
 token as well, so a token of tenant A sent through tenant B's hostname gets 401.
 
+Tenant admins use LibreChat's own admin login (`/api/admin/oauth/openid`), which the fork makes
+tenant-aware like the user login: the tenant's own callback, its organization scope and the
+claim check. Zitadel's project role `tenant-admin`, granted per tenant organization, makes a
+user a LibreChat admin of that tenant (`OPENID_ADMIN_ROLE=tenant-admin`,
+`OPENID_ADMIN_ROLE_PARAMETER_PATH=urn:zitadel:iam:org:project:roles`). Upstream's admin login
+accepts only users who already exist, so a new admin signs in to the chat once first.
+
 These are environment variables like the rest of upstream's OpenID settings, which all live in
 the environment rather than `librechat.yaml`. Zitadel's login UI does not itself stop a user of
 another organization from signing in; the claim check is what rejects that login (verified

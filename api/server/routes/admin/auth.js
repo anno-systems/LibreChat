@@ -231,6 +231,9 @@ function retrievePkceChallenge(provider) {
  * OpenID Admin Routes
  * ────────────────────────────────────────────── */
 
+/** Tenant from the proxy before sign-in, for the tenant-aware admin login (fork). */
+router.use('/oauth/openid', preAuthTenantMiddleware);
+
 router.get('/oauth/openid', requireOpenIdConfig, async (req, res, next) => {
   const state = generateState();
   const cache = getLogStores(CacheKeys.ADMIN_OAUTH_EXCHANGE);
