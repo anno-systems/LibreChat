@@ -235,6 +235,15 @@ fork as config fields with defaults that reproduce today's behaviour:
 Assets are uploaded through the admin app to object storage and served by URL, so a new
 logo never needs a new image. The login page itself is branded in Zitadel per organization.
 
+### Deleting a user (data protection)
+
+A tenant admin erases a user in the admin app. It calls upstream's admin erasure handler, which
+the fork routes behind `ADMIN_USER_DELETION=true` (`DELETE /api/admin/users/:id`): it stops the
+user's generations and schedules and deletes conversations, messages, files, memories, own
+agents, shares, sessions and settings, inside the admin's tenant only. Still open: deleting the
+Zitadel account, and pseudonymizing the user in the MCP audit logs (the subject is replaced by a
+keyed pseudonym whose key is deleted, so the hash chain stays valid).
+
 ## Usage, limits and dashboards
 
 Upstream provides a per-user balance with refill (`packages/data-schemas/src/schema/balance.ts`)
