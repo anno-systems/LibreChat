@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { logger } from '@librechat/data-schemas';
+import { logger, tenantStorage } from '@librechat/data-schemas';
 import { Constants, PrincipalType } from 'librechat-data-provider';
 import type {
   McpToolMode,
@@ -251,11 +251,14 @@ export function createToolPolicyHandlers(deps: ToolPolicyHandlerDeps): ToolPolic
         ) {
           return res.status(400).json({ error: 'invalid_request' });
         }
-        const userId = await deps.findUserIdByOpenId(tenantId, subject);
-        if (!userId) return res.status(404).json({ error: 'user_unknown' });
-        const modes = await deps.resolver.modesFor({ tenantId, userId, server });
-        if (!modes) return res.status(404).json({ error: 'server_unknown' });
-        return res.json({ modes });
+        // The caller is a service, so there is no request tenant yet; the lookups run in the named one.
+        return await tenantStorage.run({ tenantId }, async () => {
+          const userId = await deps.findUserIdByOpenId(tenantId, subject);
+          if (!userId) return res.status(404).json({ error: 'user_unknown' });
+          const modes = await deps.resolver.modesFor({ tenantId, userId, server });
+          if (!modes) return res.status(404).json({ error: 'server_unknown' });
+          return res.json({ modes });
+        });
       } catch (error) {
         return fail(res, 'mode lookup', error);
       }

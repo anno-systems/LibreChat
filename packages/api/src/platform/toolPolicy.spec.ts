@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { createMcpToolPolicyMethods } from '@librechat/data-schemas';
+import { createMcpToolPolicyMethods, tenantStorage } from '@librechat/data-schemas';
 import type { McpToolPolicyRule, PlatformMcpTool } from '@librechat/data-schemas';
 import type { PreToolUseHookInput } from '@librechat/agents';
 import type { Request, Response } from 'express';
@@ -149,8 +149,16 @@ describe('tool policy over the database', () => {
     groups.bob = [];
   });
 
+  /** Tenants the group lookups ran in; the platform API has no request tenant of its own. */
+  const lookedUpIn: Array<string | undefined> = [];
   const resolver = () =>
-    createToolPolicyResolver({ policy, getUserGroupIds: async (id) => groups[id] ?? [] });
+    createToolPolicyResolver({
+      policy,
+      getUserGroupIds: async (id) => {
+        lookedUpIn.push(tenantStorage.getStore()?.tenantId);
+        return groups[id] ?? [];
+      },
+    });
 
   function handlers() {
     return createToolPolicyHandlers({
@@ -243,6 +251,7 @@ describe('tool policy over the database', () => {
       alice,
     );
     expect(alice.body).toEqual({ modes: { search: 'allow', send: 'allow' } });
+    expect(lookedUpIn[lookedUpIn.length - 1]).toBe('tenant-a');
 
     const bob = mockRes();
     await handlers().getUserModes(

@@ -1,4 +1,3 @@
-const { tenantStorage } = require('@librechat/data-schemas');
 const {
   createToolPolicyHandlers,
   createToolPolicyResolver,
@@ -15,11 +14,10 @@ const resolver = createToolPolicyResolver({
 const handlers = createToolPolicyHandlers({
   policy: db,
   resolver,
-  findUserIdByOpenId: (tenantId, openidId) =>
-    tenantStorage.run({ tenantId }, async () => {
-      const user = await db.findUser({ openidId, tenantId }, '_id');
-      return user ? String(user._id) : null;
-    }),
+  findUserIdByOpenId: async (tenantId, openidId) => {
+    const user = await db.findUser({ openidId, tenantId }, '_id');
+    return user ? String(user._id) : null;
+  },
   groupExists: async (groupId) => Boolean(await db.findGroupById(groupId, { _id: 1 })),
   recordAuditEntry: db.recordAuditEntry,
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
