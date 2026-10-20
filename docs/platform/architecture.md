@@ -207,6 +207,29 @@ Open point: upstream has no "model" permission, so "group X may use model Y" is 
 group-level override of endpoints and model specs. The admin app hides that detail behind a
 "models per group" screen.
 
+### Catalog lock
+
+Tenant admins are LibreChat admins of their tenant and can call `/api/admin/config` with their
+own token, not only through the admin app. Upstream lets such a write set any endpoint field and
+resolves `${NAME}` references from the server's environment at request time. A tenant admin could
+therefore point a catalog endpoint's `baseURL` at their own server and receive the operator's
+provider key, or set a web search key to `${JWT_SECRET}` or another tenant's search key (the web
+search path does not apply upstream's sensitive-variable denylist).
+
+`ADMIN_CONFIG_CATALOG_LOCK=true` (fork, `packages/api/src/admin/catalog.ts`) closes that:
+
+- `endpoints` writes may only name a custom endpoint from `librechat.yaml` and set
+  `models.default` to a subset of its catalog list. Every other endpoint field and section is
+  refused, as are endpoints the catalog does not have.
+- No written value may contain `${…}`. Operator-owned references such as the tenants' search keys
+  are written by the operator directly (`platform-infra` seed), not through the API.
+
+LibreChat enforces the resulting list on every chat request (`validateAgentModel`, a model outside
+the list fails with `illegal_model_request`), so the narrowing is a real limit, not a UI filter.
+Catalog endpoints must list their models (`fetch: false`); a fetched list would replace the
+narrowing. The lock is an environment switch rather than a `librechat.yaml` field so it is never
+writable through the API it guards.
+
 ## Admin app
 
 One application serves both tenant admins and the operator, so there is one codebase, one design
@@ -456,6 +479,9 @@ Decided:
   role `tenant-admin`); the server keeps the admin token and calls upstream's `/api/admin/*` with
   the session's tenant. Feature switches are role permissions, because upstream's admin API keeps
   `interface.*` permission flags on roles only.
+- Model catalog (2026-10-20): the operator's catalog is `librechat.yaml`'s custom endpoints; each
+  tenant's base document narrows their model lists, and `ADMIN_CONFIG_CATALOG_LOCK` makes the
+  admin config API accept nothing else (see [Catalog lock](#catalog-lock)).
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
   instance and as Serper's scraper with a key per tenant. The gateway counts every search and
@@ -467,5 +493,7 @@ Open:
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
   append-only store.
 - Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
-- Per-tenant model selection from an operator catalog, user limits (balance) and SSO settings in
-  the admin app.
+- Plan limits on the catalog. Today the catalog in `librechat.yaml` is what every tenant may
+  choose from (an endpoint's `tenantId` can reserve it for one tenant); limits per plan below
+  that need a layer tenant admins cannot write.
+- Region and price per catalog model for the admin app.

@@ -44,6 +44,7 @@ import {
 } from './secrets';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { createAdminAuditEmitter } from './audit';
+import { getCatalogLockIssues } from './catalog';
 
 const UNSAFE_SEGMENTS = /(?:^|\.)(__[\w]*|constructor|prototype)(?:\.|$)/;
 const MAX_PATCH_ENTRIES = 100;
@@ -259,6 +260,8 @@ export interface AdminConfigDeps {
   /** When true, a failed audit write surfaces as a 5xx after the mutation has
    * been persisted. Defaults to fail-open. */
   auditFailClosed?: boolean;
+  /** Fork: writes may only narrow the YAML model catalog and never reference env vars (`./catalog`). */
+  catalogLock?: boolean;
 }
 
 /** Audit target for a principal's override document. Records field paths and
@@ -498,6 +501,7 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
     invalidateConfigCaches,
     recordAuditEntry,
     auditFailClosed,
+    catalogLock = false,
   } = deps;
 
   const emitAudit = createAdminAuditEmitter({
@@ -792,6 +796,12 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
       if (overrideIssues.length > 0) {
         return invalidOverrideResponse(res, overrideIssues);
       }
+      const catalogIssues = catalogLock
+        ? getCatalogLockIssues(filteredOverrides as Record<string, unknown>, baseYaml)
+        : [];
+      if (catalogIssues.length > 0) {
+        return invalidOverrideResponse(res, catalogIssues);
+      }
       const existingConfig = needsExisting ? stored : null;
       const preservedOverrides = preserveConfigSecrets(
         encryptedOverrides,
@@ -987,6 +997,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
       const fieldIssues = getConfigFieldIssues(encryptedFields, baseYaml, existing);
       if (fieldIssues.length > 0) {
         return invalidOverrideResponse(res, fieldIssues);
+      }
+      const catalogIssues = catalogLock ? getCatalogLockIssues(fields, baseYaml) : [];
+      if (catalogIssues.length > 0) {
+        return invalidOverrideResponse(res, catalogIssues);
       }
       const preservedFields = preservePatchedConfigSecretFields(
         encryptedFields,
