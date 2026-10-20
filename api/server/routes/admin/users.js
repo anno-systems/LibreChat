@@ -6,6 +6,7 @@ const {
   deleteAllSharedLinksWithCleanup,
   createErasureResolver,
   createAdminUsersHandlers,
+  createAdminBalanceHandlers,
   requireAdminUserDeletion,
   revokeUserCodeEnvironmentWorkers,
 } = require('@librechat/api');
@@ -82,11 +83,22 @@ const handlers = createAdminUsersHandlers({
   generationJobs: GenerationJobManager,
 });
 
+/** Fork: an admin reads and sets the credit balance of a user in their tenant. */
+const balanceHandlers = createAdminBalanceHandlers({
+  getUserById: db.getUserById,
+  findBalanceByUser: db.findBalanceByUser,
+  upsertBalanceFields: db.upsertBalanceFields,
+  recordAuditEntry: db.recordAuditEntry,
+  auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
+});
+
 router.use(requireJwtAuth, requireAdminAccess);
 
 router.get('/', requireReadUsers, handlers.listUsers);
 router.get('/search', requireReadUsers, handlers.searchUsers);
 /** Off unless ADMIN_USER_DELETION=true (fork: admin user deletion). */
 router.delete('/:id', requireAdminUserDeletion, requireManageUsers, handlers.deleteUser);
+router.get('/:id/balance', requireReadUsers, balanceHandlers.getUserBalance);
+router.put('/:id/balance', requireManageUsers, balanceHandlers.setUserBalance);
 
 module.exports = router;

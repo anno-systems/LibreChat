@@ -284,6 +284,12 @@ and a transaction per model call with user, model, tokens and tenant
 (`packages/data-schemas/src/schema/transaction.ts`). Balance policy can already differ per tenant
 and group.
 
+Tenant admins set the user limits in the admin app (2026-10-20): the tenant's balance policy is
+`balance.*` in its base document (start balance, automatic refill), and a user's own balance is
+read and set through the fork's `GET`/`PUT /api/admin/users/:id/balance`, which upstream only
+offers as a CLI script. A user at zero credits is refused with `token_balance` until the balance
+is raised or refilled. Every set is in the admin audit log (`user.balance_updated`).
+
 Added:
 
 - **Budgets per group and tenant**, checked next to the user balance in
