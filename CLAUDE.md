@@ -18,7 +18,7 @@ This is `anno-systems/LibreChat`, a solo-maintained fork of `LibreChat-AI/LibreC
 - Prefer additive changes (new modules, new files, config) over rewriting upstream code. No drive-by reformatting, renames or refactors in files we do not otherwise change.
 - Do not edit upstream's `.github/workflows`. Workflows this fork does not want are disabled in GitHub's Actions settings instead.
 - Update from upstream with a merge, not a rebase: `git remote add upstream https://github.com/LibreChat-AI/LibreChat.git`, `git fetch upstream main`, `git merge upstream/main`. Upstream's `main` is a pointer to a tested `dev` commit.
-- Pulling upstream happens locally. Cloud sessions only reach the repository attached to them.
+- `.github/workflows/upstream-sync.yml` does this every Monday and opens a `sync/upstream` pull request, or an issue "Upstream sync needs attention" on a conflict. Merge sync pull requests with a merge commit, never squash or rebase, or the next sync cannot tell which upstream commits are already in. Cloud sessions can fetch upstream (public, read-only), so a conflict can be resolved there on `sync/upstream`.
 
 ## Platform plan
 
@@ -32,6 +32,7 @@ Record every deliberate deviation from upstream here, one line each, so merges a
 
 - `.github/workflows/fork-image.yml` (fork-only): on pushes to `main` (same `paths` as `dev-images.yml`) and on manual dispatch, builds `Dockerfile` target `node` for `linux/amd64` and pushes `ghcr.io/<owner>/librechat:latest` and `:sha-<short>` with `GITHUB_TOKEN` only, no Docker Hub.
 - Tenant-aware OpenID (`packages/api/src/auth/openid/tenant.ts`, wired in `api/strategies/openidStrategy.js`, `api/strategies/openIdJwtStrategy.js`, `api/server/routes/oauth.js`, `api/server/controllers/auth/oauth.js`, `api/server/middleware/oauthNavigation.js`): optional `TENANT_DOMAIN_SERVER`, `TENANT_DOMAIN_CLIENT`, `OPENID_TENANT_SCOPE` and `OPENID_TENANT_CLAIM` give each tenant its own callback and redirect URLs, provider scopes, and a claim that must match the request tenant. The `openidJwt` strategy (`OPENID_REUSE_TOKENS`) checks the claim too and, with `TRUST_TENANT_HEADER`, looks the user up in the proxy's tenant. Unset, behaviour is upstream's.
+- `.github/workflows/upstream-sync.yml` and `.github/scripts/upstream-sync.sh` (fork-only): weekly merge of upstream `main` into `sync/upstream` with a pull request against `main`; conflicts and refused pushes open an issue. Optional secret `UPSTREAM_SYNC_TOKEN` (fine-grained PAT: Contents, Pull requests, Issues, Workflows read and write) lets CI run on the pull request and lets merges that touch upstream workflows be pushed.
 - Tenant host check (`packages/api/src/middleware/tenant.ts`): with `TRUST_TENANT_HEADER=true` and the optional `TENANT_HEADER_MATCH_USER=true`, an authenticated request whose user belongs to another tenant than the proxy's `X-Tenant-Id` gets 403. Unset, behaviour is upstream's.
 
 ## Environment
