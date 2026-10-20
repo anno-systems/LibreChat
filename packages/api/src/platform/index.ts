@@ -8,6 +8,7 @@ export {
   createToolPolicyResolver,
   defaultToolMode,
   groupIdsFromPrincipals,
+  modeOfToolKey,
   parseMcpToolName,
   resolveToolMode,
 } from './toolPolicy';

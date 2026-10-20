@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { logger, tenantStorage } from '@librechat/data-schemas';
-import { Constants, PrincipalType } from 'librechat-data-provider';
+import { Constants, PrincipalType, stripServerNamePrefixes } from 'librechat-data-provider';
 import type {
   McpToolMode,
   McpToolPolicyMethods,
@@ -91,6 +91,19 @@ export function parseMcpToolName(name: string): { tool: string; server: string }
 }
 
 /**
+ * The mode of a model-facing tool name. LibreChat drops a tool's leading server name
+ * (`einvoice_create` of `einvoice` becomes `create`), so the name is mapped back the same way.
+ * A tool the server never registered needs confirmation.
+ */
+export function modeOfToolKey(modes: ToolModes, tool: string, server: string): McpToolMode {
+  if (modes[tool]) return modes[tool];
+  for (const [raw, key] of stripServerNamePrefixes(Object.keys(modes), server)) {
+    if (key === tool) return modes[raw]!;
+  }
+  return 'confirm';
+}
+
+/**
  * The tool approval hook: denies tools that are off for the user and asks before tools that need
  * confirmation. Tools of servers that never registered with the platform are left alone. The
  * modes of a server are read once per run.
@@ -116,7 +129,7 @@ export function createToolPolicyHookFactory(resolver: ToolPolicyResolver): ToolA
         return { decision: 'deny', reason: 'The tool policy could not be read.' };
       }
       if (!resolved) return {};
-      const mode = resolved[parsed.tool] ?? 'confirm';
+      const mode = modeOfToolKey(resolved, parsed.tool, parsed.server);
       if (mode === 'off') {
         return { decision: 'deny', reason: 'Your organization has switched this tool off.' };
       }

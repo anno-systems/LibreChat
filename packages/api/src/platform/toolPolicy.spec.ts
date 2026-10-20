@@ -10,6 +10,7 @@ import {
   createToolPolicyHookFactory,
   createToolPolicyResolver,
   groupIdsFromPrincipals,
+  modeOfToolKey,
   parseMcpToolName,
   resolveToolMode,
 } from './toolPolicy';
@@ -64,6 +65,18 @@ describe('parseMcpToolName', () => {
   });
 });
 
+describe('modeOfToolKey', () => {
+  const modes = { einvoice_create: 'allow', einvoice_validate: 'off', send: 'allow' } as const;
+
+  it('maps names LibreChat stripped of the server prefix back to the registered tool', () => {
+    expect(modeOfToolKey(modes, 'create', 'einvoice')).toBe('allow');
+    expect(modeOfToolKey(modes, 'validate', 'einvoice')).toBe('off');
+    expect(modeOfToolKey(modes, 'einvoice_validate', 'einvoice')).toBe('off');
+    expect(modeOfToolKey(modes, 'send', 'einvoice')).toBe('allow');
+    expect(modeOfToolKey(modes, 'drop', 'einvoice')).toBe('confirm');
+  });
+});
+
 describe('groupIdsFromPrincipals', () => {
   it('keeps group principals only', () => {
     expect(
@@ -109,6 +122,7 @@ describe('tool policy hook', () => {
     expect(await hook(call('search_mcp_mail'), signal)).toEqual({});
     expect(await hook(call('unknown_mcp_mail'), signal)).toMatchObject({ decision: 'ask' });
     expect(await hook(call('lookup_mcp_other'), signal)).toEqual({});
+    expect(await hook(call('mail_delete_mcp_mail'), signal)).toMatchObject({ decision: 'ask' });
     expect(await hook(call('web_search'), signal)).toEqual({});
     expect(modesFor).toHaveBeenCalledTimes(2);
     expect(modesFor).toHaveBeenCalledWith({ tenantId: 'tenant-a', userId: 'u1', server: 'mail' });
