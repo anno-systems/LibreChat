@@ -37,13 +37,13 @@ export interface UpdateGroupRequest {
   email?: string;
   avatar?: string;
   memberIds?: string[];
-  source?: 'local' | 'entra' | 'ldap';
+  source?: 'local' | 'entra' | 'ldap' | 'oidc';
   idOnTheSource?: string;
 }
 
 export interface GroupFilterOptions extends CursorPaginationParams {
   // Includes email, name and description
   search?: string;
-  source?: 'local' | 'entra' | 'ldap';
+  source?: 'local' | 'entra' | 'ldap' | 'oidc';
   hasMember?: string;
 }
