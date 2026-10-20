@@ -1,0 +1,53 @@
+name: Upstream Sync
+
+# Fork-only workflow: every Monday, merges LibreChat-AI/LibreChat `main` into the `sync/upstream`
+# branch and opens or updates a pull request against `main` (.github/scripts/upstream-sync.sh).
+# A conflict, or a push the token may not make, opens an issue "Upstream sync needs attention"
+# and fails the run instead. Merge the sync pull request with a merge commit, never squash.
+#
+# Token: optional repository secret UPSTREAM_SYNC_TOKEN, a fine-grained personal access token for
+# this repository with Contents, Pull requests, Issues and Workflows set to read and write. With
+# it, CI runs on the sync pull request and merges that change upstream's workflow files can be
+# pushed. Without it the built-in GITHUB_TOKEN is used: CI does not start on the pull request
+# (close and reopen it), a merge touching `.github/workflows` cannot be pushed, and the setting
+# "Allow GitHub Actions to create and approve pull requests" must be on.
+
+on:
+  schedule:
+    # Mondays 05:17 UTC (07:17 in Germany in summer, 06:17 in winter).
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream main
+    # Never run in upstream itself or in other forks that copy this file by accident.
+    if: github.repository == 'anno-systems/LibreChat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898299+github-actions[bot]@users.noreply.github.com'
+
+      - name: Merge upstream and open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          USING_PAT: ${{ secrets.UPSTREAM_SYNC_TOKEN != '' }}
+        run: bash .github/scripts/upstream-sync.sh
