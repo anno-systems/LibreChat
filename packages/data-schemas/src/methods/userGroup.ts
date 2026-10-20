@@ -251,7 +251,7 @@ export function createUserGroupMethods(
   ) => T[];
   listGroups: (
     filter?: {
-      source?: 'local' | 'entra';
+      source?: IGroup['source'];
       search?: string;
       limit?: number;
       offset?: number;
@@ -259,7 +259,7 @@ export function createUserGroupMethods(
     session?: ClientSession,
   ) => Promise<IGroup[]>;
   countGroups: (
-    filter?: { source?: 'local' | 'entra'; search?: string },
+    filter?: { source?: IGroup['source']; search?: string },
     session?: ClientSession,
   ) => Promise<number>;
   deleteGroup: (
@@ -1159,7 +1159,7 @@ export function createUserGroupMethods(
   }
 
   function buildGroupQuery(filter: {
-    source?: 'local' | 'entra';
+    source?: IGroup['source'];
     search?: string;
   }): FilterQuery<IGroup> {
     const query: FilterQuery<IGroup> = {};
@@ -1181,7 +1181,7 @@ export function createUserGroupMethods(
    */
   async function listGroups(
     filter: {
-      source?: 'local' | 'entra';
+      source?: IGroup['source'];
       search?: string;
       limit?: number;
       offset?: number;
@@ -1206,7 +1206,7 @@ export function createUserGroupMethods(
    * @param session - Optional MongoDB session for transactions
    */
   async function countGroups(
-    filter: { source?: 'local' | 'entra'; search?: string } = {},
+    filter: { source?: IGroup['source']; search?: string } = {},
     session?: ClientSession,
   ): Promise<number> {
     const Group = mongoose.models.Group as Model<IGroup>;

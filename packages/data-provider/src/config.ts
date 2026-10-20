@@ -39,6 +39,7 @@ import {
   scheduledMCPResourceBindingSchema,
   scheduledMCPReadOnlyPolicySchema,
 } from './types/scheduleConsent';
+import { brandingSchema } from './branding';
 
 export const AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_DEFAULT = 24 * 1024;
 export const AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_HARD_MAX = 64 * 1024;
@@ -2808,6 +2809,8 @@ export const isForcedTemporaryRetention = (mode?: RetentionMode | null): boolean
 export const interfaceSchema = z
   .object({
     theme: deploymentThemeSchema.optional(),
+    /** Tenant name, logo, favicon and footer (fork-only, see `branding.ts`). */
+    branding: brandingSchema.optional(),
     privacyPolicy: z
       .object({
         externalUrl: z.string().optional(),

@@ -7,6 +7,8 @@ export * from './utils';
 export { createModels } from './models';
 export {
   createMethods,
+  createPlatformCatalogMethods,
+  createMcpToolPolicyMethods,
   createSkillDeletionPersistenceAdapter,
   AGENT_OWNER_CONTACT_RESOLVED_FIELD,
   AgentSortCursorError,

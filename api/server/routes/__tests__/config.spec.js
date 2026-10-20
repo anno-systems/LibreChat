@@ -415,6 +415,25 @@ describe('GET /api/config', () => {
       expect(anonymous.body).not.toHaveProperty('ragEnabled');
     });
 
+    it("applies the tenant's branding title, and its footer only after login", async () => {
+      const branding = { appTitle: 'Acme AI', footer: 'Acme | [Help](https://acme.example)' };
+      mockGetAppConfig.mockResolvedValue({
+        ...baseAppConfig,
+        interfaceConfig: { ...baseAppConfig.interfaceConfig, branding },
+      });
+      process.env.CUSTOM_FOOTER = 'Deployment footer';
+
+      const anonymous = await request(createApp()).get('/api/config');
+      expect(anonymous.body.appTitle).toBe('Acme AI');
+      expect(anonymous.body.interface.branding).toEqual(branding);
+      expect(anonymous.body).not.toHaveProperty('customFooter');
+
+      const signedIn = await request(createApp(mockUser)).get('/api/config');
+      expect(signedIn.body.appTitle).toBe('Acme AI');
+      expect(signedIn.body.customFooter).toBe(branding.footer);
+      delete process.env.CUSTOM_FOOTER;
+    });
+
     it('should call getAppConfig with role, userId, and tenantId', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       mockGetTenantId.mockReturnValue('fallback-tenant');
