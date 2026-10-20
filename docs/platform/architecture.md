@@ -158,12 +158,12 @@ Upstream builds the OpenID callback and redirects from the single `DOMAIN_SERVER
 `DOMAIN_CLIENT`, and cannot ask the provider for a tenant's organization. The fork adds four
 optional settings (`packages/api/src/auth/openid/tenant.ts`); unset, behaviour is upstream's:
 
-| Variable               | Example                                                                | Effect                                                                                              |
-| ---------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `TENANT_DOMAIN_SERVER` | `https://{tenantid}.example.com`                                       | OpenID callback URL per tenant                                                                      |
-| `TENANT_DOMAIN_CLIENT` | `https://{tenantid}.example.com`                                       | Redirect after login, failure, rate limit and ban                                                   |
-| `OPENID_TENANT_SCOPE`  | `urn:zitadel:iam:org:id:{tenantid} urn:zitadel:iam:user:resourceowner` | Scopes added per tenant: log in to that organization and include the resource-owner claims          |
-| `OPENID_TENANT_CLAIM`  | `urn:zitadel:iam:user:resourceowner:id`                                | ID token claim that must equal the request tenant; otherwise the login fails before any user lookup |
+| Variable               | Example                                                                                                                               | Effect                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENANT_DOMAIN_SERVER` | `https://{tenantid}.example.com`                                                                                                      | OpenID callback URL per tenant                                                                                                        |
+| `TENANT_DOMAIN_CLIENT` | `https://{tenantid}.example.com`                                                                                                      | Redirect after login, failure, rate limit and ban                                                                                     |
+| `OPENID_TENANT_SCOPE`  | `urn:zitadel:iam:org:id:{tenantid} urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:domain:primary:{tenantid}.auth.example.com` | Scopes added per tenant: log in to that organization, include the resource-owner claims, and let the login page find the organization |
+| `OPENID_TENANT_CLAIM`  | `urn:zitadel:iam:user:resourceowner:id`                                                                                               | ID token claim that must equal the request tenant; otherwise the login fails before any user lookup                                   |
 
 After login, `TENANT_HEADER_MATCH_USER=true` (with `TRUST_TENANT_HEADER=true`) makes every
 authenticated request check that the user's tenant equals the proxy's `X-Tenant-Id`, so a session
@@ -186,6 +186,26 @@ These are environment variables like the rest of upstream's OpenID settings, whi
 the environment rather than `librechat.yaml`. Zitadel's login UI does not itself stop a user of
 another organization from signing in; the claim check is what rejects that login (verified
 end to end in `platform-infra`).
+
+Zitadel's login app reads the organization from `urn:zitadel:iam:org:id:` only when the id is
+numeric, and our organization ids are the tenant ids. Without more, the login page therefore runs
+in the default organization: no tenant branding and none of the tenant's identity providers
+(the claim check is unaffected, because Zitadel's core applies the scope). Each tenant
+organization therefore has the primary domain `<tenant>.<auth host>`, and the tenant scope also
+names it with `urn:zitadel:iam:org:domain:primary:`, which the login page resolves. With the
+organization known, users sign in with their email address (2026-10-20).
+
+### Single sign-on per tenant
+
+A tenant admin connects the company's identity provider (Microsoft Entra ID or any OpenID
+Connect provider) in the admin app. The admin app creates the provider as a template in the
+tenant's Zitadel organization, gives the organization its own login policy and activates the
+provider there, so it appears on that tenant's sign-in page only. It acts with one Zitadel
+service user that holds `ORG_SETTINGS_MANAGER` in each tenant organization and nothing else
+(platform-infra's provisioner), always naming the session's organization. Client secrets go to
+Zitadel only. Issuers must be HTTPS on a public host name, because Zitadel fetches their
+discovery document; an egress policy for Zitadel is what fully prevents a public name resolving
+to a private address.
 
 ## Configuration and model catalog
 
@@ -241,8 +261,29 @@ upstream's documented `/api/admin/*` API but copies no code from the AGPL panel.
 
 | Area          | Who sees it                                | Backend                                                                | Functions                                                                                                                                                                   |
 | ------------- | ------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tenant area   | Tenant admins, limited to their own tenant | Upstream `/api/admin/*` in the tenant's context, extended where needed | Users and groups, models per group, agents, enabling MCP servers and assigning scopes, branding, budgets, usage dashboards, audit viewer                                    |
+| Tenant area   | Tenant admins, limited to their own tenant | Upstream `/api/admin/*` in the tenant's context, extended where needed | Users and groups, models per group, agents, enabling MCP servers and assigning scopes, branding, budgets, usage dashboards, audit viewer, SSO                               |
 | Operator area | The operator only                          | New operator API module in the fork                                    | Create, suspend and delete tenants; domains; Zitadel organization; plans; model catalog with regions and prices; MCP catalog; health; cross-tenant usage and billing export |
+
+Built so far (2026-10-20), all in the tenant area:
+
+| Function            | Backend                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Greeting            | `interface.customWelcome` in the tenant's base document                                                               |
+| Features            | `USE` of role permissions (agents, web search, file search, MCP, skills, memory, code, prompts, bookmarks …)          |
+| Models              | Narrowing of the YAML catalog in the base document, under the catalog lock                                            |
+| Agents for everyone | Upstream's public viewer grant on an agent (`/api/permissions/agent/:id`), kept inside the tenant by isolation        |
+| User limits         | `balance.*` in the base document; one user's credits through the fork's `/api/admin/users/:id/balance`                |
+| Web search usage    | The search gateway's usage report, asked for the session's tenant only                                                |
+| Single sign-on      | Identity providers in the tenant's Zitadel organization (see [Single sign-on per tenant](#single-sign-on-per-tenant)) |
+| Users               | Upstream's user list and admin erasure (`ADMIN_USER_DELETION`)                                                        |
+
+The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
+`SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
+on LibreChat's user-facing API, which bans clients that are not browsers by user and IP; those
+calls forward the admin's own browser user agent. All admin traffic reaches LibreChat from the
+admin app's one address, so LibreChat's per-IP login and refresh limits (`LOGIN_MAX`) and any IP
+ban apply to all admins together; production must account for that (a higher limit, or passing
+the admin's address through as a trusted proxy would).
 
 Separation rules, because one app now holds both:
 
@@ -488,6 +529,11 @@ Decided:
 - Model catalog (2026-10-20): the operator's catalog is `librechat.yaml`'s custom endpoints; each
   tenant's base document narrows their model lists, and `ADMIN_CONFIG_CATALOG_LOCK` makes the
   admin config API accept nothing else (see [Catalog lock](#catalog-lock)).
+- Single sign-on (2026-10-20): tenant admins connect their identity provider to their own Zitadel
+  organization through the admin app, with a service user that is settings manager in tenant
+  organizations only (see [Single sign-on per tenant](#single-sign-on-per-tenant)).
+- Tenant-wide agents (2026-10-20): upstream's public viewer grant, which tenant isolation keeps
+  inside the tenant; no fork change.
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
   instance and as Serper's scraper with a key per tenant. The gateway counts every search and
@@ -503,3 +549,5 @@ Open:
   choose from (an endpoint's `tenantId` can reserve it for one tenant); limits per plan below
   that need a layer tenant admins cannot write.
 - Region and price per catalog model for the admin app.
+- The admin app's single address against LibreChat's per-IP limits and bans (see [Admin app](#admin-app)).
+- Deleting a user's Zitadel account together with their LibreChat data.
