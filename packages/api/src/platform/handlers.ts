@@ -74,7 +74,7 @@ const httpURL = z
   .url()
   .refine((value) => /^https?:$/.test(new URL(value).protocol), 'must be http or https');
 
-export const providerInputSchema = z
+const providerInputSchema = z
   .object({
     label: z.string().trim().min(1).max(64),
     baseURL: httpURL,
@@ -85,7 +85,7 @@ export const providerInputSchema = z
   })
   .strict();
 
-export const tenantCatalogInputSchema = z
+const tenantCatalogInputSchema = z
   .object({
     byok: z.boolean(),
     providers: z
@@ -94,7 +94,7 @@ export const tenantCatalogInputSchema = z
   })
   .strict();
 
-export const ownEndpointInputSchema = z
+const ownEndpointInputSchema = z
   .object({
     baseURL: httpURL.refine((value) => new URL(value).protocol === 'https:', 'must be https'),
     apiKey: z.string().trim().min(1).max(4096).optional(),
@@ -120,7 +120,9 @@ function digest(value: string): Buffer {
  * Guards the operator API. Answers 404 while no token is configured, so the API does not exist
  * for deployments that do not use it, and 401 for a wrong token.
  */
-export function requirePlatformToken(token: string | undefined) {
+export function requirePlatformToken(
+  token: string | undefined,
+): (req: Request, res: Response, next: NextFunction) => void {
   const expected = token && token.length >= 32 ? digest(token) : undefined;
   return (req: Request, res: Response, next: NextFunction) => {
     if (!expected) {
@@ -144,7 +146,23 @@ function operatorActor(req: Request): AuditActorInput {
   return { type: 'service', id: valid ?? 'platform-operator', name: valid ?? 'Platform operator' };
 }
 
-export function createPlatformCatalogHandlers(deps: PlatformCatalogHandlerDeps) {
+type OperatorHandler = (req: Request, res: Response) => Promise<Response>;
+type AdminHandler = (req: ServerRequest, res: Response) => Promise<Response>;
+
+export interface PlatformCatalogHandlers {
+  listProviders: OperatorHandler;
+  putProvider: OperatorHandler;
+  deleteProvider: OperatorHandler;
+  getTenantCatalog: OperatorHandler;
+  putTenantCatalog: OperatorHandler;
+  getOwnCatalog: AdminHandler;
+  putOwnEndpoint: AdminHandler;
+  deleteOwnEndpoint: AdminHandler;
+}
+
+export function createPlatformCatalogHandlers(
+  deps: PlatformCatalogHandlerDeps,
+): PlatformCatalogHandlers {
   const { catalog, encrypt, decrypt } = deps;
   const isAllowedTenantURL =
     deps.isAllowedTenantURL ??
