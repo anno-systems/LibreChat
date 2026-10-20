@@ -132,6 +132,9 @@ export const AUDIT_ACTIONS = [
   'catalog.tenant_updated',
   'catalog.own_endpoint_updated',
   'catalog.own_endpoint_deleted',
+  /** Fork: the operator deleted a tenant and all of its data; platform chain, target
+   * `{ type: 'tenant', id }`, metadata the counts. */
+  'tenant.purged',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -181,6 +184,7 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'catalog.tenant_updated': 'config',
   'catalog.own_endpoint_updated': 'config',
   'catalog.own_endpoint_deleted': 'config',
+  'tenant.purged': 'user',
 };
 
 /** Result of the audited operation. Kept first-class instead of being encoded

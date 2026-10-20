@@ -11,6 +11,7 @@ export type {
   OwnEndpoint,
   CatalogAssignment,
 } from './platformCatalog';
+export type { TenantUserTarget } from './tenantPurge';
 import type {
   FileMethods,
   FileOwnerScope,
@@ -88,6 +89,7 @@ import { createActionMethods, type ActionMethods } from './action';
 import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
+import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
@@ -296,6 +298,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   AssistantMethods &
   BannerMethods &
   PlatformCatalogMethods &
+  TenantPurgeMethods &
   ToolCallMethods &
   CategoriesMethods &
   PresetMethods &
@@ -541,6 +544,7 @@ export function createMethods(
     ...createAssistantMethods(mongoose),
     ...createBannerMethods(mongoose),
     ...createPlatformCatalogMethods(mongoose),
+    ...createTenantPurgeMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
     ...createPresetMethods(mongoose),
@@ -614,6 +618,7 @@ export type {
   AssistantMethods,
   BannerMethods,
   PlatformCatalogMethods,
+  TenantPurgeMethods,
   ToolCallMethods,
   CategoriesMethods,
   PresetMethods,

@@ -1,6 +1,7 @@
 const express = require('express');
 const { requirePlatformToken } = require('@librechat/api');
 const handlers = require('~/server/services/Config/platformCatalog');
+const { deleteTenant } = require('~/server/services/platformTenants');
 
 /**
  * Fork: the operator API (`PLATFORM_API_TOKEN`), called by the admin app's server only. The
@@ -14,5 +15,6 @@ router.put('/providers/:name', handlers.putProvider);
 router.delete('/providers/:name', handlers.deleteProvider);
 router.get('/tenants/:tenantId/catalog', handlers.getTenantCatalog);
 router.put('/tenants/:tenantId/catalog', handlers.putTenantCatalog);
+router.delete('/tenants/:tenantId', deleteTenant);
 
 module.exports = router;
