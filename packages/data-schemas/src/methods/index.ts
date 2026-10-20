@@ -68,6 +68,7 @@ import {
   type UserGroupMethods,
   type UserGroupDeps,
 } from './userGroup';
+import { createGroupSyncMethods, type GroupSyncMethods } from './groupSync';
 import {
   createAclEntryMethods,
   permissionBitSupersets,
@@ -288,6 +289,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   MCPServerMethods &
   CodeEnvironmentMethods &
   UserGroupMethods &
+  GroupSyncMethods &
   AclEntryMethods &
   SystemGrantMethods &
   AuditLogMethods &
@@ -534,6 +536,7 @@ export function createMethods(
     ...createCodeEnvironmentMethods(mongoose),
     ...createAccessRoleMethods(mongoose),
     ...userGroupMethods,
+    ...createGroupSyncMethods(mongoose, userGroupMethods),
     ...aclEntryMethods,
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),

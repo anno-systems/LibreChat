@@ -22,6 +22,11 @@ describe('buildPreLoginInterface', () => {
     });
   });
 
+  it('carries the tenant branding', () => {
+    const branding = { appTitle: 'Acme AI', logo: 'https://acme.example/logo.svg' };
+    expect(buildPreLoginInterface({ branding, modelSelect: true })).toEqual({ branding });
+  });
+
   it('carries a bundled theme name', () => {
     expect(buildPreLoginInterface({ theme: 'clickhouse', modelSelect: true })).toEqual({
       theme: 'clickhouse',

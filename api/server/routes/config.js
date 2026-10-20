@@ -25,6 +25,7 @@ const {
   loadConversationListLimits,
   resolvePullRequestCapabilities,
   getTenantDomains,
+  brandedStartupFields,
 } = require('@librechat/api');
 const {
   DEFAULT_MCP_APP_CSP_LIMITS,
@@ -240,6 +241,7 @@ router.get('/', async function (req, res) {
       /** @type {Partial<TStartupConfig>} */
       const payload = {
         ...preLoginPayload,
+        ...brandedStartupFields(baseConfig?.interfaceConfig, { signedIn: false }),
         socialLogins: baseConfig?.registration?.socialLogins ?? defaultSocialLogins,
         turnstile: baseConfig?.turnstileConfig,
         ...(rum ? { rum } : {}),
@@ -307,6 +309,7 @@ router.get('/', async function (req, res) {
     const payload = {
       ...preLoginPayload,
       ...publicSharePayload,
+      ...brandedStartupFields(appConfig?.interfaceConfig, { signedIn: true }),
       ...buildPostLoginPayload(appConfig),
       ...getConversationTitleCapabilities(appConfig?.interfaceConfig),
       conversationListLimits,
