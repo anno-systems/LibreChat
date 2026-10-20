@@ -16,6 +16,7 @@ export {
   resolveRequestTenantId,
 } from './tenant';
 export { preAuthTenantMiddleware } from './preAuthTenant';
+export { tenantOriginMiddleware, getTenantOrigin, parseTenantOrigin } from './tenantOrigin';
 export * from './concurrency';
 export * from './checkBalance';
 export * from './remoteAgentAuth';

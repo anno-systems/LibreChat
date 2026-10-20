@@ -42,6 +42,7 @@ const {
   readBundledThemeBoot,
   createDeploymentThemeShell,
   preAuthTenantMiddleware,
+  tenantOriginMiddleware,
   requestContextMiddleware,
   configureServerTimeouts,
   setupGracefulShutdown,
@@ -595,6 +596,8 @@ if (cluster.isMaster) {
 
     /** Middleware */
     app.use(requestContextMiddleware);
+    /* Fork: a tenant's custom domain, named by the trusted proxy (X-Tenant-Origin). */
+    app.use(tenantOriginMiddleware);
     app.use(noIndex);
     app.use(express.json({ limit: '3mb' }));
     app.use(express.urlencoded({ extended: true, limit: '3mb' }));

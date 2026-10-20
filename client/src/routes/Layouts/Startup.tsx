@@ -10,6 +10,7 @@ import {
 import { TranslationKeys, useLocalize } from '~/hooks';
 import { useGetStartupConfig } from '~/data-provider';
 import AuthLayout from '~/components/Auth/AuthLayout';
+import { setBrandFavicon } from '~/utils/favicon';
 
 const headerMap: Record<string, TranslationKeys> = {
   '/login': 'com_auth_welcome_back',
@@ -65,6 +66,12 @@ export default function StartupLayout({ isAuthenticated }: { isAuthenticated?: b
   useEffect(() => {
     setDocumentTitle(startupConfig?.appTitle || DEFAULT_APP_TITLE, true);
   }, [startupConfig?.appTitle]);
+
+  useEffect(() => {
+    if (startupConfig) {
+      setBrandFavicon(startupConfig.interface?.branding?.favicon);
+    }
+  }, [startupConfig]);
 
   useEffect(() => {
     setError(null);

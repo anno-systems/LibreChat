@@ -16,8 +16,10 @@ import {
   SYSTEM_TENANT_ID,
 } from '@librechat/data-schemas';
 import type { AppConfig, IConfig } from '@librechat/data-schemas';
+import type { TEndpoint } from 'librechat-data-provider';
 import type { Types } from 'mongoose';
 import type { CustomConfigLoadMode } from './loader';
+import { withTenantEndpoints } from '~/platform/catalog';
 import { checkAppConfigTheme } from './theme';
 
 const BASE_CONFIG_KEY = '_BASE_';
@@ -242,6 +244,8 @@ export interface AppConfigServiceDeps {
   }) => Promise<AppConfig>;
   /** TTL in ms for per-user/role merged config caches. Defaults to 60 000. */
   overrideCacheTtl?: number;
+  /** Fork: a tenant's catalog endpoints (`platform/catalog.ts`), added to its base config. */
+  loadTenantEndpoints?: (tenantId: string) => Promise<TEndpoint[]>;
 }
 
 export interface GetAppConfigOptions {
@@ -361,6 +365,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps): {
     getUserPrincipals,
     augmentConfig,
     overrideCacheTtl = DEFAULT_OVERRIDE_CACHE_TTL,
+    loadTenantEndpoints,
   } = deps;
 
   const cache = getCache(cacheKeys.APP_CONFIG);
@@ -499,7 +504,16 @@ export function createAppConfigService(deps: AppConfigServiceDeps): {
       );
     }
 
-    const baseConfig = await ensureBaseConfig(refresh);
+    let tenantEndpoints: TEndpoint[] = [];
+    if (loadTenantEndpoints && effectiveTenantId) {
+      try {
+        tenantEndpoints = await loadTenantEndpoints(effectiveTenantId);
+      } catch (error) {
+        if (failClosed) throw error;
+        logger.error('[getAppConfig] Error loading the tenant catalog:', error);
+      }
+    }
+    const baseConfig = withTenantEndpoints(await ensureBaseConfig(refresh), tenantEndpoints);
     const scopedBaseConfig = await scopeBaseConfig(baseConfig, effectiveTenantId);
     const hiddenEndpoints = hiddenCustomEndpoints(baseConfig, effectiveTenantId);
     if (baseOnly) {
@@ -560,6 +574,7 @@ export function createAppConfigService(deps: AppConfigServiceDeps): {
         JSON.stringify([
           baseConfig.endpoints?.custom?.map(({ name, tenantId }) => [name, tenantId]),
           baseConfig.config?.endpoints?.custom?.map(({ name, tenantId }) => [name, tenantId]),
+          tenantEndpoints.map(({ name, baseURL, models }) => [name, baseURL, models]),
         ]),
       )
       .digest('hex');
