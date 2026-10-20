@@ -104,6 +104,8 @@ export const AUDIT_ACTIONS = [
   /** Account lifecycle; `role_changed` covers IdP-driven role assignment. */
   'user.deleted',
   'user.role_changed',
+  /** An admin set the user's credit balance (fork: admin balance API). */
+  'user.balance_updated',
   /** Resource ACL (sharing) changes. */
   'acl.granted',
   'acl.revoked',
@@ -149,6 +151,7 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'config.toggled': 'config',
   'user.deleted': 'user',
   'user.role_changed': 'user',
+  'user.balance_updated': 'user',
   'acl.granted': 'acl',
   'acl.revoked': 'acl',
   'acl.public_changed': 'acl',
