@@ -244,6 +244,9 @@ logo never needs a new image. The login page itself is branded in Zitadel per or
 
 ## Usage, limits and dashboards
 
+Web search usage per tenant comes from the search gateway's `search_usage` table
+(`GET /usage?month=YYYY-MM`, operator token); see the decision below.
+
 Upstream provides a per-user balance with refill (`packages/data-schemas/src/schema/balance.ts`)
 and a transaction per model call with user, model, tokens and tenant
 (`packages/data-schemas/src/schema/transaction.ts`). Balance policy can already differ per tenant
@@ -439,6 +442,15 @@ Decided:
 - Platform token for now: the user's Zitadel access token, forwarded by LibreChat
   (`OPENID_REUSE_TOKENS`) (2026-10-19). The audience-bound exchanged token stays the target.
 - Scopes from the policy store, not token claims (2026-10-19).
+- Admin app stack (2026-10-20): TypeScript, a React + Vite web app and a small Node server in
+  `anno-systems/admin-app`. Tenant admins sign in through LibreChat's own admin login (Zitadel
+  role `tenant-admin`); the server keeps the admin token and calls upstream's `/api/admin/*` with
+  the session's tenant. Feature switches are role permissions, because upstream's admin API keeps
+  `interface.*` permission flags on roles only.
+- Web search (2026-10-20): one Serper account for all tenants behind the search gateway
+  (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
+  instance and as Serper's scraper with a key per tenant. The gateway counts every search and
+  scrape per tenant for billing, never stores queries, and can cap a tenant per month.
 
 Open:
 
@@ -446,4 +458,5 @@ Open:
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
   append-only store.
 - Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
-- Admin app stack.
+- Per-tenant model selection from an operator catalog, user limits (balance) and SSO settings in
+  the admin app.
