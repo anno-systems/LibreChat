@@ -33,6 +33,7 @@ const handlers = createAdminConfigHandlers({
   invalidateConfigCaches,
   recordAuditEntry: db.recordAuditEntry,
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
+  catalogLock: process.env.ADMIN_CONFIG_CATALOG_LOCK === 'true',
 });
 
 router.use(requireJwtAuth, requireAdminAccess);
