@@ -21,7 +21,7 @@ import { parsePagination } from './pagination';
 
 type GroupListFilter = Pick<GroupFilterOptions, 'source' | 'search'>;
 
-const VALID_GROUP_SOURCES: ReadonlySet<string> = new Set(['local', 'entra']);
+const VALID_GROUP_SOURCES: ReadonlySet<string> = new Set(['local', 'entra', 'oidc']);
 const MAX_CREATE_MEMBER_IDS = 500;
 /** Member ids per audit entry, so group creation writes a few ordered entries. */
 const AUDIT_MEMBER_CHUNK = 100;

@@ -290,7 +290,8 @@ export function createPrincipalSearch(deps: PrincipalSearchDeps): PrincipalSearc
         .sortPrincipalsByRelevance(scoredResults)
         .slice(0, searchLimit)
         .map(({ _searchScore, ...result }) => {
-          sources[result.source] += 1;
+          /** Provider-synced (`oidc`) groups are found in the database like local ones. */
+          sources[result.source === 'entra' ? 'entra' : 'local'] += 1;
           return result;
         });
 
