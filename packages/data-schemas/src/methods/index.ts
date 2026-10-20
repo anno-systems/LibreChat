@@ -3,7 +3,14 @@ import type { ScheduleMCPConsentStorage } from './scheduleConsent';
 import { createToolApprovalGrantMethods } from './toolApprovalGrant';
 import { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createScheduleMCPConsentStorage } from './scheduleConsent';
+export { createPlatformCatalogMethods } from './platformCatalog';
 export type { ScheduleMCPConsentStorage, ScheduleConsentSnapshot } from './scheduleConsent';
+export type {
+  PlatformProvider,
+  TenantCatalog,
+  OwnEndpoint,
+  CatalogAssignment,
+} from './platformCatalog';
 import type {
   FileMethods,
   FileOwnerScope,
@@ -80,6 +87,7 @@ import { createShareMethods, type ShareMethods } from './share';
 import { createActionMethods, type ActionMethods } from './action';
 import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
+import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
@@ -287,6 +295,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   ActionMethods &
   AssistantMethods &
   BannerMethods &
+  PlatformCatalogMethods &
   ToolCallMethods &
   CategoriesMethods &
   PresetMethods &
@@ -531,6 +540,7 @@ export function createMethods(
     ...actionMethods,
     ...createAssistantMethods(mongoose),
     ...createBannerMethods(mongoose),
+    ...createPlatformCatalogMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
     ...createPresetMethods(mongoose),
@@ -603,6 +613,7 @@ export type {
   ActionMethods,
   AssistantMethods,
   BannerMethods,
+  PlatformCatalogMethods,
   ToolCallMethods,
   CategoriesMethods,
   PresetMethods,

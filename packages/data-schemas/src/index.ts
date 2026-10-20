@@ -7,6 +7,7 @@ export * from './utils';
 export { createModels } from './models';
 export {
   createMethods,
+  createPlatformCatalogMethods,
   createSkillDeletionPersistenceAdapter,
   AGENT_OWNER_CONTACT_RESOLVED_FIELD,
   AgentSortCursorError,

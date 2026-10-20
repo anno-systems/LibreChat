@@ -124,6 +124,14 @@ export const AUDIT_ACTIONS = [
   'audit.read',
   'audit.exported',
   'audit.purged',
+  /** Fork: the platform model catalog. Platform providers are written by the operator API
+   * (`{ type: 'service' }` actor); target `{ type: 'provider', id: name }` or
+   * `{ type: 'tenant', id }`. A tenant's own endpoints are written by its admins. */
+  'catalog.provider_updated',
+  'catalog.provider_deleted',
+  'catalog.tenant_updated',
+  'catalog.own_endpoint_updated',
+  'catalog.own_endpoint_deleted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -168,6 +176,11 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'audit.read': 'audit',
   'audit.exported': 'audit',
   'audit.purged': 'audit',
+  'catalog.provider_updated': 'config',
+  'catalog.provider_deleted': 'config',
+  'catalog.tenant_updated': 'config',
+  'catalog.own_endpoint_updated': 'config',
+  'catalog.own_endpoint_deleted': 'config',
 };
 
 /** Result of the audited operation. Kept first-class instead of being encoded

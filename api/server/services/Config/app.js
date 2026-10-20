@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const { CacheKeys } = require('librechat-data-provider');
-const { AppService, logger } = require('@librechat/data-schemas');
+const { AppService, logger, decryptV3 } = require('@librechat/data-schemas');
 const {
+  isEnabled,
   createAppConfigService,
+  createTenantEndpointLoader,
   clearMcpConfigCache,
   createCodeEnvironmentRegistry,
   mergeAccessibleCodeEnvironments,
@@ -45,6 +47,14 @@ const loadBaseConfig = async (mode) => {
   return AppService({ config, paths, systemTools });
 };
 
+/** Fork: the platform model catalog's endpoints per tenant (`packages/api/src/platform`). */
+const tenantEndpoints = createTenantEndpointLoader({
+  enabled: isEnabled(process.env.ADMIN_CONFIG_CATALOG_LOCK),
+  getTenantCatalog: db.getTenantCatalog,
+  findPlatformProviders: db.findPlatformProviders,
+  decrypt: decryptV3,
+});
+
 const { getAppConfig, clearAppConfigCache, clearOverrideCache } = createAppConfigService({
   loadBaseConfig,
   setCachedTools,
@@ -52,6 +62,7 @@ const { getAppConfig, clearAppConfigCache, clearOverrideCache } = createAppConfi
   cacheKeys: CacheKeys,
   getApplicableConfigs: db.getApplicableConfigs,
   getUserPrincipals: db.getUserPrincipals,
+  loadTenantEndpoints: tenantEndpoints.load,
   augmentConfig: ({ appConfig, baseConfig, principals, options }) => {
     if (!options.userId) return appConfig;
     return mergeAccessibleCodeEnvironments({
@@ -78,6 +89,7 @@ db.initializeMessageBudget(getAppConfig);
  * @param {string} [tenantId] - Optional tenant ID to scope override cache clearing.
  */
 async function invalidateConfigCaches(tenantId) {
+  tenantEndpoints.invalidate(tenantId);
   const results = await Promise.allSettled([
     clearAppConfigCache(),
     clearOverrideCache(tenantId),

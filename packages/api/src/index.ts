@@ -10,6 +10,7 @@ export * from './credentials';
 export * from './artifacts';
 /* Admin */
 export * from './admin';
+export * from './platform';
 export * from './cdn';
 export * from './code';
 export * from './pulls';
