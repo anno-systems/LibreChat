@@ -1985,6 +1985,59 @@ describe('User parameter passing tests', () => {
       );
     });
 
+    it.each([
+      [
+        true,
+        {
+          'librechat/context': {
+            model: 'm',
+            agentId: 'agent_x',
+            conversationId: 'c1',
+            messageId: 'm1',
+          },
+        },
+      ],
+      [undefined, undefined],
+    ])('passes the call context when callContext is %s (fork)', async (callContext, meta) => {
+      const mockUser = { id: 'context-user', role: 'USER' };
+      const { getRoleByName } = require('~/models');
+      getRoleByName.mockResolvedValue({
+        permissions: { [PermissionTypes.MCP_SERVERS]: { [Permissions.USE]: true } },
+      });
+      const callTool = jest.fn().mockResolvedValue([[{ type: 'text', text: 'ok' }], undefined]);
+      mockGetMCPManager.mockReturnValue({ callTool });
+
+      const mcpTool = await createMCPTool({
+        res: { write: jest.fn(), flush: jest.fn() },
+        user: mockUser,
+        agentId: 'agent_x',
+        model: 'm',
+        requestBody: { conversationId: 'c1', messageId: 'm1' },
+        config: { url: 'https://context.example.com/mcp', callContext },
+        toolKey: `test-tool${D}test-server`,
+        provider: 'openai',
+        userMCPAuthMap: {},
+        availableTools: {
+          [`test-tool${D}test-server`]: {
+            function: {
+              description: 'Cached tool',
+              parameters: { type: 'object', properties: {} },
+            },
+          },
+        },
+      });
+      await mcpTool.invoke(
+        {},
+        {
+          configurable: { user: mockUser },
+          metadata: { provider: 'openai', thread_id: 'thread-1', run_id: 'run-1' },
+          toolCall: {},
+        },
+      );
+
+      expect(callTool).toHaveBeenCalledWith(expect.objectContaining({ meta }));
+    });
+
     it('preserves AbortError from the MCP tool implementation', async () => {
       const mockUser = { id: 'cancel-user', role: 'USER' };
       const abortController = new AbortController();

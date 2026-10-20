@@ -309,10 +309,11 @@ Gaps to close in the fork:
 
 - `tenantId` is not available to MCP placeholders (`packages/api/src/utils/headers.ts` covers model
   endpoints only). Not needed by the platform servers, which take the tenant from the token.
-- The model, agent and conversation that triggered a tool call are not passed to the MCP server
-  (`api/server/services/MCP.js`), so the audit entry leaves them empty. They are asserted by
-  LibreChat, not signed by the broker: the MCP server records them and never decides access on
-  them.
+- Model, agent, conversation and message reach the MCP server in each `tools/call` request's
+  `_meta` (`librechat/context`) when the server sets `callContext: true` (fork, 2026-10-20). They
+  are asserted by LibreChat, not signed by the broker: the MCP server records them in the audit
+  entry and never decides access on them. `_meta` rather than headers, because headers belong to
+  the connection and body placeholders would force a new connection per request.
 - The forwarded token's audience is LibreChat, so any platform MCP server could replay it to
   another. An exchanged token whose audience is the MCP server closes that (token exchange in the
   broker or the existing OBO path).

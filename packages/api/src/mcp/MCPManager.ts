@@ -1453,6 +1453,7 @@ Please follow these instructions when using tools from the respective MCP server
     onOAuthCredentialsChanging,
     mcpApps,
     scheduledMCPInvocation,
+    meta,
   }: {
     scheduledBearerInvocation?: ScheduledMCPBearerInvocation;
     scheduledMCPInvocation?: ScheduledMCPInvocation;
@@ -1480,6 +1481,8 @@ Please follow these instructions when using tools from the respective MCP server
     onOAuthCredentialsChanged?: t.UserConnectionContext['onOAuthCredentialsChanged'];
     onOAuthCredentialsChanging?: t.UserConnectionContext['onOAuthCredentialsChanging'];
     mcpApps?: TMCPAppsPolicy;
+    /** `_meta` sent with the `tools/call` request (see `buildMCPCallMeta`). */
+    meta?: Record<string, unknown>;
   }): Promise<t.FormattedToolResponse> {
     if (scheduledBearerInvocation) requestScopedConnections = scheduledBearerInvocation.context;
     const userId = user?.id;
@@ -1936,6 +1939,7 @@ Please follow these instructions when using tools from the respective MCP server
                   params: {
                     name: toolName,
                     arguments: toolArguments,
+                    ...(meta && { _meta: meta }),
                   },
                 },
                 CallToolResultSchema,

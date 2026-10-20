@@ -45,6 +45,7 @@ const {
   isDirectOpenIDBearerRecoveryEnabled,
   bindScheduledMCPBearerInvocation,
   createMCPPermissionDeniedError,
+  buildMCPCallMeta,
   createMCPStructuredTool,
   buildMCPDomainValidationConfig,
   OpenIDReauthRequiredError,
@@ -904,6 +905,7 @@ async function reconnectServer({
  */
 async function createMCPTools({
   agentId,
+  model,
   res,
   mcpPermissionContext,
   user,
@@ -988,6 +990,7 @@ async function createMCPTools({
   for (const tool of result.tools) {
     const toolInstance = await createMCPTool({
       agentId,
+      model,
       res,
       mcpPermissionContext,
       user,
@@ -1046,6 +1049,7 @@ async function createMCPTools({
  */
 async function createMCPTool({
   agentId,
+  model,
   res,
   mcpPermissionContext,
   user,
@@ -1248,6 +1252,7 @@ async function createMCPTool({
     serverName,
     serverConfig,
     customUserVars: userMCPAuthMap?.[`${Constants.mcp_prefix}${serverName}`],
+    callContext: { agentId, model },
     toolDefinition: toolEntry['function'],
     upstreamTokenProvider,
     upstreamTokenProviderResolver,
@@ -1273,6 +1278,7 @@ function createToolInstance({
   serverName,
   serverConfig: capturedServerConfig,
   customUserVars: capturedCustomUserVars,
+  callContext: capturedCallContext,
   toolDefinition,
   provider: capturedProvider,
   upstreamTokenProvider: capturedUpstreamTokenProvider = null,
@@ -1417,6 +1423,10 @@ function createToolInstance({
         upstreamTokenProviderResolver: capturedUpstreamTokenProviderResolver,
         oboIdentityContext: capturedOboIdentityContext,
         mcpApps: capturedMCPApps,
+        meta: buildMCPCallMeta(capturedServerConfig, {
+          ...capturedCallContext,
+          requestBody: config?.configurable?.requestBody ?? capturedRequestBody,
+        }),
       });
       return result;
     } catch (error) {
