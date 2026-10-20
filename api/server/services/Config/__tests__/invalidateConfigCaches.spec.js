@@ -42,6 +42,7 @@ jest.mock('@librechat/api', () => ({
   clearMcpConfigCache: mockClearMcpConfigCache,
   createCodeEnvironmentRegistry: jest.fn(() => ({})),
   mergeAccessibleCodeEnvironments: jest.fn(({ appConfig }) => appConfig),
+  createTenantEndpointLoader: jest.fn(() => ({ load: jest.fn(), invalidate: jest.fn() })),
 }));
 
 // ── Tests ──────────────────────────────────────────────────────────────

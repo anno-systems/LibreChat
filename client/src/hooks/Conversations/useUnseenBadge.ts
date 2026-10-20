@@ -126,12 +126,13 @@ export default function useUnseenBadge(count: number) {
     for (const link of links) {
       link.dataset.originalHref ??= link.href;
     }
-    const originals = links.map((link) => link.dataset.originalHref ?? link.href);
+    /* Read when used: a tenant favicon (`utils/favicon.ts`) may move it after this effect ran. */
+    const originalOf = (link: HTMLLinkElement) => link.dataset.originalHref ?? link.href;
     let cancellations: Array<() => void> = [];
 
     const restore = () => {
-      for (const [index, link] of links.entries()) {
-        link.href = originals[index];
+      for (const link of links) {
+        link.href = originalOf(link);
       }
     };
 
@@ -145,8 +146,8 @@ export default function useUnseenBadge(count: number) {
         restore();
         return;
       }
-      cancellations = links.map((link, index) =>
-        drawBadgedFavicon(originals[index], color, (dataUrl) => {
+      cancellations = links.map((link) =>
+        drawBadgedFavicon(originalOf(link), color, (dataUrl) => {
           link.href = dataUrl;
         }),
       );

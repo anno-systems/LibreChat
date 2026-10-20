@@ -98,16 +98,37 @@ Verified in the code at `9008c47`:
 
 ### What we add
 
-- **Tenant registry.** For now the Zitadel organizations are the registry: a tenant is an
-  organization with the tenant id as its id, and the admin app's tenants are the organizations
-  its service user belongs to. A `Tenant` record (domains, status, plan, data-residency facts)
-  stored through a `packages/data-schemas` method follows when plans, suspension or custom
-  domains need data Zitadel does not hold.
-- **Domain to tenant.** The reverse proxy maps each tenant host to its tenant id and sets
-  `X-Tenant-Id`, overwriting any value the client sent. Platform subdomains need no per-tenant
-  configuration: the first label of the host is the tenant id (a wildcard site in Caddy).
-  Custom domains will need a lookup in the registry. LibreChat trusts the header only from the
-  proxy (`TRUST_TENANT_HEADER=true` behind a proxy that strips client copies).
+- **Tenant registry.** The Zitadel organizations are the registry: a tenant is an organization
+  with the tenant id as its id, and the admin app's tenants are the organizations its service
+  user belongs to. Suspension is the organization's state (deactivated), custom domains are the
+  organization's metadata `chat_domains`. A `Tenant` record stored through a
+  `packages/data-schemas` method follows only when plans or data-residency facts need data
+  Zitadel does not hold.
+- **Domain to tenant.** The reverse proxy strips any `X-Tenant-Id` and `X-Tenant-Origin` the
+  client sent and asks the admin app's tenant router (`GET /internal/route`, Caddy
+  `forward_auth`) which tenant the host is. The router answers from the registry, cached for
+  30 seconds (an unknown host reloads it at most every 5 seconds, a failed reload keeps the last
+  list): 200 with `X-Tenant-Id` for an active tenant, 403 with a short page for a suspended one,
+  404 for a host that names no tenant. Platform subdomains follow the tenant URL template
+  (`<tenant>.<platform domain>`); any other host is looked up among the custom domains, and the
+  router then also sends `X-Tenant-Origin`, the domain's public origin. LibreChat trusts both
+  headers only from the proxy (`TRUST_TENANT_HEADER=true`).
+- **Custom domains** (2026-10-20). The operator sets up to ten domains per tenant in the admin
+  app; a domain belongs to one tenant only and platform hosts are refused. Setting them adds the
+  domains' callback URLs to LibreChat's OIDC app and to the tenant organization's domains. With
+  `X-Tenant-Origin`, LibreChat uses that origin for the request's OpenID callback, redirects and
+  `serverDomain` instead of the `TENANT_DOMAIN_*` templates
+  (`packages/api/src/middleware/tenantOrigin.ts`). In production Caddy issues certificates on
+  demand and asks the router first (`GET /internal/tls?domain=`), so it never requests one for a
+  host that is not a tenant's domain. The customer points a CNAME at the platform.
+- **Suspending and deleting a tenant** (2026-10-20). The operator suspends a tenant in the admin
+  app, which deactivates its Zitadel organization: its users cannot sign in, the router answers
+  403 on its hosts and its admins get `tenant_suspended`. Only a suspended tenant can be deleted,
+  after the operator types its id. Deletion first purges LibreChat (`DELETE
+/api/platform/tenants/:id`: every user is erased through upstream's erasure path, then every
+  document with that `tenantId` except the append-only audit log, which records `tenant.purged`),
+  then deletes the Zitadel organization. A failed purge stops before Zitadel, so it can be
+  retried.
 - **Claim to tenant.** At OIDC login, LibreChat takes the tenant from a claim in the broker's token
   and checks it against the header. A mismatch fails the login. This closes the gap where a user of
   tenant A logs in on tenant B's domain.
@@ -129,10 +150,14 @@ one identity broker, so LibreChat sees exactly one OIDC issuer.
   id as its organization id (Zitadel accepts a caller-chosen id), so no mapping table is needed.
 - **Token contents.** The ID token carries `sub`, `email` and Zitadel's resource-owner claims;
   `urn:zitadel:iam:user:resourceowner:id` is the user's organization, which is the tenant.
-  Group membership from the customer IdP is mapped to platform groups in the broker (not built
-  yet).
-- **Group sync.** Platform groups are mirrored into LibreChat's Group collection so that config
-  overrides and ACLs per group work as upstream intends.
+- **Group sync** (2026-10-20). At every sign-in through a tenant's identity provider, Zitadel
+  calls the admin app (`/hooks/zitadel/idp-intent`, a signed Actions target). The admin app reads
+  the provider's groups claim and stores `{ idp, groups }` as the user's Zitadel metadata
+  `idp_groups`, so the next token carries the current groups. LibreChat, with
+  `OPENID_GROUPS_CLAIM`, makes the user's memberships match that claim at each OpenID sign-in.
+  Synced groups have source `oidc` and the id `<provider>:<group>`, so two providers of one
+  tenant cannot collide and a sync never touches local groups. Missing groups are created, named
+  after their id until an admin renames them. A failed sync is logged and the sign-in goes on.
 - **Admins.** Tenant admins log in to the admin app through their tenant's organization. The
   operator logs in through a separate operator organization with mandatory MFA.
 
@@ -223,13 +248,34 @@ The platform builds on that instead of inventing a second config system:
 | Layer                | Who sets it                      | Contents                                                                                                               |
 | -------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `librechat.yaml`     | Operator, at deploy              | The full catalog: every provider endpoint with keys, region and price; locked sections (`filters`, stdio MCP servers). |
-| Tenant base document | Operator (plan) and tenant admin | Which catalog entries the tenant may use, default model, balance policy, theme.                                        |
-| Group documents      | Tenant admin                     | Narrower model sets and limits per group.                                                                              |
+| Tenant base document | Operator (plan) and tenant admin | Which catalog entries the tenant may use, default model, balance policy, theme, branding.                              |
+| Group documents      | Tenant admin                     | Narrower model sets, greeting and credit limits per group.                                                             |
 | User documents       | Tenant admin (rare)              | Exceptions.                                                                                                            |
 
-Open point: upstream has no "model" permission, so "group X may use model Y" is expressed as a
-group-level override of endpoints and model specs. The admin app hides that detail behind a
-"models per group" screen.
+Models and settings per group (2026-10-20): upstream has no "model" permission, so "group X
+may use model Y" is a group config document that narrows the tenant's model lists, written by
+the admin app's groups screen together with the group's greeting and credit limits. Groups are
+the synced ones (members from the identity provider) and the tenant's own (members added in the
+admin app). The groups with settings form an ordered list whose order sets the documents'
+priorities, so for someone in several groups the group higher in the list wins.
+
+### Catalog per tenant
+
+The YAML catalog is the same for every tenant. The fork adds a catalog per tenant
+(`packages/api/src/platform/catalog.ts`, `packages/data-schemas/src/methods/platformCatalog.ts`),
+active with `ADMIN_CONFIG_CATALOG_LOCK=true` (2026-10-20):
+
+- **Platform providers.** The operator keeps providers (base URL, encrypted key, models) in
+  LibreChat and assigns each tenant providers and a subset of their models. The operator API
+  (`/api/platform/*`) is reachable only with `PLATFORM_API_TOKEN` from the admin app's server,
+  is off (404) without a token of at least 32 characters, and is blocked at the proxy.
+- **Own providers (BYOK).** A tenant admin adds up to ten providers with their own key
+  (`/api/admin/catalog`). The base URL must be HTTPS and pass the SSRF check; names may not
+  shadow a platform provider.
+- LibreChat adds the tenant's endpoints to the base config before the tenant's documents are
+  applied, reloading them at most every 30 seconds, so the existing narrowing and the per-group
+  documents work on them unchanged. Keys never leave the server: `/api/endpoints`,
+  `/api/models` and `/api/config` show names and models only.
 
 ### Catalog lock
 
@@ -288,8 +334,10 @@ second factor required). With an operator service user (`IAM_ORG_MANAGER`, `ORG_
 platform organization) the admin app creates the organization with the tenant id, its primary
 domain and branding, grants it LibreChat's project, adds the admin app's service user, adds the
 tenant's callback URLs to LibreChat's OIDC app and invites the first admin with `tenant-admin`.
-A failed step undoes the ones before it. LibreChat itself needs nothing per tenant. Missing:
-custom domains, suspending and deleting tenants, plans, and a web search key for new tenants.
+A failed step undoes the ones before it. LibreChat itself needs nothing per tenant. The operator
+area also suspends, reactivates and deletes tenants, sets their custom domains and keeps the
+platform providers of the tenant catalog. Missing: plans, and a web search key for new
+tenants.
 
 The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
 `SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
@@ -314,15 +362,16 @@ Separation rules, because one app now holds both:
 
 ## Branding
 
-Upstream supports runtime theme colors per tenant (`interface.theme`). Missing, and added by the
-fork as config fields with defaults that reproduce today's behaviour:
+Tenant admins brand their tenant in the admin app (2026-10-20). The fork adds
+`interface.branding` (`packages/data-provider/src/branding.ts`): app title, logo, favicon and
+footer, unset by default so upstream's look stays. Images are HTTPS URLs or small data URLs
+(PNG, JPEG, WebP, GIF, SVG or ICO, at most 128 KB) stored in the tenant's base document, so no
+object storage is needed yet. Title and logo reach the sign-in page before login; the footer
+only after it. The accent color is upstream's `interface.theme` with a `tenant-accent` theme.
 
-- logo (today hardcoded as `assets/logo.svg` in `client/src/components/Auth/AuthLayout.tsx`),
-- app title and footer (today env-only, `api/server/routes/config.js`),
-- favicon.
-
-Assets are uploaded through the admin app to object storage and served by URL, so a new
-logo never needs a new image. The login page itself is branded in Zitadel per organization.
+The same save brands the Zitadel login page of the tenant's organization (label policy, logo
+and icon assets). Zitadel's login app caches branding for an hour by default; the stack lowers
+that to five minutes (`API_CACHE_CONFIG`).
 
 ### Deleting a user (data protection)
 
@@ -427,16 +476,45 @@ Gaps to close in the fork:
   another. An exchanged token whose audience is the MCP server closes that (token exchange in the
   broker or the existing OBO path).
 
-### Scopes
+### Tool policy
 
-- Scopes are named per server and action, for example `outlook.mail.read`, `outlook.mail.send`,
-  `outlook.calendar.read`, `sharepoint.site.read`, with optional resource qualifiers (a site, a
-  mailbox).
-- The tenant admin assigns scopes to platform groups in the admin app.
-- Write actions (send mail, create event, upload file) additionally require user confirmation in
-  the chat, using upstream's tool approval modes (`docs/tool-approval-modes.md`).
-- Scopes are read by the MCP server from its policy store (`scope_grants`: tenant, group or user
-  to scope), so a change applies on the next call without re-login (2026-10-19).
+Tenant admins decide per tool what the assistant may do (2026-10-20): `allow`, `confirm` (allowed
+after the user approves the call in the chat) or `off`, for the whole tenant and per group, in the
+admin app's "AI tools" section.
+
+- **Where it lives.** In LibreChat (`McpToolPolicy`, tenant-isolated, and `PlatformMcpTool`, the
+  tools each platform server registers at start), because only LibreChat knows both kinds of
+  groups: those synced from the identity provider and the admin app's own.
+- **Resolution.** The most permissive rule of the user's groups, else the tenant rule, else the
+  default: `allow` for read-only tools, `confirm` for every other tool, including new ones.
+- **Two enforcement points.** LibreChat's tool approval hook (`platformToolPolicyHook.js`, with
+  `toolApproval.mode: bypass` so nothing else asks) denies `off` tools and asks before `confirm`
+  ones. Each MCP server asks LibreChat (`/api/platform/mcp`, `PLATFORM_MCP_TOKEN`) for the mode
+  of the user its verified token names and refuses `off` tools itself, failing closed when it
+  cannot ask. A caller that skips LibreChat, even with the user's own token, cannot run an `off`
+  tool.
+- **What the server cannot check.** Whether a `confirm` call was confirmed is LibreChat's to
+  enforce; the audit entry records the mode the call ran under. A signed approval from LibreChat
+  would let the server check it too (open).
+- Scope grants (`scope_grants`) remain for servers run without the platform.
+
+### Acting in the user's name
+
+The assistant must not be able to do more than the user could (2026-10-20). Two cases:
+
+- **Systems that know their users** (Microsoft 365): each user connects their own account, and
+  every call uses that user's delegated token, so the system's own permissions bound the
+  assistant. The first call without a connection answers with a one-time link (ten minutes,
+  bound to the verified identity of that call). After the provider's sign-in (OAuth with PKCE)
+  the server checks the account belongs to the same person: for Microsoft, the tenant's Entra
+  directory (set by the tenant admin) and the same email unless the tenant allows otherwise.
+  Tokens are stored encrypted (AES-256-GCM) per tenant, user and provider, refreshed as needed,
+  and listed and revocable in the admin app. The platform token's email comes from Zitadel's
+  userinfo endpoint, since its access tokens carry none.
+- **Systems with one key per organization** (Lexware Office, DeepL): the tenant admin stores the
+  key in the server's tenant settings (write-only). What the system cannot tell apart, the server
+  adds: separate tools for consequential steps (issuing a final invoice), the author named in
+  each created voucher, an amount ceiling, and the per-tool policy per group.
 
 ### Audit entry
 
@@ -463,18 +541,23 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 
 ### First servers
 
-All on Microsoft Graph, sharing one Graph module in the core:
+Built (2026-10-20, `anno-systems/mcp-servers`):
 
-1. `outlook-mail`
-2. `outlook-calendar`
-3. `sharepoint`
+| Server                                                       | Process     | Notes                                                                                                   |
+| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only                           |
+| `lexware`                                                    | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                  |
+| `deepl`                                                      | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                     |
+| `einvoice`                                                   | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator |
 
-Each customer's Entra admin consents once to the platform's app registration in their Microsoft
-tenant; this is an onboarding step and needs a guided flow in the admin app.
+Each customer's Entra admin consents once to the platform's multi-tenant app; the tenant admin
+then enters the directory id. A guided consent flow in the admin app is still missing.
 
-Later: GitHub, Azure DevOps, then German accounting and payroll (lexoffice/Lexware Office, sevDesk,
-Personio; DATEV requires its partner programme). Payroll data can include special-category data
-(GDPR Art. 9), so those servers need the finest-grained scopes.
+Next, as listed by the owner: Excel, Planner / To Do, Entra lookups, Google Calendar, Docs, Sheets
+and Mail, Zendesk, Personio, Odoo, sevDesk, Slack, DHL Parcel DE, ELSTER, LinkedIn, Jira and
+Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbix, Grafana
+(self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data
+(Personio) can include special-category data (GDPR Art. 9) and needs the finest-grained tools.
 
 ## Data residency
 
@@ -547,7 +630,11 @@ Decided:
   tenant, so a changed or deleted entry is detectable.
 - Platform token for now: the user's Zitadel access token, forwarded by LibreChat
   (`OPENID_REUSE_TOKENS`) (2026-10-19). The audience-bound exchanged token stays the target.
-- Scopes from the policy store, not token claims (2026-10-19).
+- Scopes from the policy store, not token claims (2026-10-19), superseded by the per-tool policy
+  in LibreChat (2026-10-20, see [Tool policy](#tool-policy)).
+- MCP write tools (2026-10-20): the tenant admin decides per tool and group (off, allow, confirm);
+  new tools that change data need confirmation by default. Users connect their own accounts
+  where the system knows users (see [Acting in the user's name](#acting-in-the-users-name)).
 - Admin app stack (2026-10-20): TypeScript, a React + Vite web app and a small Node server in
   `anno-systems/admin-app`. Tenant admins sign in through LibreChat's own admin login (Zitadel
   role `tenant-admin`); the server keeps the admin token and calls upstream's `/api/admin/*` with
@@ -566,6 +653,19 @@ Decided:
   plans or custom domains need a `Tenant` record. Tenant admins name their organization id at
   sign-in instead of picking from a list, so the sign-in page does not disclose customers.
   People join a tenant by the admin's email invitation or through the tenant's identity provider.
+- Group sync (2026-10-20): the identity provider's groups reach LibreChat through Zitadel user
+  metadata, written by the admin app's sign-in hook (see [Identity and login](#identity-and-login)).
+- Models and settings per group (2026-10-20): group config documents, ordered by the tenant
+  admin.
+- Branding (2026-10-20): `interface.branding` in the tenant's base document plus Zitadel's
+  label policy, both written by the admin app; images inline until object storage exists.
+- Catalog per tenant (2026-10-20): the operator assigns platform providers per tenant and
+  tenants may add their own keys (see [Catalog per tenant](#catalog-per-tenant)).
+- Tenant lifecycle (2026-10-20): suspension is the Zitadel organization's state, enforced at the
+  proxy by the admin app's tenant router; deletion needs suspension first and purges LibreChat
+  before Zitadel.
+- Custom domains (2026-10-20): organization metadata, resolved by the tenant router, which sends
+  the origin LibreChat uses for that request; certificates on demand only for known domains.
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
   instance and as Serper's scraper with a key per tenant. The gateway counts every search and
@@ -573,11 +673,14 @@ Decided:
 
 Open:
 
+- A signed approval from LibreChat, so MCP servers can verify a `confirm` call was approved.
+- A guided Entra admin-consent flow in the admin app.
+- The ZUGFeRD PDF/A-3 container (today the server produces the XML).
+
 - When to move from the forwarded token to an audience-bound exchanged token.
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
   append-only store.
 - Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
-- Plan limits on the catalog. Today the catalog in `librechat.yaml` is what every tenant may
-  choose from (an endpoint's `tenantId` can reserve it for one tenant); limits per plan below
-  that need a layer tenant admins cannot write.
+- Plans: which providers and limits a plan includes, on top of the per-tenant assignment.
+- Object storage for branding images, once inline data URLs are too small.
 - Region and price per catalog model for the admin app.
