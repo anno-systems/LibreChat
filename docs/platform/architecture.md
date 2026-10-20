@@ -476,16 +476,45 @@ Gaps to close in the fork:
   another. An exchanged token whose audience is the MCP server closes that (token exchange in the
   broker or the existing OBO path).
 
-### Scopes
+### Tool policy
 
-- Scopes are named per server and action, for example `outlook.mail.read`, `outlook.mail.send`,
-  `outlook.calendar.read`, `sharepoint.site.read`, with optional resource qualifiers (a site, a
-  mailbox).
-- The tenant admin assigns scopes to platform groups in the admin app.
-- Write actions (send mail, create event, upload file) additionally require user confirmation in
-  the chat, using upstream's tool approval modes (`docs/tool-approval-modes.md`).
-- Scopes are read by the MCP server from its policy store (`scope_grants`: tenant, group or user
-  to scope), so a change applies on the next call without re-login (2026-10-19).
+Tenant admins decide per tool what the assistant may do (2026-10-20): `allow`, `confirm` (allowed
+after the user approves the call in the chat) or `off`, for the whole tenant and per group, in the
+admin app's "AI tools" section.
+
+- **Where it lives.** In LibreChat (`McpToolPolicy`, tenant-isolated, and `PlatformMcpTool`, the
+  tools each platform server registers at start), because only LibreChat knows both kinds of
+  groups: those synced from the identity provider and the admin app's own.
+- **Resolution.** The most permissive rule of the user's groups, else the tenant rule, else the
+  default: `allow` for read-only tools, `confirm` for every other tool, including new ones.
+- **Two enforcement points.** LibreChat's tool approval hook (`platformToolPolicyHook.js`, with
+  `toolApproval.mode: bypass` so nothing else asks) denies `off` tools and asks before `confirm`
+  ones. Each MCP server asks LibreChat (`/api/platform/mcp`, `PLATFORM_MCP_TOKEN`) for the mode
+  of the user its verified token names and refuses `off` tools itself, failing closed when it
+  cannot ask. A caller that skips LibreChat, even with the user's own token, cannot run an `off`
+  tool.
+- **What the server cannot check.** Whether a `confirm` call was confirmed is LibreChat's to
+  enforce; the audit entry records the mode the call ran under. A signed approval from LibreChat
+  would let the server check it too (open).
+- Scope grants (`scope_grants`) remain for servers run without the platform.
+
+### Acting in the user's name
+
+The assistant must not be able to do more than the user could (2026-10-20). Two cases:
+
+- **Systems that know their users** (Microsoft 365): each user connects their own account, and
+  every call uses that user's delegated token, so the system's own permissions bound the
+  assistant. The first call without a connection answers with a one-time link (ten minutes,
+  bound to the verified identity of that call). After the provider's sign-in (OAuth with PKCE)
+  the server checks the account belongs to the same person: for Microsoft, the tenant's Entra
+  directory (set by the tenant admin) and the same email unless the tenant allows otherwise.
+  Tokens are stored encrypted (AES-256-GCM) per tenant, user and provider, refreshed as needed,
+  and listed and revocable in the admin app. The platform token's email comes from Zitadel's
+  userinfo endpoint, since its access tokens carry none.
+- **Systems with one key per organization** (Lexware Office, DeepL): the tenant admin stores the
+  key in the server's tenant settings (write-only). What the system cannot tell apart, the server
+  adds: separate tools for consequential steps (issuing a final invoice), the author named in
+  each created voucher, an amount ceiling, and the per-tool policy per group.
 
 ### Audit entry
 
@@ -512,18 +541,23 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 
 ### First servers
 
-All on Microsoft Graph, sharing one Graph module in the core:
+Built (2026-10-20, `anno-systems/mcp-servers`):
 
-1. `outlook-mail`
-2. `outlook-calendar`
-3. `sharepoint`
+| Server                                                       | Process     | Notes                                                                                                   |
+| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only                           |
+| `lexware`                                                    | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                  |
+| `deepl`                                                      | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                     |
+| `einvoice`                                                   | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator |
 
-Each customer's Entra admin consents once to the platform's app registration in their Microsoft
-tenant; this is an onboarding step and needs a guided flow in the admin app.
+Each customer's Entra admin consents once to the platform's multi-tenant app; the tenant admin
+then enters the directory id. A guided consent flow in the admin app is still missing.
 
-Later: GitHub, Azure DevOps, then German accounting and payroll (lexoffice/Lexware Office, sevDesk,
-Personio; DATEV requires its partner programme). Payroll data can include special-category data
-(GDPR Art. 9), so those servers need the finest-grained scopes.
+Next, as listed by the owner: Excel, Planner / To Do, Entra lookups, Google Calendar, Docs, Sheets
+and Mail, Zendesk, Personio, Odoo, sevDesk, Slack, DHL Parcel DE, ELSTER, LinkedIn, Jira and
+Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbix, Grafana
+(self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data
+(Personio) can include special-category data (GDPR Art. 9) and needs the finest-grained tools.
 
 ## Data residency
 
@@ -596,7 +630,11 @@ Decided:
   tenant, so a changed or deleted entry is detectable.
 - Platform token for now: the user's Zitadel access token, forwarded by LibreChat
   (`OPENID_REUSE_TOKENS`) (2026-10-19). The audience-bound exchanged token stays the target.
-- Scopes from the policy store, not token claims (2026-10-19).
+- Scopes from the policy store, not token claims (2026-10-19), superseded by the per-tool policy
+  in LibreChat (2026-10-20, see [Tool policy](#tool-policy)).
+- MCP write tools (2026-10-20): the tenant admin decides per tool and group (off, allow, confirm);
+  new tools that change data need confirmation by default. Users connect their own accounts
+  where the system knows users (see [Acting in the user's name](#acting-in-the-users-name)).
 - Admin app stack (2026-10-20): TypeScript, a React + Vite web app and a small Node server in
   `anno-systems/admin-app`. Tenant admins sign in through LibreChat's own admin login (Zitadel
   role `tenant-admin`); the server keeps the admin token and calls upstream's `/api/admin/*` with
@@ -634,6 +672,10 @@ Decided:
   scrape per tenant for billing, never stores queries, and can cap a tenant per month.
 
 Open:
+
+- A signed approval from LibreChat, so MCP servers can verify a `confirm` call was approved.
+- A guided Entra admin-consent flow in the admin app.
+- The ZUGFeRD PDF/A-3 container (today the server produces the XML).
 
 - When to move from the forwarded token to an audience-bound exchanged token.
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
