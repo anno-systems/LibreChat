@@ -5,6 +5,7 @@ export { createAdminGroupsHandlers } from './groups';
 export { createAdminRolesHandlers, createRolePermissionsUpdateHandler } from './roles';
 export { createAdminSkillsSyncAccess, createAdminSkillsSyncHandlers } from './skills';
 export { createAdminUsersHandlers } from './users';
+export { requireAdminUserDeletion } from './deletion';
 export { createAdminAuditLogHandlers } from './auditLog';
 export { createAdminCodeEnvironmentHandlers } from './code';
 export { buildAuditContext } from './context';
