@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const { CacheKeys } = require('librechat-data-provider');
 const { AppService, logger, decryptV3 } = require('@librechat/data-schemas');
 const {
-  isEnabled,
   createAppConfigService,
   createTenantEndpointLoader,
   clearMcpConfigCache,
@@ -49,7 +48,7 @@ const loadBaseConfig = async (mode) => {
 
 /** Fork: the platform model catalog's endpoints per tenant (`packages/api/src/platform`). */
 const tenantEndpoints = createTenantEndpointLoader({
-  enabled: isEnabled(process.env.ADMIN_CONFIG_CATALOG_LOCK),
+  enabled: process.env.ADMIN_CONFIG_CATALOG_LOCK === 'true',
   getTenantCatalog: db.getTenantCatalog,
   findPlatformProviders: db.findPlatformProviders,
   decrypt: decryptV3,
