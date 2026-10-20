@@ -901,6 +901,37 @@ describe('MCPManager', () => {
       expect(updateActivity).toHaveBeenCalledWith(mockUser.id);
     });
 
+    it('sends the call context as _meta and omits _meta without one', async () => {
+      const manager = new MCPManager();
+      const activeConnection = createConnection();
+      jest.spyOn(manager, 'getConnection').mockResolvedValue(activeConnection);
+      const meta = { 'librechat/context': { model: 'm', agentId: 'agent_1' } };
+
+      await manager.callTool({
+        user: mockUser,
+        serverName,
+        serverConfig,
+        toolName: 'test_tool',
+        provider: 'openai',
+        flowManager: mockFlowManager,
+        meta,
+      });
+      await manager.callTool({
+        user: mockUser,
+        serverName,
+        serverConfig,
+        toolName: 'test_tool',
+        provider: 'openai',
+        flowManager: mockFlowManager,
+      });
+
+      const calls = (activeConnection.client.request as jest.Mock).mock.calls
+        .map(([input]) => input)
+        .filter((input) => input.method === 'tools/call');
+      expect(calls[0].params._meta).toEqual(meta);
+      expect(calls[1].params).not.toHaveProperty('_meta');
+    });
+
     it('does not create activity entries for app-shared connections', async () => {
       const manager = new MCPManager();
       const appConnection = createConnection();

@@ -28,6 +28,7 @@ export * from './mcp/toolsChanged';
 export * from './mcp/oauth';
 export * from './mcp/auth';
 export * from './mcp/zod';
+export * from './mcp/callContext';
 export * from './mcp/errors';
 export * from './mcp/audit';
 export * from './mcp/loading';

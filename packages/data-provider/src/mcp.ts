@@ -206,6 +206,11 @@ const BaseOptionsSchema = z.object({
    *   requiring manual authentication (e.g., GitHub PAT tokens) that need to be configured through the UI after startup
    */
   startup: z.boolean().optional(),
+  /**
+   * Send the turn's model, agent id, conversation id and message id with every tool call, in the
+   * request's `_meta` under `librechat/context`. Default: false. Admin-only (fork: MCP call context).
+   */
+  callContext: z.boolean().optional(),
   iconPath: z.string().optional(),
   timeout: z.number().int().nonnegative().optional(),
   /** Timeout (ms) for the long-lived SSE GET stream body before undici aborts it. Default: 300_000 (5 min). */
@@ -491,6 +496,7 @@ export type MCPOptions = z.infer<typeof MCPOptionsSchema>;
 const omitServerManagedFields = <T extends z.ZodObject<z.ZodRawShape>>(schema: T) =>
   schema.omit({
     startup: true,
+    callContext: true,
     timeout: true,
     sseReadTimeout: true,
     initTimeout: true,
