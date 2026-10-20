@@ -439,6 +439,9 @@ const startServer = async () => {
   app.use('/api/admin/audit-log', routes.adminAuditLog);
   /* Fork: the platform model catalog (tenant admins, and the operator API). */
   app.use('/api/admin/catalog', routes.adminCatalog);
+  /* Fork: the per-tool policy of the platform's MCP servers. */
+  app.use('/api/admin/mcp-tools', routes.adminMcpTools);
+  app.use('/api/platform/mcp', routes.platformMcp);
   app.use('/api/platform', routes.platform);
   app.use('/api/actions', routes.actions);
   app.use('/api/keys', routes.keys);
