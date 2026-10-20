@@ -13,6 +13,7 @@ export type {
   OwnEndpoint,
   CatalogAssignment,
 } from './platformCatalog';
+export type { TenantUserTarget } from './tenantPurge';
 import type {
   FileMethods,
   FileOwnerScope,
@@ -69,6 +70,7 @@ import {
   type UserGroupMethods,
   type UserGroupDeps,
 } from './userGroup';
+import { createGroupSyncMethods, type GroupSyncMethods } from './groupSync';
 import {
   createAclEntryMethods,
   permissionBitSupersets,
@@ -91,6 +93,7 @@ import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
+import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
@@ -289,6 +292,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   MCPServerMethods &
   CodeEnvironmentMethods &
   UserGroupMethods &
+  GroupSyncMethods &
   AclEntryMethods &
   SystemGrantMethods &
   AuditLogMethods &
@@ -300,6 +304,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   BannerMethods &
   PlatformCatalogMethods &
   McpToolPolicyMethods &
+  TenantPurgeMethods &
   ToolCallMethods &
   CategoriesMethods &
   PresetMethods &
@@ -535,6 +540,7 @@ export function createMethods(
     ...createCodeEnvironmentMethods(mongoose),
     ...createAccessRoleMethods(mongoose),
     ...userGroupMethods,
+    ...createGroupSyncMethods(mongoose, userGroupMethods),
     ...aclEntryMethods,
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),
@@ -546,6 +552,7 @@ export function createMethods(
     ...createBannerMethods(mongoose),
     ...createPlatformCatalogMethods(mongoose),
     ...createMcpToolPolicyMethods(mongoose),
+    ...createTenantPurgeMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
     ...createPresetMethods(mongoose),
@@ -620,6 +627,7 @@ export type {
   BannerMethods,
   PlatformCatalogMethods,
   McpToolPolicyMethods,
+  TenantPurgeMethods,
   ToolCallMethods,
   CategoriesMethods,
   PresetMethods,

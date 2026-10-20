@@ -135,6 +135,9 @@ export const AUDIT_ACTIONS = [
   /** Fork: per-tool policy of the platform's MCP servers, written by tenant admins; target
    * `{ type: 'mcp_tool', id: '<server>/<tool>' }`. */
   'mcp_tool.policy_updated',
+  /** Fork: the operator deleted a tenant and all of its data; platform chain, target
+   * `{ type: 'tenant', id }`, metadata the counts. */
+  'tenant.purged',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -185,6 +188,7 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'catalog.own_endpoint_updated': 'config',
   'catalog.own_endpoint_deleted': 'config',
   'mcp_tool.policy_updated': 'mcp',
+  'tenant.purged': 'user',
 };
 
 /** Result of the audited operation. Kept first-class instead of being encoded

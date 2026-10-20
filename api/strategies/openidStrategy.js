@@ -31,6 +31,7 @@ const {
   getOpenIdRoleSyncOptions,
   getOpenIdRolesForOpenIdSync,
   getLibreChatRolesForOpenIdSync,
+  syncOpenIdGroups,
   DEFAULT_OAUTH_TOKEN_TTL_SECONDS,
 } = require('@librechat/api');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
@@ -42,6 +43,7 @@ const {
   findBalanceByUser,
   recordAuditEntry,
   createUserIfAbsent,
+  syncExternalGroupMemberships,
 } = require('~/models');
 const { getAppConfig } = require('~/server/services/Config');
 const getLogStores = require('~/cache/getLogStores');
@@ -846,6 +848,7 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
   }
 
   user = await updateUser(user._id, user);
+  await syncOpenIdGroups({ syncExternalGroupMemberships }, user, userinfo, process.env);
   await recordIdpRoleChange({
     recordAuditEntry,
     userId: String(user._id),

@@ -19,3 +19,5 @@ export type {
   ToolPolicyResolver,
   ToolPolicyResolverDeps,
 } from './toolPolicy';
+export { createTenantPurgeHandler, purgeTenant } from './purge';
+export type { TenantPurgeDeps, TenantPurgeResult } from './purge';
