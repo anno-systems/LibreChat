@@ -98,11 +98,15 @@ Verified in the code at `9008c47`:
 
 ### What we add
 
-- **Tenant registry.** A `Tenant` record: id, display name, domains, status (active, suspended),
-  plan, Zitadel organization id, data-residency facts shown to the tenant admin. Owned by the
-  operator API, stored through a `packages/data-schemas` method.
-- **Domain to tenant.** The reverse proxy maps each custom domain to its tenant id and sets
-  `X-Tenant-Id`, overwriting any value the client sent. LibreChat trusts the header only from the
+- **Tenant registry.** For now the Zitadel organizations are the registry: a tenant is an
+  organization with the tenant id as its id, and the admin app's tenants are the organizations
+  its service user belongs to. A `Tenant` record (domains, status, plan, data-residency facts)
+  stored through a `packages/data-schemas` method follows when plans, suspension or custom
+  domains need data Zitadel does not hold.
+- **Domain to tenant.** The reverse proxy maps each tenant host to its tenant id and sets
+  `X-Tenant-Id`, overwriting any value the client sent. Platform subdomains need no per-tenant
+  configuration: the first label of the host is the tenant id (a wildcard site in Caddy).
+  Custom domains will need a lookup in the registry. LibreChat trusts the header only from the
   proxy (`TRUST_TENANT_HEADER=true` behind a proxy that strips client copies).
 - **Claim to tenant.** At OIDC login, LibreChat takes the tenant from a claim in the broker's token
   and checks it against the header. A mismatch fails the login. This closes the gap where a user of
@@ -201,7 +205,7 @@ A tenant admin connects the company's identity provider (Microsoft Entra ID or a
 Connect provider) in the admin app. The admin app creates the provider as a template in the
 tenant's Zitadel organization, gives the organization its own login policy and activates the
 provider there, so it appears on that tenant's sign-in page only. It acts with one Zitadel
-service user that holds `ORG_SETTINGS_MANAGER` in each tenant organization and nothing else
+service user that holds `ORG_SETTINGS_MANAGER` and `ORG_USER_MANAGER` in each tenant organization and nothing else
 (platform-infra's provisioner), always naming the session's organization. Client secrets go to
 Zitadel only. Issuers must be HTTPS on a public host name, because Zitadel fetches their
 discovery document; an egress policy for Zitadel is what fully prevents a public name resolving
@@ -264,7 +268,7 @@ upstream's documented `/api/admin/*` API but copies no code from the AGPL panel.
 | Tenant area   | Tenant admins, limited to their own tenant | Upstream `/api/admin/*` in the tenant's context, extended where needed | Users and groups, models per group, agents, enabling MCP servers and assigning scopes, branding, budgets, usage dashboards, audit viewer, SSO                               |
 | Operator area | The operator only                          | New operator API module in the fork                                    | Create, suspend and delete tenants; domains; Zitadel organization; plans; model catalog with regions and prices; MCP catalog; health; cross-tenant usage and billing export |
 
-Built so far (2026-10-20), all in the tenant area:
+Built so far (2026-10-20), in the tenant area:
 
 | Function            | Backend                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -276,6 +280,16 @@ Built so far (2026-10-20), all in the tenant area:
 | Web search usage    | The search gateway's usage report, asked for the session's tenant only                                                |
 | Single sign-on      | Identity providers in the tenant's Zitadel organization (see [Single sign-on per tenant](#single-sign-on-per-tenant)) |
 | Users               | Upstream's user list and admin erasure (`ADMIN_USER_DELETION`)                                                        |
+| Invitations         | An account without a password in the tenant's Zitadel organization and Zitadel's invite email                         |
+
+And in the operator area, on `/operator` of the same app: **create a tenant**. The operator signs
+in to Zitadel with the admin app's own OIDC client (operator role of the platform organization,
+second factor required). With an operator service user (`IAM_ORG_MANAGER`, `ORG_OWNER` of the
+platform organization) the admin app creates the organization with the tenant id, its primary
+domain and branding, grants it LibreChat's project, adds the admin app's service user, adds the
+tenant's callback URLs to LibreChat's OIDC app and invites the first admin with `tenant-admin`.
+A failed step undoes the ones before it. LibreChat itself needs nothing per tenant. Missing:
+custom domains, suspending and deleting tenants, plans, and a web search key for new tenants.
 
 The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
 `SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
@@ -547,6 +561,11 @@ Decided:
   organizations only (see [Single sign-on per tenant](#single-sign-on-per-tenant)).
 - Tenant-wide agents (2026-10-20): upstream's public viewer grant, which tenant isolation keeps
   inside the tenant; no fork change.
+- Tenant onboarding (2026-10-20): the operator creates a tenant in the admin app's operator
+  area, which acts in Zitadel only; the Zitadel organizations are the tenant registry until
+  plans or custom domains need a `Tenant` record. Tenant admins name their organization id at
+  sign-in instead of picking from a list, so the sign-in page does not disclose customers.
+  People join a tenant by the admin's email invitation or through the tenant's identity provider.
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
   instance and as Serper's scraper with a key per tenant. The gateway counts every search and
