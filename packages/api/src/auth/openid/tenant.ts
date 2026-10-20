@@ -1,6 +1,7 @@
 import { getTenantId, tenantStorage } from '@librechat/data-schemas';
 import type { IncomingHttpHeaders } from 'http';
 import { rejectTenantHeader } from '~/middleware/tenantHeader';
+import { getTenantOrigin } from '~/middleware/tenantOrigin';
 import { isEnabled } from '~/utils';
 
 /** Replaced by the request's tenant id in the `TENANT_DOMAIN_*` and `OPENID_TENANT_SCOPE` templates. */
@@ -44,11 +45,19 @@ function fillTemplate(
   return template.split(TENANT_ID_PLACEHOLDER).join(tenantId);
 }
 
-/** Public client and server URLs for the request's tenant, falling back to the deployment URLs. */
+/**
+ * Public client and server URLs for the request's tenant, falling back to the deployment URLs.
+ * A request on one of the tenant's custom domains uses that domain's origin (`X-Tenant-Origin`
+ * from the trusted proxy, see `middleware/tenantOrigin.ts`).
+ */
 export function getTenantDomains(
   tenantId: string | undefined,
   settings: TenantOpenIdSettings,
 ): TenantDomains {
+  const origin = tenantId ? getTenantOrigin() : undefined;
+  if (origin) {
+    return { client: origin, server: origin };
+  }
   return {
     client: fillTemplate(settings.TENANT_DOMAIN_CLIENT, tenantId) ?? settings.DOMAIN_CLIENT,
     server: fillTemplate(settings.TENANT_DOMAIN_SERVER, tenantId) ?? settings.DOMAIN_SERVER,

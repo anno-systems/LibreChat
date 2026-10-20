@@ -49,6 +49,7 @@ const {
   readBundledThemeBoot,
   createDeploymentThemeShell,
   preAuthTenantMiddleware,
+  tenantOriginMiddleware,
   requestContextMiddleware,
   registerShutdownTask,
   getRemainingShutdownMs,
@@ -359,6 +360,8 @@ const startServer = async () => {
 
   /* Middleware */
   app.use(requestContextMiddleware);
+  /* Fork: a tenant's custom domain, named by the trusted proxy (X-Tenant-Origin). */
+  app.use(tenantOriginMiddleware);
   app.use('/api/agents/chat', agentStartupIngressMiddleware);
   app.use(metricsMiddleware);
   app.use(noIndex);
