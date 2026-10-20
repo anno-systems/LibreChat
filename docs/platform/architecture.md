@@ -280,10 +280,14 @@ Built so far (2026-10-20), all in the tenant area:
 The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
 `SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
 on LibreChat's user-facing API, which bans clients that are not browsers by user and IP; those
-calls forward the admin's own browser user agent. All admin traffic reaches LibreChat from the
-admin app's one address, so LibreChat's per-IP login and refresh limits (`LOGIN_MAX`) and any IP
-ban apply to all admins together; production must account for that (a higher limit, or passing
-the admin's address through as a trusted proxy would).
+calls forward the admin's own browser user agent. Every call also carries the admin's own address
+in `X-Forwarded-For`, which LibreChat trusts from its first hop (`TRUST_PROXY`), so LibreChat's
+per-IP login and refresh limits (`LOGIN_MAX`), its violation bans and its audit entries apply to
+each admin, not to the admin app's single address.
+
+Decision: limits and bans stay per admin address, not per tenant. A tenant-keyed limit would let
+one admin's failures, or an attacker who knows a tenant's id, lock out every admin of that
+tenant; a per-address limit confines that to the address that misbehaves.
 
 Separation rules, because one app now holds both:
 
@@ -311,9 +315,18 @@ logo never needs a new image. The login page itself is branded in Zitadel per or
 A tenant admin erases a user in the admin app. It calls upstream's admin erasure handler, which
 the fork routes behind `ADMIN_USER_DELETION=true` (`DELETE /api/admin/users/:id`): it stops the
 user's generations and schedules and deletes conversations, messages, files, memories, own
-agents, shares, sessions and settings, inside the admin's tenant only. Still open: deleting the
-Zitadel account, and pseudonymizing the user in the MCP audit logs (the subject is replaced by a
-keyed pseudonym whose key is deleted, so the hash chain stays valid).
+agents, shares, sessions and settings, inside the admin's tenant only.
+
+The admin app also deletes the user's Zitadel account. It finds the account by the user's email
+address inside the tenant's organization and deactivates it first, so the user cannot sign in
+during the erasure. LibreChat then erases the data, and the app deletes the account. A refused
+erasure reactivates the account. Several accounts with the address stop the deletion before
+anything changes. An account Zitadel fails to delete stays deactivated, and the admin is told to
+ask the operator. The admin app's service user is `ORG_USER_MANAGER` in each tenant organization
+for this.
+
+Still open: pseudonymizing the user in the MCP audit logs (the subject is replaced by a keyed
+pseudonym whose key is deleted, so the hash chain stays valid).
 
 ## Usage, limits and dashboards
 
@@ -549,5 +562,3 @@ Open:
   choose from (an endpoint's `tenantId` can reserve it for one tenant); limits per plan below
   that need a layer tenant admins cannot write.
 - Region and price per catalog model for the admin app.
-- The admin app's single address against LibreChat's per-IP limits and bans (see [Admin app](#admin-app)).
-- Deleting a user's Zitadel account together with their LibreChat data.
