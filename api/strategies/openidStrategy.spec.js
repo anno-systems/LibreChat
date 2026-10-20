@@ -450,6 +450,45 @@ describe('setupOpenId', () => {
       expect(user).toBe(false);
       expect(createUserIfAbsent).not.toHaveBeenCalled();
     });
+
+    it("sends the admin login to the tenant's own admin callback and organization", () => {
+      const admin = require('openid-client/passport').__getStrategyByName('openidAdmin');
+      expect(admin.authorizationRequestParams({}, {}).get('redirect_uri')).toBe(
+        'https://example.com/api/admin/oauth/openid/callback',
+      );
+
+      useTenants();
+      const params = admin.authorizationRequestParams({}, {});
+
+      expect(params.get('redirect_uri')).toBe(
+        'https://acme.example.com/api/admin/oauth/openid/callback',
+      );
+      expect(params.get('scope')).toBe('openid profile email urn:zitadel:iam:org:id:acme');
+    });
+
+    it('rejects an admin login from another tenant', async () => {
+      useTenants();
+      const adminVerify =
+        require('openid-client/passport').__getVerifyCallbackByName('openidAdmin');
+
+      const result = await new Promise((resolve) =>
+        adminVerify(tenantTokenset('other'), (err, user, details) => resolve({ user, details })),
+      );
+
+      expect(result.user).toBe(false);
+      expect(findUser).not.toHaveBeenCalled();
+    });
+
+    it('grants admin from a role claim keyed by role name, as Zitadel sends it', async () => {
+      jwtDecode.mockReturnValue({
+        roles: ['requiredRole'],
+        permissions: { admin: { acme: 'acme.example.com' } },
+      });
+
+      const { user } = await validate(tokenset);
+
+      expect(user.role).toBe('ADMIN');
+    });
   });
 
   describe('authorizationRequestParams', () => {

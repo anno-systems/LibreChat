@@ -24,6 +24,7 @@ const {
   isEmailDomainAllowed,
   getTenantOpenIdScope,
   checkOpenIdTenantClaim,
+  getRoleClaimValues,
   getAvatarFileStrategy,
   resolveAppConfigForUser,
   getOpenIdProxyDispatcher,
@@ -139,6 +140,8 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
   constructor(options, verify) {
     super(options, verify);
     this._tenantAware = options.tenantAware === true;
+    /** Path of the tenant-aware callback; the admin login uses its own. */
+    this._callbackPath = options.callbackPath;
   }
 
   currentUrl(req) {
@@ -157,7 +160,10 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
     if (this._tenantAware) {
       const tenantId = getTenantId();
       const { server } = getTenantDomains(tenantId, process.env);
-      params.set('redirect_uri', `${server}${process.env.OPENID_CALLBACK_URL}`);
+      params.set(
+        'redirect_uri',
+        `${server}${this._callbackPath ?? process.env.OPENID_CALLBACK_URL}`,
+      );
       const scope = getTenantOpenIdScope(process.env.OPENID_SCOPE, tenantId, process.env);
       if (scope) {
         params.set('scope', scope);
@@ -764,12 +770,7 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
       }
     }
 
-    let adminRoleValues = [];
-    if (Array.isArray(adminRoles)) {
-      adminRoleValues = adminRoles;
-    } else if (typeof adminRoles === 'string') {
-      adminRoleValues = adminRoles.split(/[\s,]+/).filter(Boolean);
-    }
+    const adminRoleValues = getRoleClaimValues(adminRoles);
 
     if (adminRoles && (adminRoles === true || adminRoleValues.includes(adminRole))) {
       user.role = SystemRoles.ADMIN;
@@ -901,6 +902,8 @@ function createOpenIDCallback(existingUsersOnly, tenantAware = false) {
   };
 }
 
+const ADMIN_CALLBACK_PATH = '/api/admin/oauth/openid/callback';
+
 /**
  * Sets up the OpenID strategy specifically for admin authentication.
  * @param {Configuration} openidConfig
@@ -917,9 +920,12 @@ const setupOpenIdAdmin = (openidConfig) => {
         scope: process.env.OPENID_SCOPE,
         usePKCE: isEnabled(process.env.OPENID_USE_PKCE),
         clockTolerance: process.env.OPENID_CLOCK_TOLERANCE || 300,
-        callbackURL: process.env.DOMAIN_SERVER + '/api/admin/oauth/openid/callback',
+        callbackURL: process.env.DOMAIN_SERVER + ADMIN_CALLBACK_PATH,
+        /** Per-tenant callback, organization scope and tenant claim, like the user login. */
+        tenantAware: true,
+        callbackPath: ADMIN_CALLBACK_PATH,
       },
-      createOpenIDCallback(true),
+      createOpenIDCallback(true, true),
     );
 
     passport.use('openidAdmin', openidAdminLogin);

@@ -6,3 +6,4 @@ export * from './recovery';
 export * from './session';
 export * from './retry';
 export * from './tenant';
+export * from './roles';
