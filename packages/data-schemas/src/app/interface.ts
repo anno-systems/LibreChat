@@ -54,6 +54,7 @@ export async function loadDefaultInterface({
     feedback: interfaceConfig?.feedback ?? defaults.feedback,
     currency: interfaceConfig?.currency ?? defaults.currency,
     theme: interfaceConfig?.theme,
+    branding: interfaceConfig?.branding,
     steerArmConfirmationTimeoutMs:
       interfaceConfig?.steerArmConfirmationTimeoutMs ?? defaults.steerArmConfirmationTimeoutMs,
     queuedTurnReconciliationTimeoutMs:

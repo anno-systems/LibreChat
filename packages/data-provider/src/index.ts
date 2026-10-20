@@ -2,6 +2,7 @@
 export * from './azure';
 export * from './bedrock';
 export * from './balance';
+export * from './branding';
 export * from './config';
 export * from './footer';
 export * from './theme';

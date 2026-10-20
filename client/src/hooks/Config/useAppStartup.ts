@@ -13,6 +13,7 @@ import { cleanupTimestampedStorage } from '~/utils/timestamps';
 import useSpeechSettingsInit from './useSpeechSettingsInit';
 import { useHasAccess, useCatalogReady } from '~/hooks';
 import { useMCPServersQuery } from '~/data-provider';
+import { setBrandFavicon } from '~/utils/favicon';
 import { setDocumentTitle } from '~/utils';
 import store from '~/store';
 
@@ -48,6 +49,13 @@ export default function useAppStartup({
     }
     setDocumentTitle(appTitle, true);
     localStorage.setItem(LocalStorageKeys.APP_TITLE, appTitle);
+  }, [startupConfig]);
+
+  /** Show the tenant's favicon (fork-only) */
+  useEffect(() => {
+    if (startupConfig) {
+      setBrandFavicon(startupConfig.interface?.branding?.favicon);
+    }
   }, [startupConfig]);
 
   /** Set the default spec's preset as default */
