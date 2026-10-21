@@ -162,6 +162,24 @@ describe('operator API', () => {
     expect(stored.models).toEqual(['small']);
   });
 
+  it('stores the request fields a provider rejects and shows them to the operator', async () => {
+    const { handlers } = setup();
+
+    const created = await call(
+      handlers.putProvider,
+      operatorReq(
+        { name: 'Mistral Platform' },
+        { ...provider, dropParams: ['user', 'stop', 'user'] },
+      ),
+    );
+    const listed = await call(handlers.listProviders, operatorReq({}));
+
+    expect(created.statusCode).toBe(201);
+    expect(listed.body?.providers).toEqual([
+      expect.objectContaining({ dropParams: ['user', 'stop'] }),
+    ]);
+  });
+
   it('refuses a new provider without key, a YAML name, bad fields and bad names', async () => {
     const { handlers } = setup();
     const { apiKey: _key, ...withoutKey } = provider;
@@ -173,6 +191,7 @@ describe('operator API', () => {
       [{ name: 'X' }, { ...provider, baseURL: 'ftp://x' }, 400],
       [{ name: 'X' }, { ...provider, models: [] }, 400],
       [{ name: 'X' }, { ...provider, extra: true }, 400],
+      [{ name: 'X' }, { ...provider, dropParams: ['User Id'] }, 400],
     ] as const;
     for (const [params, body, status] of cases) {
       expect((await call(handlers.putProvider, operatorReq(params, body))).statusCode).toBe(status);
@@ -291,6 +310,12 @@ describe('tenant admin API', () => {
     expect(listed.body?.own).toEqual([
       { name: 'Own', baseURL: own.baseURL, models: ['m', 'n'], apiKeyPreview: '...6789' },
     ]);
+    const dropping = await call(
+      handlers.putOwnEndpoint,
+      adminReq({ name: 'Own' }, { ...withoutKey, dropParams: ['user'] }),
+    );
+    expect(dropping.body).toMatchObject({ dropParams: ['user'] });
+    expect((await methods.getTenantCatalog('tenant-a'))?.own[0].dropParams).toEqual(['user']);
     expect((await methods.getTenantCatalog('tenant-b'))?.own ?? []).toEqual([]);
     expect(deps.recordAuditEntry).toHaveBeenCalledWith(
       expect.objectContaining({
