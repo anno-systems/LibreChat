@@ -1,6 +1,6 @@
 import { AuthType, EModelEndpoint, ReasoningParameterFormat } from 'librechat-data-provider';
 import type { TCustomEndpoints } from 'librechat-data-provider';
-import { loadCustomEndpointsConfig, usesOpenRouterCatalog } from './config';
+import { hasCustomModels, loadCustomEndpointsConfig, usesOpenRouterCatalog } from './config';
 
 const baseEndpoint = {
   apiKey: 'sk-test',
@@ -310,5 +310,27 @@ describe('usesOpenRouterCatalog', () => {
 
   it('is false for a native provider endpoint', () => {
     expect(uses({ provider: EModelEndpoint.anthropic })).toBe(false);
+  });
+});
+
+describe('loadCustomEndpointsConfig: endpoints without models', () => {
+  it('leaves out an endpoint whose default list is empty and that fetches nothing', () => {
+    const config = loadCustomEndpointsConfig([
+      { ...baseEndpoint, name: 'Switched-Off', models: { default: [] } },
+      { ...baseEndpoint, name: 'Fetched', models: { default: [], fetch: true } },
+      { ...baseEndpoint, name: 'Kept' },
+    ] as unknown as TCustomEndpoints);
+
+    expect(Object.keys(config ?? {}).sort()).toEqual(['Fetched', 'Kept']);
+  });
+});
+
+describe('hasCustomModels', () => {
+  it('needs fetched models or a non-empty default list', () => {
+    expect(hasCustomModels({ default: ['m'] })).toBe(true);
+    expect(hasCustomModels({ fetch: true })).toBe(true);
+    expect(hasCustomModels({ default: [] })).toBe(false);
+    expect(hasCustomModels({})).toBe(false);
+    expect(hasCustomModels(undefined)).toBe(false);
   });
 });
