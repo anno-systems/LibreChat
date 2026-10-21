@@ -41,6 +41,21 @@ describe('catalogEndpoints', () => {
     ]);
   });
 
+  it("drops `user` unless the endpoint sets its own list, so Mistral's API accepts the request", () => {
+    const endpoints = catalogEndpoints(
+      {
+        ...catalog,
+        own: [{ ...catalog.own[0], dropParams: [] }],
+      },
+      [{ ...provider, dropParams: ['user', 'stop'] }],
+      decrypt,
+    );
+    const [defaulted] = catalogEndpoints(catalog, [provider], decrypt);
+
+    expect(defaulted.dropParams).toEqual(['user']);
+    expect(endpoints.map((e) => e.dropParams)).toEqual([['user', 'stop'], []]);
+  });
+
   it('leaves out the tenant endpoints without BYOK and assignments without models', () => {
     const endpoints = catalogEndpoints(
       { ...catalog, byok: false, providers: [{ name: 'Mistral Platform', models: ['gone'] }] },

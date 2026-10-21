@@ -57,6 +57,20 @@ describe('platform providers', () => {
     expect(await methods.deletePlatformProvider('Mistral Platform')).toBe(true);
     expect(await methods.deletePlatformProvider('Mistral Platform')).toBe(false);
   });
+
+  it('keeps an empty drop list apart from none and clears it on an update without one', async () => {
+    const empty = await methods.upsertPlatformProvider({ ...mistral, dropParams: [] });
+    expect(empty.dropParams).toEqual([]);
+
+    await methods.upsertPlatformProvider({ ...mistral, dropParams: ['user', 'stop'] });
+    expect((await methods.findPlatformProviders([mistral.name]))[0].dropParams).toEqual([
+      'user',
+      'stop',
+    ]);
+
+    const cleared = await methods.upsertPlatformProvider(mistral);
+    expect(cleared).not.toHaveProperty('dropParams');
+  });
 });
 
 describe('tenant catalogs', () => {
@@ -92,6 +106,11 @@ describe('tenant catalogs', () => {
     const replaced = await methods.upsertOwnEndpoint('tenant-a', { ...own, models: ['y'] });
 
     expect(replaced.own).toEqual([{ ...own, models: ['y'] }]);
+    const dropping = await methods.upsertOwnEndpoint('tenant-a', { ...own, dropParams: ['user'] });
+    expect(dropping.own[0].dropParams).toEqual(['user']);
+    expect((await methods.upsertOwnEndpoint('tenant-a', own)).own[0]).not.toHaveProperty(
+      'dropParams',
+    );
     expect(replaced.providers).toHaveLength(1);
     expect((await methods.getTenantCatalog('tenant-b'))?.own ?? []).toEqual([]);
     expect(await methods.deleteOwnEndpoint('tenant-b', 'Own')).toBe(false);

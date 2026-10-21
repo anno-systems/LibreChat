@@ -21,6 +21,8 @@ export interface PlatformProvider {
   models: string[];
   /** Where the provider processes data, shown to tenant admins (e.g. `EU (Paris)`). */
   region?: string;
+  /** Request fields the provider rejects; absent means the catalog's default. */
+  dropParams?: string[];
   updatedAt?: Date;
 }
 
@@ -35,6 +37,8 @@ export interface OwnEndpoint {
   /** Encrypted by the caller. */
   apiKey: string;
   models: string[];
+  /** Request fields the endpoint rejects; absent means the catalog's default. */
+  dropParams?: string[];
 }
 
 export interface TenantCatalog {
@@ -74,6 +78,7 @@ const ownEndpointSchema = new Schema<OwnEndpoint>(
     baseURL: { type: String, required: true },
     apiKey: { type: String, required: true },
     models: { type: [String], default: [] },
+    dropParams: { type: [String], default: undefined },
   },
   { _id: false },
 );
@@ -86,6 +91,7 @@ const platformProviderSchema = new Schema<PlatformProvider>(
     apiKey: { type: String, required: true },
     models: { type: [String], default: [] },
     region: { type: String },
+    dropParams: { type: [String], default: undefined },
   },
   { timestamps: true },
 );
@@ -108,6 +114,7 @@ function toProvider(doc: PlatformProvider): PlatformProvider {
     apiKey: doc.apiKey,
     models: [...(doc.models ?? [])],
     ...(doc.region && { region: doc.region }),
+    ...(doc.dropParams && { dropParams: [...doc.dropParams] }),
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
   };
 }
@@ -117,11 +124,12 @@ function toCatalog(doc: TenantCatalog): TenantCatalog {
     tenantId: doc.tenantId,
     byok: doc.byok === true,
     providers: (doc.providers ?? []).map(({ name, models }) => ({ name, models: [...models] })),
-    own: (doc.own ?? []).map(({ name, baseURL, apiKey, models }) => ({
+    own: (doc.own ?? []).map(({ name, baseURL, apiKey, models, dropParams }) => ({
       name,
       baseURL,
       apiKey,
       models: [...models],
+      ...(dropParams && { dropParams: [...dropParams] }),
     })),
   };
 }
@@ -155,9 +163,13 @@ export function createPlatformCatalogMethods(
 
     async upsertPlatformProvider(provider) {
       const { name, ...fields } = provider;
+      const unset = {
+        ...(provider.region ? {} : { region: 1 }),
+        ...(provider.dropParams ? {} : { dropParams: 1 }),
+      };
       const doc = await Provider.findOneAndUpdate(
         { name },
-        { $set: { ...fields, name }, ...(provider.region ? {} : { $unset: { region: 1 } }) },
+        { $set: { ...fields, name }, ...(Object.keys(unset).length > 0 && { $unset: unset }) },
         { upsert: true, new: true, runValidators: true },
       ).lean<PlatformProvider>();
       return toProvider(doc as PlatformProvider);

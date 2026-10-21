@@ -31,12 +31,19 @@ export interface TenantEndpointLoader {
   invalidate(tenantId?: string): void;
 }
 
+/**
+ * Request fields dropped for an endpoint that sets none. LibreChat sends the user's id as `user`;
+ * several providers reject the field (Mistral, Azure AI Foundry models), and none of the
+ * platform's providers needs it.
+ */
+export const DEFAULT_DROP_PARAMS: readonly string[] = ['user'];
+
 /** Shorter than the merged config cache, so a catalog change is visible within a minute. */
 const DEFAULT_TTL_MS = 30_000;
 
 function endpointOf(
   tenantId: string,
-  source: { name: string; baseURL: string; apiKey: string; label?: string },
+  source: { name: string; baseURL: string; apiKey: string; label?: string; dropParams?: string[] },
   models: string[],
 ): TEndpoint {
   return {
@@ -44,6 +51,7 @@ function endpointOf(
     baseURL: source.baseURL,
     apiKey: source.apiKey,
     models: { default: models, fetch: false },
+    dropParams: [...(source.dropParams ?? DEFAULT_DROP_PARAMS)],
     modelDisplayLabel: source.label ?? source.name,
     titleConvo: true,
     titleModel: 'current_model',

@@ -67,6 +67,13 @@ const modelsSchema = z
   .max(MAX_MODELS)
   .transform((models) => [...new Set(models)]);
 
+/** Request fields an endpoint rejects, e.g. `user`; omitted means the catalog's default. */
+const dropParamsSchema = z
+  .array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/))
+  .max(32)
+  .transform((params) => [...new Set(params)])
+  .optional();
+
 const httpURL = z
   .string()
   .trim()
@@ -82,6 +89,7 @@ const providerInputSchema = z
     apiKey: z.string().trim().min(1).max(4096).optional(),
     models: modelsSchema,
     region: z.string().trim().max(64).optional(),
+    dropParams: dropParamsSchema,
   })
   .strict();
 
@@ -99,6 +107,7 @@ const ownEndpointInputSchema = z
     baseURL: httpURL.refine((value) => new URL(value).protocol === 'https:', 'must be https'),
     apiKey: z.string().trim().min(1).max(4096).optional(),
     models: modelsSchema,
+    dropParams: dropParamsSchema,
   })
   .strict();
 
@@ -215,6 +224,7 @@ export function createPlatformCatalogHandlers(
       baseURL: provider.baseURL,
       models: provider.models,
       ...(provider.region && { region: provider.region }),
+      ...(provider.dropParams && { dropParams: provider.dropParams }),
       apiKeyPreview: preview(provider.apiKey, decrypt),
       ...(tenants && { tenants }),
     };
@@ -387,6 +397,7 @@ export function createPlatformCatalogHandlers(
           name: own.name,
           baseURL: own.baseURL,
           models: own.models,
+          ...(own.dropParams && { dropParams: own.dropParams }),
           apiKeyPreview: preview(own.apiKey, decrypt),
         })),
       });
@@ -416,7 +427,7 @@ export function createPlatformCatalogHandlers(
           return res.status(409).json({ error: 'name_taken' });
         }
       }
-      const { apiKey, baseURL, models } = parsed.data;
+      const { apiKey, baseURL, models, dropParams } = parsed.data;
       if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
       if (!(await isAllowedTenantURL(baseURL))) {
         return res.status(400).json({ error: 'url_not_allowed' });
@@ -425,6 +436,7 @@ export function createPlatformCatalogHandlers(
         name,
         baseURL,
         models,
+        ...(dropParams && { dropParams }),
         apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
       });
       await deps.invalidate(tenantId);
@@ -435,7 +447,9 @@ export function createPlatformCatalogHandlers(
         target: { type: 'endpoint', id: name },
         metadata: { created: !existing, keyChanged: Boolean(apiKey), models: models.length },
       });
-      return res.status(existing ? 200 : 201).json({ name, baseURL, models });
+      return res
+        .status(existing ? 200 : 201)
+        .json({ name, baseURL, models, ...(dropParams && { dropParams }) });
     } catch (error) {
       return fail(res, 'own endpoint update', error);
     }
