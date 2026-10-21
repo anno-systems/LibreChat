@@ -353,3 +353,24 @@ describe('configuredModelList', () => {
     expect(configuredModelList(undefined, EModelEndpoint.anthropic)).toBeUndefined();
   });
 });
+
+describe('createLoadConfigModels – custom endpoints without models', () => {
+  it('leaves out a custom endpoint whose default list is empty and that fetches nothing', async () => {
+    const endpoint = { baseURL: 'https://llm.example.com/v1', apiKey: 'sk-test' };
+    const models = await createLoadConfigModels({
+      getAppConfig: jest.fn().mockResolvedValue({
+        endpoints: {
+          [EModelEndpoint.custom]: [
+            { ...endpoint, name: 'Switched-Off', models: { default: [] } },
+            { ...endpoint, name: 'Kept', models: { default: ['m'] } },
+          ],
+        },
+      }),
+      getUserKeyValues: jest.fn(),
+      fetchModels: jest.fn(),
+    })({ user: { id: 'user-1' } } as unknown as ServerRequest);
+
+    expect(models).not.toHaveProperty('Switched-Off');
+    expect(models.Kept).toEqual(['m']);
+  });
+});

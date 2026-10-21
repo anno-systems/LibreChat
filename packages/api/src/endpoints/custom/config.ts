@@ -99,6 +99,17 @@ function withOpenRouterReasoning(
  * Load config endpoints from the cached configuration object
  * @param customEndpointsConfig - The configuration object
  */
+/**
+ * Whether a custom endpoint offers any model: fetched at runtime, or a non-empty `default` list.
+ * Fork: an empty list is how a tenant switches a catalog endpoint off (anno-systems/admin-app#25),
+ * so such an endpoint is left out instead of showing as a provider without models.
+ */
+export function hasCustomModels(
+  models: { fetch?: boolean; default?: readonly unknown[] } | undefined,
+): boolean {
+  return !!models && (!!models.fetch || (models.default?.length ?? 0) > 0);
+}
+
 export function loadCustomEndpointsConfig(
   customEndpoints?: TCustomEndpoints,
 ): TCustomEndpointsConfig | undefined {
@@ -111,11 +122,7 @@ export function loadCustomEndpointsConfig(
   if (Array.isArray(customEndpoints)) {
     const filteredEndpoints = customEndpoints.filter(
       (endpoint) =>
-        endpoint.baseURL &&
-        endpoint.apiKey &&
-        endpoint.name &&
-        endpoint.models &&
-        (endpoint.models.fetch || endpoint.models.default),
+        endpoint.baseURL && endpoint.apiKey && endpoint.name && hasCustomModels(endpoint.models),
     );
 
     for (let i = 0; i < filteredEndpoints.length; i++) {
