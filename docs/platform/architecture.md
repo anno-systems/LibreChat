@@ -1,6 +1,6 @@
 # Platform architecture
 
-Status: draft, 2026-10-19. Fork-only document (`anno-systems/LibreChat`), not part of upstream.
+Status: draft, 2026-10-21. Fork-only document (`anno-systems/LibreChat`), not part of upstream.
 It is the reference for all platform work across the repositories listed below. Change it when a
 decision changes; record the change under [Decisions](#decisions).
 
@@ -75,7 +75,7 @@ GitHub Project ("AI Platform"), and publish images to `ghcr.io/anno-systems/*`.
 | `librechat`      | This fork. Tenant claim mapping, branding fields, MCP identity propagation, tool-call audit events, operator API module.                     |
 | `admin-app`      | One admin application for tenant admins and the operator, built new. See [Admin app](#admin-app).                                            |
 | `mcp-servers`    | Monorepo: a shared core (platform token check, scopes, audit writer, Microsoft OAuth, tenant settings) and one package and image per server. |
-| `platform-infra` | Deployment: local Docker Compose stack, Terraform for T Cloud Public, reverse proxy, Zitadel configuration, per-tenant routing, backups.     |
+| `platform-infra` | Deployment: local Docker Compose stack, Terraform and Helm for STACKIT, reverse proxy, Zitadel configuration, per-tenant routing, backups.   |
 
 ## Tenancy
 
@@ -561,9 +561,11 @@ Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbi
 
 ## Data residency
 
-- Hosting: T Cloud Public (Deutsche Telekom, data centres in Germany) for all platform components
-  and backups.
-- Models: only EU-region endpoints in the catalog; region shown per model in the admin app.
+- Hosting: STACKIT region EU01 (Schwarz Digits, data centres in Germany) for all platform
+  components and backups. The off-site backup copy stays in the EU (see
+  [Backups](#backups)).
+- Models: only EU-region endpoints in the catalog; region shown per model in the admin app. Open
+  models can run in Germany on STACKIT AI Model Serving (OpenAI-compatible, the same bill).
 - MCP targets: the data stays in the customer's own systems (Microsoft 365 etc.); the MCP servers
   do not persist it beyond the audit metadata.
 - Telemetry and tracing (for example Langfuse) self-hosted in the EU or off.
@@ -573,7 +575,112 @@ Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbi
 | Environment | Where               | How                                                                                                                                                                                                                                                                                                    |
 | ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Local       | The owner's machine | Docker Compose in `platform-infra`: reverse proxy with one hostname per test tenant (for example `tenant-a.localhost`, `tenant-b.localhost`), LibreChat from `ghcr.io/anno-systems/librechat`, MongoDB, Zitadel with its database, later the admin app and MCP servers. All current work targets this. |
-| Production  | T Cloud Public      | Terraform (Open Telekom Cloud provider) in `platform-infra`. Later; the deployment form (VMs with Compose or managed Kubernetes) is decided when we get there.                                                                                                                                         |
+| Staging     | STACKIT EU01        | The production shape at a smaller size: two worker nodes, single-node databases. Every release passes it first; it can be switched off outside working hours (billing is hourly).                                                                                                                      |
+| Production  | STACKIT EU01        | Managed Kubernetes and managed databases across three availability zones, provisioned with Terraform and deployed with Helm and GitOps from `platform-infra`. See [Production](#production).                                                                                                           |
+
+## Production
+
+Decided 2026-10-21. Not built yet; everything still runs on the local stack.
+
+### Shape
+
+```mermaid
+flowchart TB
+  LB[STACKIT network load balancer] --> C[Caddy, 2-3 replicas<br/>on-demand TLS, tenant router]
+  subgraph SKE["STACKIT Kubernetes Engine, 3 availability zones"]
+    C --> LC[LibreChat, 3+ replicas]
+    C --> AA[admin app, 2 replicas]
+    C --> ZI[Zitadel API and login, 2 replicas each]
+    LC --> MCP[MCP servers, 2 replicas each]
+    LC --> SG[search gateway, 2 replicas]
+  end
+  LC --> DB[(LibreChat database)]
+  LC --> R[(Redis, 3 nodes)]
+  AA --> R
+  ZI --> PG[(PostgreSQL Flex, 3 nodes)]
+  MCP --> PG
+  SG --> PG
+  LC --> S3[(Object storage: files)]
+  LC --> LLM[Model providers, EU regions]
+```
+
+- Every service runs at least two replicas spread across zones (topology spread constraints)
+  with a pod disruption budget. Worker nodes: one per zone, sized so two carry the whole load.
+- State lives in STACKIT's managed services only: PostgreSQL Flex and Redis as three-node
+  replica sets, object storage for files and backups. Nothing in the cluster keeps data that a
+  lost node would take with it.
+- LibreChat's database: upstream is expected to move from MongoDB to PostgreSQL within about
+  two months (owner's information, 2026-10-21). Production starts on PostgreSQL Flex; MongoDB
+  Flex is used only if production has to start before that move. The fork's own data-schemas
+  methods (platform catalog, tenant usage, group sync, tenant purge, MCP tool policy) are written
+  for Mongoose and have to be ported with the next upstream sync that carries the move.
+- LibreChat and the platform services get separate PostgreSQL instances, so a load spike in the
+  chat does not slow down logins.
+- Caddy stays the edge, because it already does the tenant routing and the on-demand
+  certificates for custom domains. Its replicas share one certificate store (Redis or S3).
+
+### Before more than one replica can run
+
+Some state is still held in memory or on a local disk. These are prerequisites for production,
+not optimisations:
+
+| Component | Today                                                        | Change                                                                      |
+| --------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Admin app | Sessions in memory (`createMemorySessionStore`)              | Sessions in Redis; otherwise every deploy signs every admin out             |
+| LibreChat | No Redis; `SCHEDULES_SINGLE_PROCESS=true` in the local stack | `USE_REDIS`: sessions, rate limits, bans, resumable streams, scheduler lock |
+| LibreChat | Uploads on a local volume, logs to a volume                  | File strategy S3 (STACKIT object storage), logs to stdout                   |
+| Caddy     | Certificates on a local volume                               | Shared certificate storage                                                  |
+
+The 30-second caches (tenant catalog, tenant router, tool policy) stay per replica; a change
+reaches every replica within 30 seconds.
+
+### Deployments without downtime
+
+- Rolling updates with `maxUnavailable: 0` and readiness probes; images by commit tag
+  (`:sha-…`), never `:latest`, so every deploy is reproducible and can be rolled back.
+- LibreChat replicas stop taking new requests and get two to five minutes to finish streaming
+  responses; with Redis, an interrupted stream can be resumed.
+- Database changes in two steps (expand, then contract in a later release), so the old and the
+  new version run side by side during a rollout. Zitadel's setup step runs as a job before its
+  new version starts.
+
+### Backups
+
+- PostgreSQL Flex and Redis: STACKIT's managed backups with point-in-time restore.
+- Nightly encrypted dumps to object storage outside the production project, with write-once
+  retention, and a copy in a second location (STACKIT EU02 in Austria or another EU provider).
+- Velero for the cluster's resources and the few volumes that exist.
+- Zitadel's master key in the secrets manager and offline; without it a restored Zitadel
+  database is unreadable.
+- A full restore is rehearsed every quarter. The MCP audit log's hash chain shows whether a
+  restore lost entries.
+
+### Observability
+
+Prometheus, Grafana and Loki self-hosted in the cluster, data in object storage. STACKIT
+Observability is the managed alternative (about €400 a month plus €1.20 per GB of logs).
+
+### Cost
+
+From STACKIT's price list of 2026-06-10 (version 1.0.44), list prices before VAT, 720-hour month,
+LibreChat already on PostgreSQL:
+
+| Item                                                                 |     €/month |
+| -------------------------------------------------------------------- | ----------: |
+| Kubernetes cluster fee                                               |          72 |
+| 3 worker nodes, 8 vCPU / 32 GB (g1a.8d)                              |         850 |
+| Disks for nodes and databases                                        |          70 |
+| Load balancer and public IPs                                         |          19 |
+| PostgreSQL Flex for LibreChat, 3 × 4 vCPU / 8 GB                     |         272 |
+| PostgreSQL Flex for the platform services, 3 × 2 vCPU / 4 GB         |         142 |
+| Redis, 3 × 1 vCPU / 4 GB                                             |         157 |
+| Object storage (1.5 TB), off-site backup copy, observability storage |          75 |
+| DNS and secrets manager                                              |           4 |
+| **Production**                                                       | **≈ 1,660** |
+| Staging                                                              |       ≈ 530 |
+
+Outbound traffic is not charged. Not included: model tokens, Serper, mail delivery, support plan,
+VAT. MongoDB Flex, if needed before upstream's move, adds about €580.
 
 ## Fork strategy
 
@@ -617,8 +724,16 @@ Decided:
   the fallback if the hands-on test of per-organization IdPs, branding and token exchange fails.
 - One admin app for tenant admins and the operator, built new (2026-10-19). Not a fork of
   `ClickHouse/librechat-admin-panel`, because it is AGPL-3.0.
-- Hosting on T Cloud Public, provisioned with Terraform (2026-10-19). All work runs locally with
-  Docker Compose until the stack works end to end.
+- Hosting on STACKIT EU01 (2026-10-21), replacing T Cloud Public (2026-10-19). With the same
+  high-availability setup priced from both price lists, STACKIT was about €1,660 a month and
+  T Cloud about €1,920 (€1,510 with one-year reservations). STACKIT was chosen for no egress
+  charges, German model serving on the same bill (AI Model Serving), a lower Kubernetes fee and
+  its own technology stack; T Cloud's managed MongoDB (DDS) is only partly MongoDB-compatible,
+  which matters until LibreChat moves to PostgreSQL. All work runs locally with Docker Compose
+  until the stack works end to end.
+- Production form (2026-10-21): STACKIT Kubernetes Engine across three availability zones,
+  managed PostgreSQL Flex, Redis and object storage, Terraform plus Helm and GitOps from
+  `platform-infra` (see [Production](#production)).
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
   SharePoint.
 
@@ -680,7 +795,7 @@ Open:
 - When to move from the forwarded token to an audience-bound exchanged token.
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
   append-only store.
-- Production deployment form on T Cloud Public (VMs with Compose or managed Kubernetes).
+- GitOps tool for production (Argo CD or Flux).
 - Plans: which providers and limits a plan includes, on top of the per-tenant assignment.
 - Object storage for branding images, once inline data URLs are too small.
 - Region and price per catalog model for the admin app.
