@@ -14,6 +14,7 @@ export type {
   CatalogAssignment,
 } from './platformCatalog';
 export type { TenantUserTarget } from './tenantPurge';
+export type { TenantUsage, TenantUsageDays, TenantUsageDay, TenantUsageModel } from './tenantUsage';
 import type {
   FileMethods,
   FileOwnerScope,
@@ -94,6 +95,7 @@ import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
+import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
@@ -305,6 +307,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   PlatformCatalogMethods &
   McpToolPolicyMethods &
   TenantPurgeMethods &
+  TenantUsageMethods &
   ToolCallMethods &
   CategoriesMethods &
   PresetMethods &
@@ -553,6 +556,7 @@ export function createMethods(
     ...createPlatformCatalogMethods(mongoose),
     ...createMcpToolPolicyMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
+    ...createTenantUsageMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
     ...createPresetMethods(mongoose),
@@ -628,6 +632,7 @@ export type {
   PlatformCatalogMethods,
   McpToolPolicyMethods,
   TenantPurgeMethods,
+  TenantUsageMethods,
   ToolCallMethods,
   CategoriesMethods,
   PresetMethods,

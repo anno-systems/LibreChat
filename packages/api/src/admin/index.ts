@@ -7,6 +7,7 @@ export { createAdminSkillsSyncAccess, createAdminSkillsSyncHandlers } from './sk
 export { createAdminUsersHandlers } from './users';
 export { requireAdminUserDeletion } from './deletion';
 export { createAdminBalanceHandlers } from './balance';
+export { createAdminUsageHandler } from './usage';
 export { createAdminAuditLogHandlers } from './auditLog';
 export { createAdminCodeEnvironmentHandlers } from './code';
 export { buildAuditContext } from './context';
@@ -30,6 +31,7 @@ export type {
 export type { AdminSkillSyncAccessDeps, AdminSkillSyncDeps } from './skills';
 export type { AdminUsersDeps } from './users';
 export type { AdminBalanceDeps, AdminBalanceView, BalanceRecord } from './balance';
+export type { AdminUsageDeps } from './usage';
 export type { AdminAuditLogDeps } from './auditLog';
 export type { CascadeStep, CascadeOutcome } from './cascade';
 export type { AdminCodeEnvironmentDeps } from './code';

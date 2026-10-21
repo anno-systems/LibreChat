@@ -444,6 +444,8 @@ const startServer = async () => {
   app.use('/api/admin/catalog', routes.adminCatalog);
   /* Fork: the per-tool policy of the platform's MCP servers. */
   app.use('/api/admin/mcp-tools', routes.adminMcpTools);
+  /* Fork: the tenant's chat usage for the admin dashboard. */
+  app.use('/api/admin/usage', routes.adminUsage);
   app.use('/api/platform/mcp', routes.platformMcp);
   app.use('/api/platform', routes.platform);
   app.use('/api/actions', routes.actions);
