@@ -1,6 +1,6 @@
 # Platform architecture
 
-Status: draft, 2026-10-21. Fork-only document (`anno-systems/LibreChat`), not part of upstream.
+Status: draft, 2026-10-22. Fork-only document (`anno-systems/LibreChat`), not part of upstream.
 It is the reference for all platform work across the repositories listed below. Change it when a
 decision changes; record the change under [Decisions](#decisions).
 
@@ -541,23 +541,50 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 
 ### First servers
 
-Built (2026-10-20, `anno-systems/mcp-servers`):
+Built (2026-10-20, Excel, Planner and To Do 2026-10-21, `anno-systems/mcp-servers`):
 
-| Server                                                       | Process     | Notes                                                                                                   |
-| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------- |
-| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only                           |
-| `lexware`                                                    | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                  |
-| `deepl`                                                      | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                     |
-| `einvoice`                                                   | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator |
+| Server                                                                                   | Process     | Notes                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint`, `excel`, `planner`, `todo` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only; Planner changes carry the task's etag |
+| `lexware`                                                                                | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                               |
+| `deepl`                                                                                  | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                                  |
+| `einvoice`                                                                               | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator              |
 
-Each customer's Entra admin consents once to the platform's multi-tenant app; the tenant admin
-then enters the directory id. A guided consent flow in the admin app is still missing.
+Each customer's Entra admin consents once to the platform's multi-tenant app; the admin app
+guides the tenant admin through that consent and stores the directory id.
 
-Next, as listed by the owner: Excel, Planner / To Do, Entra lookups, Google Calendar, Docs, Sheets
+Next, as listed by the owner: Entra lookups, Google Calendar, Docs, Sheets
 and Mail, Zendesk, Personio, Odoo, sevDesk, Slack, DHL Parcel DE, ELSTER, LinkedIn, Jira and
 Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbix, Grafana
 (self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data
 (Personio) can include special-category data (GDPR Art. 9) and needs the finest-grained tools.
+
+## Code interpreter
+
+Agents run code (Python, Node, Go, C/C++, Java, PHP, Rust, R and more) in a sandbox through the
+self-hosted Code API of `LibreChat-AI/code-interpreter` (formerly `ClickHouse/code-interpreter`,
+Apache 2.0), not the paid `api.librechat.ai` (2026-10-22). LibreChat already supports it; the fork
+changes nothing.
+
+- **Identity and tenant.** With `CODEAPI_AUTH_PROVIDER=librechat-jwt` LibreChat signs a token of
+  at most five minutes per user (Ed25519) that carries the user's tenant. The Code API verifies
+  it and runs with `CODEAPI_TENANT_ISOLATION_STRICT=true`, so files and sessions stay inside the
+  tenant; a request without a tenant is refused. Its authentication-free local mode is never used.
+- **Sandbox.** Each execution runs in a libkrun microVM with NsJail inside, under seccomp, with an
+  execution manifest the worker signs. Sandboxed code has no network; it reaches only the egress
+  gateway, which brokers file access and tool calls. The microVM needs `/dev/kvm`.
+- **Components.** API, worker, egress gateway, tool call server, sandbox runner and file server,
+  with Redis as job queue and S3 for files. Images from `ghcr.io/librechat-ai/code-interpreter-*`,
+  pinned by commit (`sha-…`).
+- **Per tenant.** Tenant admins switch it on and off in the admin app (Features, "Code execution",
+  LibreChat's `RUN_CODE` permission).
+- **Local stack.** Compose profile `code` in `platform-infra`, Linux with KVM only; SeaweedFS
+  stands in for MinIO, whose images are no longer published for anonymous pulls.
+- **Production.** The Code API's Helm chart in SKE, on the optional `sandbox` node pool of the
+  Terraform (taint `workload=sandbox:NoSchedule`), so untrusted code never shares a node with
+  the platform; files in STACKIT object storage. Open: whether STACKIT servers expose `/dev/kvm`
+  (nested virtualization). Without it only NsJail-only mode remains, which upstream rates as fit
+  for development, not for untrusted code.
 
 ## Data residency
 
@@ -595,7 +622,7 @@ flowchart TB
     LC --> SG[search gateway, 2 replicas]
   end
   LC --> DB[(LibreChat database)]
-  LC --> R[(Redis, 3 nodes)]
+  LC --> R[(Valkey, 3 nodes)]
   AA --> R
   ZI --> PG[(PostgreSQL Flex, 3 nodes)]
   MCP --> PG
@@ -606,9 +633,9 @@ flowchart TB
 
 - Every service runs at least two replicas spread across zones (topology spread constraints)
   with a pod disruption budget. Worker nodes: one per zone, sized so two carry the whole load.
-- State lives in STACKIT's managed services only: PostgreSQL Flex and Redis as three-node
-  replica sets, object storage for files and backups. Nothing in the cluster keeps data that a
-  lost node would take with it.
+- State lives in STACKIT's managed services only: PostgreSQL Flex and Valkey (STACKIT's Key
+  Value Store, Redis protocol) as three-node replica sets, object storage for files and backups.
+  Nothing in the cluster keeps data that a lost node would take with it.
 - LibreChat's database: upstream is expected to move from MongoDB to PostgreSQL within about
   two months (owner's information, 2026-10-21). Production starts on PostgreSQL Flex; MongoDB
   Flex is used only if production has to start before that move. The fork's own data-schemas
@@ -617,7 +644,10 @@ flowchart TB
 - LibreChat and the platform services get separate PostgreSQL instances, so a load spike in the
   chat does not slow down logins.
 - Caddy stays the edge, because it already does the tenant routing and the on-demand
-  certificates for custom domains. Its replicas share one certificate store (Redis or S3).
+  certificates for custom domains. Its replicas share one certificate store (Valkey or S3).
+- Valkey instead of Redis (2026-10-22): STACKIT's Redis service is deprecated and goes away after
+  August 2027; its Key Value Store runs Valkey, which speaks the Redis protocol, so LibreChat's
+  `USE_REDIS`/`REDIS_URI` and every Redis client work unchanged. "Redis" below means this service.
 
 ### Before more than one replica can run
 
@@ -646,7 +676,7 @@ reaches every replica within 30 seconds.
 
 ### Backups
 
-- PostgreSQL Flex and Redis: STACKIT's managed backups with point-in-time restore.
+- PostgreSQL Flex and Valkey: STACKIT's managed backups with point-in-time restore.
 - Nightly encrypted dumps to object storage outside the production project, with write-once
   retention, and a copy in a second location (STACKIT EU02 in Austria or another EU provider).
 - Velero for the cluster's resources and the few volumes that exist.
@@ -673,7 +703,7 @@ LibreChat already on PostgreSQL:
 | Load balancer and public IPs                                         |          19 |
 | PostgreSQL Flex for LibreChat, 3 × 4 vCPU / 8 GB                     |         272 |
 | PostgreSQL Flex for the platform services, 3 × 2 vCPU / 4 GB         |         142 |
-| Redis, 3 × 1 vCPU / 4 GB                                             |         157 |
+| Valkey, 3 × 1 vCPU / 4 GB                                            |         157 |
 | Object storage (1.5 TB), off-site backup copy, observability storage |          75 |
 | DNS and secrets manager                                              |           4 |
 | **Production**                                                       | **≈ 1,660** |
@@ -732,8 +762,12 @@ Decided:
   which matters until LibreChat moves to PostgreSQL. All work runs locally with Docker Compose
   until the stack works end to end.
 - Production form (2026-10-21): STACKIT Kubernetes Engine across three availability zones,
-  managed PostgreSQL Flex, Redis and object storage, Terraform plus Helm and GitOps from
-  `platform-infra` (see [Production](#production)).
+  managed PostgreSQL Flex, Valkey and object storage, Terraform plus Helm and GitOps from
+  `platform-infra` (see [Production](#production)). Valkey (STACKIT Key Value Store) instead
+  of Redis (2026-10-22), because STACKIT deprecates its Redis service.
+- Code interpreter (2026-10-22): the self-hosted Code API of `LibreChat-AI/code-interpreter`
+  with LibreChat's per-user, per-tenant tokens and strict tenant isolation; untrusted code on its
+  own node pool (see [Code interpreter](#code-interpreter)).
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
   SharePoint.
 
@@ -789,13 +823,15 @@ Decided:
 Open:
 
 - A signed approval from LibreChat, so MCP servers can verify a `confirm` call was approved.
-- A guided Entra admin-consent flow in the admin app.
 - The ZUGFeRD PDF/A-3 container (today the server produces the XML).
 
 - When to move from the forwarded token to an audience-bound exchanged token.
 - How tenants export the MCP audit log, and whether entries are also mirrored to an external
   append-only store.
 - GitOps tool for production (Argo CD or Flux).
+- Whether STACKIT servers expose `/dev/kvm` for the code interpreter's microVMs (ask STACKIT or
+  test one server with `ls /dev/kvm`), and if not, whether a gVisor runtime class or a dedicated
+  KVM-capable host is the fallback.
 - Plans: which providers and limits a plan includes, on top of the per-tenant assignment.
 - Object storage for branding images, once inline data URLs are too small.
 - Region and price per catalog model for the admin app.
