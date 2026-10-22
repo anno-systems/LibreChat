@@ -541,12 +541,13 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 
 ### First servers
 
-Built (2026-10-20, Excel, Planner and To Do 2026-10-21, Atlassian, Slack, Notion and Calendly
-2026-10-22, `anno-systems/mcp-servers`):
+Built (2026-10-20, Excel, Planner and To Do 2026-10-21, Atlassian, Slack, Notion, Calendly and
+Google Workspace 2026-10-22, `anno-systems/mcp-servers`):
 
 | Server                                                                                   | Process     | Notes                                                                                                                |
 | ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint`, `excel`, `planner`, `todo` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only; Planner changes carry the task's etag |
+| `google-calendar`, `gmail`, `google-docs`, `google-sheets`                               | `google`    | One process, one connected account per user of the tenant's Workspace domain; no domain-wide delegation              |
 | `jira`, `confluence`                                                                     | `atlassian` | One process, one connected account per user; pinned to the tenant's Atlassian site                                   |
 | `slack`                                                                                  | `slack`     | User token in the tenant's workspace; no direct messages, no `@channel` broadcasts                                   |
 | `notion`                                                                                 | `notion`    | Pages and databases the user shared with the platform's integration in the tenant's workspace                        |
@@ -560,12 +561,14 @@ guides the tenant admin through that consent and stores the directory id. Atlass
 and Calendly accept a connection only from the site, workspace or organization the tenant admin
 entered. Their refresh tokens are single-use, so the core refreshes once per user behind a
 Postgres advisory lock, and a vendor 401 forgets the connection and offers a new connect link.
+Google accepts only accounts of the tenant's Workspace domain (`hd`). Its Gmail and Drive scopes
+are restricted: publishing the OAuth app needs Google's verification with a yearly CASA security
+assessment; until then each customer's Workspace admin trusts the client id in API controls.
 
-Next, as listed by the owner: Entra lookups, Google Calendar, Docs, Sheets and Mail, Zendesk,
-Personio, Odoo, sevDesk, DHL Parcel DE, ELSTER, LinkedIn, Postman, Stripe, Todoist; and for
-operations Zabbix, Grafana (self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab
-and Miro. Payroll data
-(Personio) can include special-category data (GDPR Art. 9) and needs the finest-grained tools.
+Next, as listed by the owner: Entra lookups, Zendesk, Personio, Odoo, sevDesk, DHL Parcel DE,
+ELSTER, LinkedIn, Postman, Stripe, Todoist; and for operations Zabbix, Grafana (self-hosted and
+cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data (Personio) can
+include special-category data (GDPR Art. 9) and needs the finest-grained tools.
 
 ## Code interpreter
 
