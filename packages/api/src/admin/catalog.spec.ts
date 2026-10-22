@@ -5,7 +5,7 @@ process.env.CREDS_KEY =
   process.env.CREDS_KEY ?? '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 import { createAdminConfigHandlers } from './config';
-import { getCatalogLockIssues } from './catalog';
+import { getCatalogLockIssues, getCatalogLockTombstoneIssue } from './catalog';
 
 const catalog = {
   endpoints: {
@@ -23,6 +23,10 @@ const catalog = {
         models: { default: ['a'], fetch: true },
       },
     ],
+  },
+  mcpServers: {
+    gmail: { type: 'streamable-http', url: 'https://gmail.mcp.example/mcp' },
+    drive: { type: 'streamable-http', url: 'https://drive.mcp.example/mcp' },
   },
 };
 
@@ -99,7 +103,72 @@ describe('getCatalogLockIssues', () => {
     ).toEqual([
       { path: 'webSearch.serperApiKey', code: 'catalog_env_reference' },
       { path: 'mcpServers.x.headers.Authorization', code: 'catalog_env_reference' },
+      { path: 'mcpServers.x', code: 'catalog_unknown_mcp_server' },
     ]);
+  });
+
+  it('accepts switching a catalog MCP server off or out of the chat menu', () => {
+    expect(codes({ 'mcpServers.gmail.enabled': false })).toEqual([]);
+    expect(codes({ 'mcpServers.gmail': { enabled: true, chatMenu: false } })).toEqual([]);
+    expect(codes({ mcpServers: { gmail: { enabled: false }, drive: { chatMenu: true } } })).toEqual(
+      [],
+    );
+    expect(codes({ mcpServers: {} })).toEqual([]);
+  });
+
+  it('refuses redirecting a catalog MCP server or changing its other fields', () => {
+    expect(
+      codes({
+        mcpServers: {
+          gmail: {
+            url: 'https://attacker.example/mcp',
+            headers: { Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}' },
+            enabled: 'no',
+          },
+        },
+        'mcpConfig.drive.type': 'sse',
+        'mcpServers.drive.chatMenu': true,
+      }),
+    ).toEqual([
+      { path: 'mcpServers.gmail.url', code: 'catalog_field_locked' },
+      { path: 'mcpServers.gmail.headers', code: 'catalog_field_locked' },
+      { path: 'mcpServers.gmail.enabled', code: 'catalog_field_locked' },
+      { path: 'mcpConfig.drive.type', code: 'catalog_field_locked' },
+    ]);
+  });
+
+  it('refuses MCP servers outside the catalog and non-object MCP sections', () => {
+    expect(
+      codes({ 'mcpServers.mine': { type: 'streamable-http', url: 'https://x.example' } }),
+    ).toEqual([{ path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' }]);
+    expect(codes({ 'mcpServers.mine.enabled': true })).toEqual([
+      { path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' },
+    ]);
+    expect(codes({ mcpServers: ['gmail'] })).toEqual([
+      { path: 'mcpServers', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ 'mcpServers.gmail': false })).toEqual([
+      { path: 'mcpServers.gmail', code: 'catalog_field_locked' },
+    ]);
+  });
+});
+
+describe('getCatalogLockTombstoneIssue', () => {
+  it('allows tombstones of the MCP switches and of other sections', () => {
+    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.enabled')).toBeNull();
+    expect(getCatalogLockTombstoneIssue('mcpConfig.gmail.chatMenu')).toBeNull();
+    expect(getCatalogLockTombstoneIssue('interface.customWelcome')).toBeNull();
+  });
+
+  it('refuses any other tombstone under the MCP sections', () => {
+    for (const path of ['mcpServers', 'mcpServers.gmail', 'mcpServers.gmail.url']) {
+      expect(getCatalogLockTombstoneIssue(path)).toEqual(
+        expect.objectContaining({ path, code: 'catalog_field_locked' }),
+      );
+    }
+    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.headers.Authorization')).toEqual(
+      expect.objectContaining({ code: 'catalog_field_locked' }),
+    );
   });
 });
 
@@ -206,6 +275,128 @@ describe('admin config handlers with the catalog lock', () => {
       { path: 'endpoints.custom.0.baseURL', code: 'catalog_field_locked' },
     ]);
     expect(deps.upsertConfig).not.toHaveBeenCalled();
+  });
+
+  it('stores a PATCH that switches a catalog MCP server off', async () => {
+    const { handlers, deps } = createHandlers(true);
+    const res = mockRes();
+
+    await handlers.patchConfigField(
+      mockReq({
+        params: { principalType: 'role', principalId: 'USER' },
+        body: { entries: [{ fieldPath: 'mcpServers.gmail.enabled', value: false }] },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(deps.patchConfigFields).toHaveBeenCalledWith(
+      'role',
+      'USER',
+      expect.anything(),
+      { 'mcpServers.gmail.enabled': false },
+      expect.any(Number),
+    );
+  });
+
+  it('refuses a PATCH that redirects a catalog MCP server', async () => {
+    const { handlers, deps } = createHandlers(true);
+    const res = mockRes();
+
+    await handlers.patchConfigField(
+      mockReq({
+        params: { principalType: 'role', principalId: 'USER' },
+        body: {
+          entries: [{ fieldPath: 'mcpServers.gmail.url', value: 'https://attacker.example/mcp' }],
+        },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.issues).toEqual([
+      { path: 'mcpServers.gmail.url', code: 'catalog_field_locked' },
+    ]);
+    expect(deps.patchConfigFields).not.toHaveBeenCalled();
+  });
+
+  it('refuses a full replace that adds an MCP server', async () => {
+    const { handlers, deps } = createHandlers(true);
+    const res = mockRes();
+    const overrides = {
+      mcpServers: { mine: { type: 'streamable-http', url: 'https://attacker.example/mcp' } },
+    };
+
+    await handlers.upsertConfigOverrides(
+      mockReq({ params: { principalType: 'role', principalId: 'USER' }, body: { overrides } }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.issues).toEqual([
+      { path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' },
+    ]);
+    expect(deps.upsertConfig).not.toHaveBeenCalled();
+  });
+
+  it('refuses a tombstone under an MCP server other than its switches', async () => {
+    const { handlers, deps } = createHandlers(true);
+    const res = mockRes();
+
+    await handlers.tombstoneConfigField(
+      mockReq({
+        params: { principalType: 'role', principalId: 'USER' },
+        body: { fieldPath: 'mcpServers.gmail.headers' },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.issues).toEqual([
+      { path: 'mcpServers.gmail.headers', code: 'catalog_field_locked' },
+    ]);
+    expect(deps.tombstoneConfigField).not.toHaveBeenCalled();
+  });
+
+  it('stores a tombstone of an MCP switch', async () => {
+    const { handlers, deps } = createHandlers(true);
+    deps.tombstoneConfigField.mockResolvedValue({ _id: 'c1', overrides: {}, configVersion: 2 });
+    const res = mockRes();
+
+    await handlers.tombstoneConfigField(
+      mockReq({
+        params: { principalType: 'role', principalId: 'USER' },
+        body: { fieldPath: 'mcpServers.gmail.enabled' },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(deps.tombstoneConfigField).toHaveBeenCalledWith(
+      'role',
+      'USER',
+      expect.anything(),
+      'mcpServers.gmail.enabled',
+      expect.any(Number),
+    );
+  });
+
+  it('keeps upstream behaviour for MCP writes when the lock is off', async () => {
+    const { handlers, deps } = createHandlers(false);
+    const res = mockRes();
+
+    await handlers.patchConfigField(
+      mockReq({
+        params: { principalType: 'role', principalId: 'USER' },
+        body: {
+          entries: [{ fieldPath: 'mcpServers.gmail.url', value: 'https://other.example/mcp' }],
+        },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(deps.patchConfigFields).toHaveBeenCalled();
   });
 
   it('keeps upstream behaviour when the lock is off', async () => {

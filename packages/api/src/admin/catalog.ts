@@ -10,6 +10,10 @@ import type { ConfigOverrideIssue } from '@librechat/data-schemas';
  *   every other endpoint field stay as the operator configured them.
  * - No value may reference an environment variable (`${NAME}`), because the server resolves
  *   those from its own environment and would send the secret wherever the admin points it.
+ * - `mcpServers` (or its alias `mcpConfig`) may name only servers of `librechat.yaml` and set only
+ *   their boolean switches `enabled` and `chatMenu`. A URL, header or new server would let the
+ *   admin send users' tokens (`{{LIBRECHAT_OPENID_ACCESS_TOKEN}}`) to a server of their choosing.
+ *   A tombstone under these sections may only target those two switches.
  */
 
 export type CatalogIssueCode =
@@ -18,7 +22,13 @@ export type CatalogIssueCode =
   | 'catalog_unknown_endpoint'
   | 'catalog_field_locked'
   | 'catalog_unknown_model'
-  | 'catalog_models_fetched';
+  | 'catalog_models_fetched'
+  | 'catalog_unknown_mcp_server';
+
+/** Sections that hold MCP servers; `mcpConfig` is the resolved alias of `mcpServers`. */
+const MCP_SECTIONS = ['mcpServers', 'mcpConfig'] as const;
+/** The MCP server fields an admin may set under the lock, each a boolean. */
+const MCP_SWITCHES: ReadonlySet<string> = new Set(['enabled', 'chatMenu']);
 
 const ENV_REFERENCE = /\$\{[^}]*\}/;
 
@@ -136,6 +146,50 @@ function checkCustomEndpoint(
   });
 }
 
+function checkMCPServers(
+  section: string,
+  servers: unknown,
+  baseServers: unknown,
+  issues: ConfigOverrideIssue[],
+): void {
+  if (!isRecord(servers)) {
+    issues.push(issue([section], 'catalog_field_locked'));
+    return;
+  }
+  const catalog = isRecord(baseServers) ? baseServers : {};
+  for (const [name, entry] of Object.entries(servers)) {
+    if (!Object.prototype.hasOwnProperty.call(catalog, name)) {
+      issues.push(issue([section, name], 'catalog_unknown_mcp_server'));
+      continue;
+    }
+    if (!isRecord(entry)) {
+      issues.push(issue([section, name], 'catalog_field_locked'));
+      continue;
+    }
+    for (const [key, value] of Object.entries(entry)) {
+      if (!MCP_SWITCHES.has(key) || typeof value !== 'boolean') {
+        issues.push(issue([section, name, key], 'catalog_field_locked'));
+      }
+    }
+  }
+}
+
+/**
+ * Returns the catalog-lock violation of an admin config tombstone, or `null` when allowed.
+ * Only MCP sections are restricted: there a tombstone may target `<section>.<name>.enabled` or
+ * `<section>.<name>.chatMenu`, nothing broader or deeper.
+ */
+export function getCatalogLockTombstoneIssue(fieldPath: string): ConfigOverrideIssue | null {
+  const segments = fieldPath.split('.');
+  if (!(MCP_SECTIONS as readonly string[]).includes(segments[0])) {
+    return null;
+  }
+  if (segments.length === 3 && MCP_SWITCHES.has(segments[2])) {
+    return null;
+  }
+  return issue(segments, 'catalog_field_locked');
+}
+
 /**
  * Returns the catalog-lock violations of an admin config write; empty means allowed.
  * `fields` maps dot-paths to values (a PATCH body, or a PUT body's top-level sections);
@@ -143,11 +197,16 @@ function checkCustomEndpoint(
  */
 export function getCatalogLockIssues(
   fields: Record<string, unknown>,
-  baseYaml: { endpoints?: unknown },
+  baseYaml: { endpoints?: unknown; mcpServers?: unknown },
 ): ConfigOverrideIssue[] {
   const issues: ConfigOverrideIssue[] = [];
   const overrides = expand(fields);
   collectEnvReferences(overrides, [], issues);
+  for (const section of MCP_SECTIONS) {
+    if (overrides[section] !== undefined) {
+      checkMCPServers(section, overrides[section], baseYaml.mcpServers, issues);
+    }
+  }
 
   if (overrides.endpoints === undefined) {
     return issues;

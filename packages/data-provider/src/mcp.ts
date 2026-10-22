@@ -211,6 +211,13 @@ const BaseOptionsSchema = z.object({
    * request's `_meta` under `librechat/context`. Default: false. Admin-only (fork: MCP call context).
    */
   callContext: z.boolean().optional(),
+  /**
+   * `false` switches the server off for the scope of the config document that sets it (a tenant,
+   * group or role override): its users neither see it nor load or call its tools. A document of
+   * higher priority can set it back to `true`. User-created servers are never affected. Default:
+   * on. Admin-only (fork: per-tenant MCP switch).
+   */
+  enabled: z.boolean().optional(),
   iconPath: z.string().optional(),
   timeout: z.number().int().nonnegative().optional(),
   /** Timeout (ms) for the long-lived SSE GET stream body before undici aborts it. Default: 300_000 (5 min). */
@@ -497,6 +504,7 @@ const omitServerManagedFields = <T extends z.ZodObject<z.ZodRawShape>>(schema: T
   schema.omit({
     startup: true,
     callContext: true,
+    enabled: true,
     timeout: true,
     sseReadTimeout: true,
     initTimeout: true,
