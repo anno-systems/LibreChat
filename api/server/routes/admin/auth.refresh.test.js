@@ -39,6 +39,8 @@ jest.mock('@librechat/api', () => {
   return {
     isEnabled: jest.fn(),
     getAdminPanelUrl: jest.fn(() => 'http://admin.example.com'),
+    adminLoginFailureUrl: (base, message) =>
+      `${base}?error=${message === 'mfa_required' ? 'mfa_required' : 'auth_failed'}`,
     exchangeAdminCode: jest.fn(),
     createSetBalanceConfig: jest.fn(() => (req, res, next) => next()),
     storeAndStripChallenge: jest.fn(),
@@ -482,6 +484,31 @@ describe('admin auth OpenID route availability', () => {
     });
     expect(storeAndStripChallenge).not.toHaveBeenCalled();
     expect(passport.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('names a refused admin login for the admin panel', async () => {
+    getOpenIdConfig.mockReturnValue({});
+    passport.authenticate.mockImplementation(
+      (name, options, callback) => () =>
+        callback(null, false, { message: name === 'openidAdmin' ? 'mfa_required' : 'x' }),
+    );
+
+    const mfa = await request(app).get('/api/admin/oauth/openid/callback?state=s');
+
+    expect(mfa.status).toBe(302);
+    expect(mfa.headers.location).toBe(
+      'http://admin.example.com/auth/openid/callback?error=mfa_required',
+    );
+
+    passport.authenticate.mockImplementation(
+      (name, options, callback) => () =>
+        callback(null, false, { message: 'Authentication failed' }),
+    );
+    const other = await request(app).get('/api/admin/oauth/openid/callback?state=s');
+    expect(other.headers.location).toBe(
+      'http://admin.example.com/auth/openid/callback?error=auth_failed',
+    );
+    passport.authenticate.mockImplementation(() => (req, res, next) => next());
   });
 
   it('does not run OpenID admin callback auth when config lookup throws', async () => {

@@ -263,6 +263,7 @@ describe('setupOpenId', () => {
     delete process.env.TENANT_DOMAIN_SERVER;
     delete process.env.OPENID_TENANT_SCOPE;
     delete process.env.OPENID_TENANT_CLAIM;
+    delete process.env.OPENID_ADMIN_REQUIRE_MFA;
     require('@librechat/data-schemas').getTenantId.mockReturnValue(undefined);
 
     // Default jwtDecode mock returns a token that includes the required role.
@@ -477,6 +478,39 @@ describe('setupOpenId', () => {
 
       expect(result.user).toBe(false);
       expect(findUser).not.toHaveBeenCalled();
+    });
+
+    it('requires a second factor for the admin login only with OPENID_ADMIN_REQUIRE_MFA', async () => {
+      const adminResult = (set) =>
+        new Promise((resolve) =>
+          require('openid-client/passport').__getVerifyCallbackByName('openidAdmin')(
+            set,
+            (err, user, details) => resolve({ user, details }),
+          ),
+        );
+      const withAmr = (amr) => ({
+        ...tokenset,
+        claims: () => ({ ...tokenset.claims(), amr }),
+      });
+
+      process.env.OPENID_ADMIN_REQUIRE_MFA = 'true';
+      await setupOpenId();
+
+      const passwordOnly = await adminResult(withAmr(['pwd']));
+      expect(passwordOnly).toEqual({ user: false, details: { message: 'mfa_required' } });
+      expect(findUser).not.toHaveBeenCalled();
+      // The user login is not affected.
+      expect((await validate(withAmr(['pwd']))).user).toBeTruthy();
+      findUser.mockClear();
+      const withOtp = await adminResult(withAmr(['pwd', 'otp']));
+      expect(withOtp.details).not.toEqual({ message: 'mfa_required' });
+      expect(findUser).toHaveBeenCalled();
+
+      delete process.env.OPENID_ADMIN_REQUIRE_MFA;
+      await setupOpenId();
+      findUser.mockClear();
+      await adminResult(withAmr(['pwd']));
+      expect(findUser).toHaveBeenCalled();
     });
 
     it('grants admin from a role claim keyed by role name, as Zitadel sends it', async () => {

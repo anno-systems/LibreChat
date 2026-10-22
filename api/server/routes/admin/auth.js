@@ -23,6 +23,7 @@ const {
   AdminRefreshError,
   buildOpenIDRefreshParams,
   isEmailDomainAllowed,
+  adminLoginFailureUrl,
 } = require('@librechat/api');
 const { loginController } = require('~/server/controllers/auth/LoginController');
 const { hasCapability, requireCapability } = require('~/server/middleware/roles/capabilities');
@@ -257,11 +258,20 @@ router.get(
     next();
   },
   requireOpenIdConfig,
-  passport.authenticate('openidAdmin', {
-    failureRedirect: `${getAdminPanelUrl()}/auth/openid/callback?error=auth_failed&error_description=Authentication+failed`,
-    failureMessage: true,
-    session: false,
-  }),
+  /** A refused login names why (fork: `mfa_required` with OPENID_ADMIN_REQUIRE_MFA). */
+  (req, res, next) =>
+    passport.authenticate('openidAdmin', { session: false }, (err, user, info) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        return res.redirect(
+          adminLoginFailureUrl(`${getAdminPanelUrl()}/auth/openid/callback`, info?.message),
+        );
+      }
+      req.user = user;
+      next();
+    })(req, res, next),
   tenantContextMiddleware,
   retrievePkceChallenge('openid'),
   requireAdminAccess,
