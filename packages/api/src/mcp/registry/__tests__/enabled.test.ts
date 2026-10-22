@@ -133,4 +133,49 @@ describe('MCPServersRegistry — per-scope enabled switch', () => {
       expect.objectContaining({ url: gmail.url }),
     );
   });
+
+  describe('opt-in: off in librechat.yaml, on per tenant', () => {
+    const offByDefault: t.MCPOptions = { ...gmail, enabled: false };
+
+    beforeEach(async () => {
+      await registry.reset();
+      await registry.addServer('gmail', offByDefault, 'CACHE');
+      await registry.addServer('drive', drive, 'CACHE');
+      inspectSpy.mockClear();
+    });
+
+    it('hides a server the YAML switches off for a tenant without an override', async () => {
+      // The tenant's resolved mcpConfig is the YAML base unchanged.
+      const configServers = await registry.ensureConfigServers({ gmail: offByDefault, drive });
+
+      expect(inspectSpy).not.toHaveBeenCalled();
+      const all = await registry.getAllServerConfigs('user-1', configServers);
+      expect(Object.keys(all).sort()).toEqual(['drive']);
+      expect(await registry.getServerConfig('gmail', 'user-1', configServers)).toBeUndefined();
+    });
+
+    it('shows it to a tenant whose document sets enabled: true', async () => {
+      const configServers = await registry.ensureConfigServers({
+        gmail: { ...offByDefault, enabled: true },
+        drive,
+      });
+
+      expect(inspectSpy).not.toHaveBeenCalled();
+      const all = await registry.getAllServerConfigs('user-1', configServers);
+      expect(Object.keys(all).sort()).toEqual(['drive', 'gmail']);
+      expect(await registry.getServerConfig('gmail', 'user-1', configServers)).toEqual(
+        expect.objectContaining({ url: gmail.url }),
+      );
+    });
+
+    it('keeps tenants apart: one opted in, the other still sees nothing', async () => {
+      const optedIn = await registry.ensureConfigServers({
+        gmail: { ...offByDefault, enabled: true },
+      });
+      const other = await registry.ensureConfigServers({ gmail: offByDefault });
+
+      expect(Object.keys(await registry.getAllServerConfigs('a', optedIn))).toContain('gmail');
+      expect(Object.keys(await registry.getAllServerConfigs('b', other))).not.toContain('gmail');
+    });
+  });
 });

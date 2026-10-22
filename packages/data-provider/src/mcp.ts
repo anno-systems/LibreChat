@@ -214,8 +214,9 @@ const BaseOptionsSchema = z.object({
   /**
    * `false` switches the server off for the scope of the config document that sets it (a tenant,
    * group or role override): its users neither see it nor load or call its tools. A document of
-   * higher priority can set it back to `true`. User-created servers are never affected. Default:
-   * on. Admin-only (fork: per-tenant MCP switch).
+   * higher priority can set it back to `true`. Set in `librechat.yaml`, it makes the server opt-in:
+   * off for every tenant until a tenant's document sets `true`. User-created servers are never
+   * affected. Default: on. Admin-only (fork: per-tenant MCP switch).
    */
   enabled: z.boolean().optional(),
   iconPath: z.string().optional(),
