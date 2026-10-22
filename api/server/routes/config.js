@@ -25,6 +25,7 @@ const {
   loadConversationListLimits,
   resolvePullRequestCapabilities,
   getTenantDomains,
+  getAdminPanelLink,
   brandedStartupFields,
 } = require('@librechat/api');
 const {
@@ -379,7 +380,7 @@ router.get('/', async function (req, res) {
             SystemCapabilities.ACCESS_ADMIN,
           );
           if (hasAdminAccess && adminPanelURL) {
-            payload.adminPanelURL = adminPanelURL;
+            payload.adminPanelURL = getAdminPanelLink(adminPanelURL, req.user.tenantId);
           }
           if (hasAdminAccess && !payload.allowAccountDeletion) {
             payload.allowAccountDeletion = true;
