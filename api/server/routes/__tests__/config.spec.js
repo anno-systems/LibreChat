@@ -1038,6 +1038,17 @@ describe('GET /api/config', () => {
       expect(mockHasCapability).toHaveBeenCalled();
     });
 
+    it("names the admin's tenant in adminPanelURL", async () => {
+      process.env.ADMIN_PANEL_URL = 'https://admin.example.com';
+      mockGetAppConfig.mockResolvedValue(baseAppConfig);
+      mockHasCapability.mockResolvedValue(true);
+      const app = createApp({ ...mockUser, tenantId: 'tenant-a' });
+
+      const response = await request(app).get('/api/config');
+
+      expect(response.body.adminPanelURL).toBe('https://admin.example.com/?tenant=tenant-a');
+    });
+
     it('should omit adminPanelURL for authenticated users without ACCESS_ADMIN', async () => {
       process.env.ADMIN_PANEL_URL = 'https://admin.example.com';
       mockGetAppConfig.mockResolvedValue(baseAppConfig);

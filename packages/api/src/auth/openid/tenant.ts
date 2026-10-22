@@ -64,6 +64,24 @@ export function getTenantDomains(
   };
 }
 
+/**
+ * The admin panel link shown in the user's settings, naming their tenant (`?tenant=`), so the
+ * admin panel can fill in the organization at its sign-in. The link opens without a referrer,
+ * so the tenant cannot be read from where the admin came from.
+ */
+export function getAdminPanelLink(adminPanelUrl: string, tenantId: string | undefined): string {
+  if (!tenantId || rejectTenantHeader(tenantId)) {
+    return adminPanelUrl;
+  }
+  try {
+    const url = new URL(adminPanelUrl);
+    url.searchParams.set('tenant', tenantId);
+    return url.toString();
+  } catch {
+    return adminPanelUrl;
+  }
+}
+
 /** `baseScope` plus the tenant's scopes, or `baseScope` alone when no tenant scope applies. */
 export function getTenantOpenIdScope(
   baseScope: string | undefined,

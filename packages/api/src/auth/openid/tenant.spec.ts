@@ -3,6 +3,7 @@ import {
   runInHeaderTenant,
   withHeaderTenant,
   getTenantDomains,
+  getAdminPanelLink,
   getTenantOpenIdScope,
   checkOpenIdTenantClaim,
 } from './tenant';
@@ -45,6 +46,27 @@ describe('getTenantDomains', () => {
   it('never templates the system tenant or a malformed id', () => {
     expect(getTenantDomains('__SYSTEM__', multi).client).toBe('https://chat.example.com');
     expect(getTenantDomains('evil.com/x', multi).client).toBe('https://chat.example.com');
+  });
+});
+
+describe('getAdminPanelLink', () => {
+  it("names the user's tenant in the admin panel link", () => {
+    expect(getAdminPanelLink('https://admin.example.com', 'tenant-a')).toBe(
+      'https://admin.example.com/?tenant=tenant-a',
+    );
+    expect(getAdminPanelLink('https://admin.example.com/panel?x=1', 'acme')).toBe(
+      'https://admin.example.com/panel?x=1&tenant=acme',
+    );
+  });
+
+  it('leaves the link as it is without a valid tenant', () => {
+    expect(getAdminPanelLink('https://admin.example.com', undefined)).toBe(
+      'https://admin.example.com',
+    );
+    expect(getAdminPanelLink('https://admin.example.com', '__SYSTEM__')).toBe(
+      'https://admin.example.com',
+    );
+    expect(getAdminPanelLink('not a url', 'tenant-a')).toBe('not a url');
   });
 });
 
