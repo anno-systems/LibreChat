@@ -37,11 +37,12 @@ const {
   collectToolCallIds,
   createToolTimingAdapter,
   stampCommandExecutor,
+  MCP_FILE_OUTPUTS_ARTIFACT_KEY,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
 const { preflightCodeOutputBatch } = require('~/server/services/Files/Code/preflight');
-const { saveBase64Image } = require('~/server/services/Files/process');
+const { saveBase64Image, saveMCPFileOutput } = require('~/server/services/Files/process');
 
 function isHostFileAuthoringArtifact(artifact) {
   return artifact?.[HOST_FILE_AUTHORING_ARTIFACT_KEY] === true;
@@ -967,6 +968,31 @@ function writeAttachmentUpdate(res, streamId, attachment, expectedCreatedAt) {
  * @param {number} [params.jobCreatedAt] - The generation epoch that owns emitted attachments.
  * @returns {ToolEndCallback} The tool end callback.
  */
+/**
+ * Saves the files an MCP server returned (fork: MCP file outputs) and hands each saved record
+ * to `emit`, the path's attachment writer.
+ */
+function pushMCPFileOutputs({ req, output, metadata, artifactPromises, emit }) {
+  const files = output.artifact[MCP_FILE_OUTPUTS_ARTIFACT_KEY];
+  if (!Array.isArray(files)) {
+    return;
+  }
+  for (const file of files) {
+    artifactPromises.push(
+      saveMCPFileOutput(file, {
+        req,
+        messageId: metadata.run_id,
+        conversationId: metadata.thread_id,
+      })
+        .then((record) => (record ? emit(record) : null))
+        .catch((error) => {
+          logger.error('Error saving MCP file output:', error);
+          return null;
+        }),
+    );
+  }
+}
+
 function createToolEndCallback({ req, res, artifactPromises, streamId = null, jobCreatedAt }) {
   /**
    * @type {ToolEndCallback}
@@ -1075,6 +1101,24 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
         }),
       );
     }
+
+    pushMCPFileOutputs({
+      req,
+      output,
+      metadata,
+      artifactPromises,
+      emit: (record) => {
+        const fileMetadata = Object.assign(record, {
+          messageId: metadata.run_id,
+          toolCallId: output.tool_call_id,
+          conversationId: metadata.thread_id,
+        });
+        if (streamId || res.headersSent) {
+          writeAttachment(res, streamId, fileMetadata, jobCreatedAt);
+        }
+        return fileMetadata;
+      },
+    });
 
     if (output.artifact.content) {
       /** @type {FormattedContent[]} */
@@ -1441,6 +1485,25 @@ function createResponsesToolEndCallback({ req, res, tracker, artifactPromises })
         }),
       );
     }
+
+    pushMCPFileOutputs({
+      req,
+      output,
+      metadata,
+      artifactPromises,
+      emit: (record) => {
+        const fileMetadata = Object.assign(record, { toolCallId: output.tool_call_id });
+        if (res.headersSent && !res.writableEnded) {
+          writeResponsesAttachment(
+            res,
+            tracker,
+            buildResponsesAttachment(fileMetadata, output.tool_call_id),
+            metadata,
+          );
+        }
+        return fileMetadata;
+      },
+    });
 
     if (output.artifact.content) {
       /** @type {FormattedContent[]} */

@@ -21,6 +21,7 @@ jest.mock('@librechat/api', () => ({
     emitChunk: jest.fn(),
   },
   HOST_FILE_AUTHORING_ARTIFACT_KEY: '__librechat_file_authoring',
+  MCP_FILE_OUTPUTS_ARTIFACT_KEY: 'mcp_files',
   getToolInputValidationDetails: jest.fn((result, validationError) =>
     validationError != null
       ? {
@@ -101,6 +102,7 @@ jest.mock('~/server/services/Tools/credentials', () => ({
 
 jest.mock('~/server/services/Files/process', () => ({
   saveBase64Image: jest.fn(),
+  saveMCPFileOutput: jest.fn(),
 }));
 
 describe('resumable event generation fencing', () => {
@@ -753,6 +755,76 @@ describe('createToolEndCallback', () => {
           JSON.parse(event.match(/^event: attachment\ndata: (.+)\n\n$/)[1]),
         );
         expect(emitted).toEqual(results);
+      }
+    },
+  );
+
+  it.each(['createToolEndCallback', 'createResponsesToolEndCallback'])(
+    '%s saves MCP file outputs and streams them as attachments (fork)',
+    async (factoryName) => {
+      const { saveMCPFileOutput } = require('~/server/services/Files/process');
+      const { writeAttachmentEvent } = require('@librechat/api');
+      saveMCPFileOutput
+        .mockImplementationOnce(async (file) => ({
+          file_id: 'file-1',
+          filename: file.filename,
+          filepath: '/uploads/user123/file-1__RE-1.pdf',
+          type: file.mimeType,
+          bytes: file.bytes,
+        }))
+        .mockRejectedValueOnce(new Error('storage down'));
+      res.headersSent = true;
+      res.writableEnded = false;
+      const tracker = { nextSequence: jest.fn().mockReturnValue(1) };
+      const toolEndCallback = require('../callbacks')[factoryName]({
+        req,
+        res,
+        tracker,
+        artifactPromises,
+      });
+      const files = [
+        { filename: 'RE-1.pdf', mimeType: 'application/pdf', bytes: 3, data: 'YWJj' },
+        { filename: 'RE-1.xml', mimeType: 'application/xml', bytes: 3, data: 'YWJj' },
+      ];
+
+      await toolEndCallback(
+        {
+          output: {
+            tool_call_id: 'call_0',
+            name: 'create_invoice',
+            artifact: { mcp_files: files },
+          },
+        },
+        { run_id: 'run456', thread_id: 'thread789' },
+      );
+      const results = await Promise.all(artifactPromises);
+
+      expect(saveMCPFileOutput).toHaveBeenCalledWith(files[0], {
+        req,
+        messageId: 'run456',
+        conversationId: 'thread789',
+      });
+      expect(results[1]).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith('Error saving MCP file output:', expect.any(Error));
+      expect(results[0]).toMatchObject({
+        file_id: 'file-1',
+        filename: 'RE-1.pdf',
+        type: 'application/pdf',
+        toolCallId: 'call_0',
+      });
+      if (factoryName === 'createResponsesToolEndCallback') {
+        expect(writeAttachmentEvent.mock.calls[0][2]).toMatchObject({
+          file_id: 'file-1',
+          filename: 'RE-1.pdf',
+          url: '/uploads/user123/file-1__RE-1.pdf',
+          tool_call_id: 'call_0',
+        });
+      } else {
+        expect(results[0]).toMatchObject({ messageId: 'run456', conversationId: 'thread789' });
+        const [event] = res.write.mock.calls[0];
+        expect(JSON.parse(event.match(/^event: attachment\ndata: (.+)\n\n$/)[1])).toEqual(
+          results[0],
+        );
       }
     },
   );

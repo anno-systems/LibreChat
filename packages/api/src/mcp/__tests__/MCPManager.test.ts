@@ -932,6 +932,50 @@ describe('MCPManager', () => {
       expect(calls[1].params).not.toHaveProperty('_meta');
     });
 
+    it('attaches file outputs for an admin-defined server only (fork)', async () => {
+      const blob = Buffer.from('%PDF-1.7\n\0x').toString('base64');
+      const callWith = async (config: t.SSEOptions & Record<string, unknown>) => {
+        const manager = new MCPManager();
+        const connection = createConnection();
+        (connection.client.request as jest.Mock).mockResolvedValue({
+          content: [
+            {
+              type: 'resource',
+              resource: { uri: 'invoice://RE-1.pdf', mimeType: 'application/pdf', blob },
+            },
+          ],
+          isError: false,
+        });
+        jest.spyOn(manager, 'getConnection').mockResolvedValue(connection);
+        jest.spyOn(manager, 'disconnectUserConnection').mockResolvedValue();
+        return manager.callTool({
+          user: mockUser,
+          serverName,
+          serverConfig: config as t.SSEOptions,
+          toolName: 'test_tool',
+          provider: 'openai',
+          flowManager: mockFlowManager,
+        });
+      };
+
+      const [adminText, adminArtifacts] = await callWith({ ...serverConfig, fileOutputs: true });
+      expect(adminText).toContain('File attached for the user: RE-1.pdf');
+      expect(adminArtifacts?.mcp_files).toHaveLength(1);
+
+      const [offText, offArtifacts] = await callWith(serverConfig);
+      expect(offText).toContain('bytes of binary data');
+      expect(offArtifacts?.mcp_files).toBeUndefined();
+
+      const [userText, userArtifacts] = await callWith({
+        ...serverConfig,
+        fileOutputs: true,
+        source: 'user',
+        dbId: 'db-1',
+      });
+      expect(userText).toContain('bytes of binary data');
+      expect(userArtifacts?.mcp_files).toBeUndefined();
+    });
+
     it('does not create activity entries for app-shared connections', async () => {
       const manager = new MCPManager();
       const appConnection = createConnection();

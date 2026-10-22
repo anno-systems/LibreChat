@@ -81,6 +81,7 @@ import { processMCPEnv, isPluginSourced } from '~/utils/env';
 import { OAuthLifecycleRelay } from './oauth/pending';
 import { isOwnedAbortError } from '~/utils/errors';
 import { markMCPToolResultError } from './status';
+import { resolveMCPFileOutputs } from './files';
 import { withMCPRequestSignal } from './signal';
 import { MCPConnection } from './connection';
 import { mcpConfig } from './mcpConfig';
@@ -2186,6 +2187,8 @@ Please follow these instructions when using tools from the respective MCP server
           resolvedAppResource = undefined;
         }
 
+        /** Admin-defined servers only: a user-created server never hands the user a file. */
+        const fileOutputs = isDbSourced ? undefined : resolveMCPFileOutputs(rawConfig);
         return markMCPToolResultError(
           formatToolContent(
             toolResult,
@@ -2199,8 +2202,9 @@ Please follow these instructions when using tools from the respective MCP server
                   serverBinding,
                   toolArgs: toolArguments,
                   mcpApps: admittedMCPApps,
+                  fileOutputs,
                 }
-              : { mcpApps: admittedMCPApps },
+              : { mcpApps: admittedMCPApps, fileOutputs },
           ),
           toolResult?.isError === true,
         );

@@ -137,6 +137,18 @@ describe('getCatalogLockIssues', () => {
     ]);
   });
 
+  it('refuses switching file outputs on for a catalog MCP server (fork)', () => {
+    expect(codes({ 'mcpServers.gmail.fileOutputs': true })).toEqual([
+      { path: 'mcpServers.gmail.fileOutputs', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ mcpServers: { gmail: { fileOutputs: { maxBytes: 1 } } } })).toEqual([
+      { path: 'mcpServers.gmail.fileOutputs', code: 'catalog_field_locked' },
+    ]);
+    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.fileOutputs')).toEqual(
+      expect.objectContaining({ code: 'catalog_field_locked' }),
+    );
+  });
+
   it('refuses MCP servers outside the catalog and non-object MCP sections', () => {
     expect(
       codes({ 'mcpServers.mine': { type: 'streamable-http', url: 'https://x.example' } }),
