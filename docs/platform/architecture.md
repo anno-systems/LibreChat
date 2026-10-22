@@ -541,22 +541,30 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 
 ### First servers
 
-Built (2026-10-20, Excel, Planner and To Do 2026-10-21, `anno-systems/mcp-servers`):
+Built (2026-10-20, Excel, Planner and To Do 2026-10-21, Atlassian, Slack, Notion and Calendly
+2026-10-22, `anno-systems/mcp-servers`):
 
 | Server                                                                                   | Process     | Notes                                                                                                                |
 | ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint`, `excel`, `planner`, `todo` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only; Planner changes carry the task's etag |
+| `jira`, `confluence`                                                                     | `atlassian` | One process, one connected account per user; pinned to the tenant's Atlassian site                                   |
+| `slack`                                                                                  | `slack`     | User token in the tenant's workspace; no direct messages, no `@channel` broadcasts                                   |
+| `notion`                                                                                 | `notion`    | Pages and databases the user shared with the platform's integration in the tenant's workspace                        |
+| `calendly`                                                                               | `calendly`  | Event types, events, availability, single-use booking links, cancelling                                              |
 | `lexware`                                                                                | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                               |
 | `deepl`                                                                                  | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                                  |
 | `einvoice`                                                                               | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator              |
 
 Each customer's Entra admin consents once to the platform's multi-tenant app; the admin app
-guides the tenant admin through that consent and stores the directory id.
+guides the tenant admin through that consent and stores the directory id. Atlassian, Slack, Notion
+and Calendly accept a connection only from the site, workspace or organization the tenant admin
+entered. Their refresh tokens are single-use, so the core refreshes once per user behind a
+Postgres advisory lock, and a vendor 401 forgets the connection and offers a new connect link.
 
-Next, as listed by the owner: Entra lookups, Google Calendar, Docs, Sheets
-and Mail, Zendesk, Personio, Odoo, sevDesk, Slack, DHL Parcel DE, ELSTER, LinkedIn, Jira and
-Confluence, Calendly, Notion, Postman, Stripe, Todoist; and for operations Zabbix, Grafana
-(self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data
+Next, as listed by the owner: Entra lookups, Google Calendar, Docs, Sheets and Mail, Zendesk,
+Personio, Odoo, sevDesk, DHL Parcel DE, ELSTER, LinkedIn, Postman, Stripe, Todoist; and for
+operations Zabbix, Grafana (self-hosted and cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab
+and Miro. Payroll data
 (Personio) can include special-category data (GDPR Art. 9) and needs the finest-grained tools.
 
 ## Code interpreter
