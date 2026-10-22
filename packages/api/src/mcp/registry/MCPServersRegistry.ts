@@ -21,6 +21,7 @@ import {
 } from '~/mcp/errors';
 import { normalizeLegacyHeaderMaps, normalizeLegacyHeaderMapsIn } from './compat';
 import { canBackfillSharedServerInstructions, isUserSourced } from '~/mcp/utils';
+import { isMCPServerDisabled, toDisabledServerMarker } from './enabled';
 import { ReadThroughAllCache } from './cache/ReadThroughAllCache';
 import { isPluginSourced, MCP_PLUGIN_SOURCE } from '~/utils/env';
 import { requireApiKeyReentryForRebinding } from './binding';
@@ -507,6 +508,7 @@ export class MCPServersRegistry {
 
     if (!candidate) return base;
     if (base?.source === 'user') return base;
+    if (isMCPServerDisabled(candidate)) return undefined;
     if (isProcessMCPServerConfig(base)) return base;
     if (candidate.inspectionFailed) return base ?? candidate;
     return base ? { ...candidate, source: overlaySource(base, candidate) } : candidate;
@@ -526,11 +528,13 @@ export class MCPServersRegistry {
    * and User-DB entries.
    *
    * Precedence (lowest to highest): YAML cache > Config-tier overrides (success only) > User DB.
-   * Three guards keep the merge safe:
+   * Four guards keep the merge safe:
    *   1. Config-tier entries carrying `inspectionFailed: true` never overlay an existing
    *      base entry; the healthy base is preserved for the duration of the retry window.
    *   2. User-DB entries (`source: 'user'`) are never replaced by Config-tier overlays.
    *   3. Process-backed base entries are never replaced by Config-tier overlays.
+   *   4. A Config-tier entry with `enabled: false` removes the name (fork: per-tenant switch),
+   *      except where guard 2 keeps a User-DB entry.
    * On a successful overlay the base entry's `source` field is preserved so downstream
    * recovery logic routes to the correct storage location — except a `'plugin'` base,
    * whose no-resolve provenance must not transfer to the operator override (see
@@ -549,6 +553,10 @@ export class MCPServersRegistry {
     for (const [name, override] of Object.entries(configServers)) {
       if (result[name]?.source === 'user') {
         logger.debug('[MCP][config] Admin override shadowed by user-tier entry');
+        continue;
+      }
+      if (isMCPServerDisabled(override)) {
+        delete result[name];
         continue;
       }
       if (isProcessMCPServerConfig(result[name])) {
@@ -1170,6 +1178,10 @@ export class MCPServersRegistry {
 
     const settled = await Promise.allSettled(
       Object.entries(resolvedMcpConfig).map(async ([serverName, rawConfig]) => {
+        if (isMCPServerDisabled(rawConfig)) {
+          result[serverName] = toDisabledServerMarker(rawConfig);
+          return;
+        }
         if (this.isUnmodifiedYamlServer(yamlSnapshot, serverName, rawConfig)) {
           return;
         }

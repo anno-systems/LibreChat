@@ -50,6 +50,15 @@ describe('MCP server title validation', () => {
 });
 
 describe('MCPOptionsSchema', () => {
+  it('accepts the per-scope enabled switch on admin configs only', () => {
+    const config = { type: 'streamable-http', url: 'https://mcp.example.com/mcp', enabled: false };
+    const admin = MCPOptionsSchema.safeParse(config);
+    expect(admin.success && (admin.data as { enabled?: boolean }).enabled).toBe(false);
+    const user = MCPServerUserInputSchema.safeParse(config);
+    expect(user.success).toBe(true);
+    expect(user.success && 'enabled' in user.data).toBe(false);
+  });
+
   describe('OBO transport support', () => {
     it('should accept obo on SSE transport', () => {
       const result = MCPOptionsSchema.safeParse({
@@ -879,6 +888,7 @@ describe('MCP_USER_INPUT_FIELDS', () => {
     expect(MCP_USER_INPUT_FIELDS.has('startup')).toBe(false);
     expect(MCP_USER_INPUT_FIELDS.has('timeout')).toBe(false);
     expect(MCP_USER_INPUT_FIELDS.has('chatMenu')).toBe(false);
+    expect(MCP_USER_INPUT_FIELDS.has('enabled')).toBe(false);
     expect(MCP_USER_INPUT_FIELDS.has('requiresOAuth')).toBe(false);
     expect(MCP_USER_INPUT_FIELDS.has('customUserVars')).toBe(false);
     expect(MCP_USER_INPUT_FIELDS.has('oauth_headers')).toBe(false);

@@ -42,9 +42,9 @@ import {
   preserveConfigSecrets,
   redactConfigSecrets,
 } from './secrets';
+import { getCatalogLockIssues, getCatalogLockTombstoneIssue } from './catalog';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { createAdminAuditEmitter } from './audit';
-import { getCatalogLockIssues } from './catalog';
 
 const UNSAFE_SEGMENTS = /(?:^|\.)(__[\w]*|constructor|prototype)(?:\.|$)/;
 const MAX_PATCH_ENTRIES = 100;
@@ -1107,6 +1107,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
           `[adminConfig] Ignoring dedicated tenant-wide config tombstone "${fieldPath}" in the generic config API`,
         );
         return res.status(200).json({ message: 'No actionable field path provided' });
+      }
+      const tombstoneIssue = catalogLock ? getCatalogLockTombstoneIssue(fieldPath) : null;
+      if (tombstoneIssue) {
+        return invalidOverrideResponse(res, [tombstoneIssue]);
       }
 
       if (priority != null && !hasBroadManage) {
