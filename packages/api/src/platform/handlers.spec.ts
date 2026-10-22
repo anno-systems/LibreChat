@@ -253,6 +253,97 @@ describe('operator API', () => {
   });
 });
 
+describe('providers offered to all tenants', () => {
+  it('stores the flag, keeps it when an update leaves it out and audits it', async () => {
+    const { deps, handlers } = setup();
+
+    const created = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Everyone' }, { ...provider, allTenants: true }),
+    );
+    const { apiKey: _key, ...withoutKey } = provider;
+    const kept = await call(handlers.putProvider, operatorReq({ name: 'Everyone' }, withoutKey));
+    const plain = await call(handlers.putProvider, operatorReq({ name: 'Plain' }, provider));
+    const invalid = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Plain' }, { ...provider, allTenants: 'yes' }),
+    );
+
+    expect(created.body?.provider).toMatchObject({ name: 'Everyone', allTenants: true });
+    expect(kept.body?.provider).toMatchObject({ allTenants: true });
+    expect(plain.body?.provider).toMatchObject({ allTenants: false });
+    expect(invalid.statusCode).toBe(400);
+    expect(deps.recordAuditEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'catalog.provider_updated',
+        metadata: expect.objectContaining({ allTenants: true }),
+      }),
+    );
+    const listed = await call(handlers.listProviders, operatorReq({}));
+    expect(listed.body?.providers).toEqual([
+      expect.objectContaining({ name: 'Everyone', allTenants: true }),
+      expect.objectContaining({ name: 'Plain', allTenants: false }),
+    ]);
+  });
+
+  it('refuses to delete one until the operator switches the flag off', async () => {
+    const { handlers } = setup();
+    await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Everyone' }, { ...provider, allTenants: true }),
+    );
+
+    const refused = await call(handlers.deleteProvider, operatorReq({ name: 'Everyone' }));
+    const { apiKey: _key, ...withoutKey } = provider;
+    await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Everyone' }, { ...withoutKey, allTenants: false }),
+    );
+    const deleted = await call(handlers.deleteProvider, operatorReq({ name: 'Everyone' }));
+
+    expect(refused.statusCode).toBe(409);
+    expect(refused.body).toEqual({ error: 'provider_for_all_tenants' });
+    expect(deleted.statusCode).toBe(204);
+  });
+
+  it('shows tenant admins those providers with all models, without duplicates', async () => {
+    const { handlers } = setup();
+    await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));
+    await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Everyone' }, { ...provider, region: undefined, allTenants: true }),
+    );
+    await methods.setTenantAssignments('tenant-a', {
+      byok: false,
+      providers: [
+        { name: 'Mistral Platform', models: ['small'] },
+        { name: 'Everyone', models: ['small'] },
+      ],
+    });
+
+    const assigned = await call(handlers.getOwnCatalog, adminReq({}));
+    const withoutCatalog = await call(handlers.getOwnCatalog, adminReq({}, {}, 'tenant-b'));
+
+    expect(assigned.body?.providers).toEqual([
+      {
+        name: 'Mistral Platform',
+        label: 'Mistral',
+        region: 'EU (Paris)',
+        models: ['small'],
+        allTenants: false,
+      },
+      { name: 'Everyone', label: 'Mistral', models: ['small', 'large'], allTenants: true },
+    ]);
+    expect(withoutCatalog.body).toEqual({
+      byok: false,
+      providers: [
+        { name: 'Everyone', label: 'Mistral', models: ['small', 'large'], allTenants: true },
+      ],
+      own: [],
+    });
+  });
+});
+
 describe('tenant admin API', () => {
   const own = {
     baseURL: 'https://llm.a.example/v1',
@@ -278,7 +369,13 @@ describe('tenant admin API', () => {
     expect(res.body).toEqual({
       byok: false,
       providers: [
-        { name: 'Mistral Platform', label: 'Mistral', region: 'EU (Paris)', models: ['small'] },
+        {
+          name: 'Mistral Platform',
+          label: 'Mistral',
+          region: 'EU (Paris)',
+          models: ['small'],
+          allTenants: false,
+        },
       ],
       own: [],
     });

@@ -3,8 +3,10 @@ import type { TEndpoint } from 'librechat-data-provider';
 
 /**
  * Per-tenant model catalog (fork-only). Besides `librechat.yaml`'s custom endpoints, a tenant
- * gets the platform providers the operator assigned to it, limited to the assigned models, and,
- * when the operator opted it in (`byok`), endpoints with its own key. They join the tenant's
+ * gets the platform providers the operator assigned to it, limited to the assigned models, the
+ * providers the operator offers to every tenant (`allTenants`), with all their models, and, when
+ * the operator opted it in (`byok`), endpoints with its own key. Tenant admins narrow the models
+ * further through their config (`endpoints.custom[].models.default`). They join the tenant's
  * base config as tenant-scoped custom endpoints (`tenantId`, the same scoping upstream applies
  * to YAML endpoints), so model lists, the catalog lock and chat requests treat them like YAML
  * endpoints. No other tenant ever sees them.
@@ -15,7 +17,8 @@ import type { TEndpoint } from 'librechat-data-provider';
 
 export interface TenantEndpointLoaderDeps {
   getTenantCatalog(tenantId: string): Promise<TenantCatalog | null>;
-  findPlatformProviders(names: string[]): Promise<PlatformProvider[]>;
+  /** The named providers and every provider offered to all tenants. */
+  findCatalogProviders(names: string[]): Promise<PlatformProvider[]>;
   /** Decrypts a stored key. */
   decrypt(value: string): string;
   /** Off without `ADMIN_CONFIG_CATALOG_LOCK` (see above): no tenant gets catalog endpoints. */
@@ -59,30 +62,43 @@ function endpointOf(
   } as TEndpoint;
 }
 
-/** The endpoints a tenant's catalog yields, keys decrypted; assignments of unknown providers or no models are skipped. */
+/**
+ * The endpoints a tenant gets, keys decrypted: providers offered to all tenants with all their
+ * models (an assignment of one does not narrow it), assigned providers with their assigned
+ * models, and with BYOK the tenant's own endpoints. Assignments of unknown providers and
+ * endpoints without models are skipped.
+ */
 export function catalogEndpoints(
+  tenantId: string,
   catalog: TenantCatalog | null,
   providers: PlatformProvider[],
   decrypt: (value: string) => string,
 ): TEndpoint[] {
-  if (!catalog) return [];
   const byName = new Map(providers.map((provider) => [provider.name, provider]));
   const endpoints: TEndpoint[] = [];
-  for (const assignment of catalog.providers) {
+  const added = new Set<string>();
+  const add = (provider: PlatformProvider, models: string[]) => {
+    if (models.length === 0 || added.has(provider.name)) return;
+    added.add(provider.name);
+    endpoints.push(endpointOf(tenantId, { ...provider, apiKey: decrypt(provider.apiKey) }, models));
+  };
+  for (const assignment of catalog?.providers ?? []) {
     const provider = byName.get(assignment.name);
     if (!provider) continue;
-    const models = assignment.models.filter((model) => provider.models.includes(model));
-    if (models.length === 0) continue;
-    endpoints.push(
-      endpointOf(catalog.tenantId, { ...provider, apiKey: decrypt(provider.apiKey) }, models),
+    add(
+      provider,
+      provider.allTenants
+        ? provider.models
+        : assignment.models.filter((model) => provider.models.includes(model)),
     );
   }
-  if (catalog.byok) {
+  for (const provider of providers) {
+    if (provider.allTenants) add(provider, provider.models);
+  }
+  if (catalog?.byok) {
     for (const own of catalog.own) {
       if (own.models.length === 0) continue;
-      endpoints.push(
-        endpointOf(catalog.tenantId, { ...own, apiKey: decrypt(own.apiKey) }, own.models),
-      );
+      endpoints.push(endpointOf(tenantId, { ...own, apiKey: decrypt(own.apiKey) }, own.models));
     }
   }
   return endpoints;
@@ -95,9 +111,10 @@ export function createTenantEndpointLoader(deps: TenantEndpointLoaderDeps): Tena
 
   async function read(tenantId: string): Promise<TEndpoint[]> {
     const catalog = await deps.getTenantCatalog(tenantId);
-    if (!catalog) return [];
-    const providers = await deps.findPlatformProviders(catalog.providers.map((p) => p.name));
-    return catalogEndpoints(catalog, providers, deps.decrypt);
+    const providers = await deps.findCatalogProviders(
+      (catalog?.providers ?? []).map((p) => p.name),
+    );
+    return catalogEndpoints(tenantId, catalog, providers, deps.decrypt);
   }
 
   return {

@@ -50,7 +50,7 @@ const loadBaseConfig = async (mode) => {
 const tenantEndpoints = createTenantEndpointLoader({
   enabled: process.env.ADMIN_CONFIG_CATALOG_LOCK === 'true',
   getTenantCatalog: db.getTenantCatalog,
-  findPlatformProviders: db.findPlatformProviders,
+  findCatalogProviders: db.findCatalogProviders,
   decrypt: decryptV3,
 });
 

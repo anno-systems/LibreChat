@@ -34,6 +34,7 @@ export interface PlatformCatalogHandlerDeps {
     PlatformCatalogMethods,
     | 'listPlatformProviders'
     | 'findPlatformProviders'
+    | 'findCatalogProviders'
     | 'upsertPlatformProvider'
     | 'deletePlatformProvider'
     | 'tenantsUsingProvider'
@@ -90,6 +91,8 @@ const providerInputSchema = z
     models: modelsSchema,
     region: z.string().trim().max(64).optional(),
     dropParams: dropParamsSchema,
+    /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
+    allTenants: z.boolean().optional(),
   })
   .strict();
 
@@ -149,7 +152,7 @@ export function requirePlatformToken(
 }
 
 /** The operator the admin app acts for, from `X-Platform-Operator` (recorded, not trusted for access). */
-function operatorActor(req: Request): AuditActorInput {
+export function operatorActor(req: Request): AuditActorInput {
   const id = req.get('X-Platform-Operator')?.trim();
   const valid = id && /^[A-Za-z0-9@._:-]{1,128}$/.test(id) ? id : undefined;
   return { type: 'service', id: valid ?? 'platform-operator', name: valid ?? 'Platform operator' };
@@ -225,6 +228,7 @@ export function createPlatformCatalogHandlers(
       models: provider.models,
       ...(provider.region && { region: provider.region }),
       ...(provider.dropParams && { dropParams: provider.dropParams }),
+      allTenants: provider.allTenants === true,
       apiKeyPreview: preview(provider.apiKey, decrypt),
       ...(tenants && { tenants }),
     };
@@ -256,11 +260,12 @@ export function createPlatformCatalogHandlers(
           return res.status(409).json({ error: 'name_taken' });
         }
       }
-      const { apiKey, ...fields } = parsed.data;
+      const { apiKey, allTenants, ...fields } = parsed.data;
       if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
       const saved = await catalog.upsertPlatformProvider({
         name,
         ...fields,
+        allTenants: allTenants ?? existing?.allTenants === true,
         apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
       });
       await deps.invalidate();
@@ -270,7 +275,12 @@ export function createPlatformCatalogHandlers(
         severity: 'info',
         tenantId: undefined,
         target: { type: 'provider', id: name, name: saved.label },
-        metadata: { created: !existing, keyChanged: Boolean(apiKey), models: saved.models.length },
+        metadata: {
+          created: !existing,
+          keyChanged: Boolean(apiKey),
+          models: saved.models.length,
+          allTenants: saved.allTenants === true,
+        },
       });
       return res.status(existing ? 200 : 201).json({ provider: providerView(saved) });
     } catch (error) {
@@ -278,10 +288,14 @@ export function createPlatformCatalogHandlers(
     }
   }
 
-  /** DELETE /api/platform/providers/:name; refused while a tenant has it. */
+  /** DELETE /api/platform/providers/:name; refused while it is offered to all tenants or a tenant has it. */
   async function deleteProvider(req: Request, res: Response) {
     try {
       const name = String((req.params as { name?: string }).name ?? '');
+      const [stored] = await catalog.findPlatformProviders([name]);
+      if (stored?.allTenants) {
+        return res.status(409).json({ error: 'provider_for_all_tenants' });
+      }
       const tenants = await catalog.tenantsUsingProvider(name);
       if (tenants.length > 0) {
         return res.status(409).json({ error: 'provider_in_use', tenants });
@@ -373,26 +387,33 @@ export function createPlatformCatalogHandlers(
     return tenantId;
   }
 
-  /** GET /api/admin/catalog: the tenant's assigned providers and its own endpoints. */
+  /**
+   * GET /api/admin/catalog: the tenant's assigned providers, the providers offered to all
+   * tenants (with all their models) and its own endpoints.
+   */
   async function getOwnCatalog(req: ServerRequest, res: Response) {
     try {
       const tenantId = callerTenant(req, res);
       if (!tenantId) return res;
       const stored = await catalog.getTenantCatalog(tenantId);
-      const providers = await catalog.findPlatformProviders(
+      const providers = await catalog.findCatalogProviders(
         (stored?.providers ?? []).map((p) => p.name),
       );
       const byName = new Map(providers.map((p) => [p.name, p]));
+      const view = (provider: PlatformProvider, models: string[]) => ({
+        name: provider.name,
+        label: provider.label,
+        ...(provider.region && { region: provider.region }),
+        models,
+        allTenants: provider.allTenants === true,
+      });
+      const assigned = (stored?.providers ?? [])
+        .filter((p) => byName.has(p.name) && !byName.get(p.name)!.allTenants)
+        .map((p) => view(byName.get(p.name)!, p.models));
+      const forAll = providers.filter((p) => p.allTenants).map((p) => view(p, p.models));
       return res.json({
         byok: stored?.byok ?? false,
-        providers: (stored?.providers ?? [])
-          .filter((p) => byName.has(p.name))
-          .map((p) => ({
-            name: p.name,
-            label: byName.get(p.name)!.label,
-            ...(byName.get(p.name)!.region && { region: byName.get(p.name)!.region }),
-            models: p.models,
-          })),
+        providers: [...assigned, ...forAll],
         own: (stored?.own ?? []).map((own) => ({
           name: own.name,
           baseURL: own.baseURL,

@@ -26,7 +26,7 @@ const catalog: TenantCatalog = {
 
 describe('catalogEndpoints', () => {
   it('yields assigned providers with their assigned models and the tenant endpoints', () => {
-    const endpoints = catalogEndpoints(catalog, [provider], decrypt);
+    const endpoints = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
 
     expect(endpoints).toEqual([
       expect.objectContaining({
@@ -43,6 +43,7 @@ describe('catalogEndpoints', () => {
 
   it("drops `user` unless the endpoint sets its own list, so Mistral's API accepts the request", () => {
     const endpoints = catalogEndpoints(
+      'tenant-a',
       {
         ...catalog,
         own: [{ ...catalog.own[0], dropParams: [] }],
@@ -50,7 +51,7 @@ describe('catalogEndpoints', () => {
       [{ ...provider, dropParams: ['user', 'stop'] }],
       decrypt,
     );
-    const [defaulted] = catalogEndpoints(catalog, [provider], decrypt);
+    const [defaulted] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
 
     expect(defaulted.dropParams).toEqual(['user']);
     expect(endpoints.map((e) => e.dropParams)).toEqual([['user', 'stop'], []]);
@@ -58,12 +59,44 @@ describe('catalogEndpoints', () => {
 
   it('leaves out the tenant endpoints without BYOK and assignments without models', () => {
     const endpoints = catalogEndpoints(
+      'tenant-a',
       { ...catalog, byok: false, providers: [{ name: 'Mistral Platform', models: ['gone'] }] },
       [provider],
       decrypt,
     );
 
     expect(endpoints).toEqual([]);
+  });
+
+  it('gives every tenant all models of a provider offered to all tenants, once', () => {
+    const everyone: PlatformProvider = {
+      ...provider,
+      name: 'Everyone',
+      label: 'For all',
+      models: ['a', 'b'],
+      allTenants: true,
+    };
+    const assigned = catalogEndpoints(
+      'tenant-a',
+      { ...catalog, providers: [...catalog.providers, { name: 'Everyone', models: ['a'] }] },
+      [provider, everyone],
+      decrypt,
+    );
+    const withoutCatalog = catalogEndpoints('tenant-c', null, [everyone], decrypt);
+
+    expect(assigned.map((e) => [e.name, e.models?.default])).toEqual([
+      ['Mistral Platform', ['small', 'large']],
+      ['Everyone', ['a', 'b']],
+      ['Own', ['m']],
+    ]);
+    expect(withoutCatalog).toEqual([
+      expect.objectContaining({
+        name: 'Everyone',
+        apiKey: 'operator-key',
+        models: { default: ['a', 'b'], fetch: false },
+        tenantId: 'tenant-c',
+      }),
+    ]);
   });
 });
 
@@ -75,7 +108,7 @@ describe('createTenantEndpointLoader', () => {
       getTenantCatalog: jest.fn(async (tenantId: string) =>
         tenantId === 'tenant-a' ? catalog : null,
       ),
-      findPlatformProviders: jest.fn(async () => [provider]),
+      findCatalogProviders: jest.fn(async (): Promise<PlatformProvider[]> => [provider]),
       decrypt,
       ttlMs: 1000,
       now: () => now,
@@ -95,6 +128,22 @@ describe('createTenantEndpointLoader', () => {
     await loader.load('tenant-a');
     expect(deps.getTenantCatalog).toHaveBeenCalledTimes(3);
     expect(await loader.load('tenant-b')).toEqual([]);
+  });
+
+  it('serves providers offered to all tenants to a tenant without a catalog', async () => {
+    const { deps, loader } = setup();
+    deps.findCatalogProviders.mockResolvedValue([{ ...provider, allTenants: true }]);
+
+    const endpoints = await loader.load('tenant-b');
+
+    expect(deps.findCatalogProviders).toHaveBeenCalledWith([]);
+    expect(endpoints).toEqual([
+      expect.objectContaining({
+        name: 'Mistral Platform',
+        models: { default: ['small', 'medium', 'large'], fetch: false },
+        tenantId: 'tenant-b',
+      }),
+    ]);
   });
 
   it('does not keep a failed read', async () => {
@@ -120,7 +169,7 @@ describe('withTenantEndpoints', () => {
       endpoints: { custom: [yaml] },
       config: { endpoints: { custom: [yaml] } },
     } as unknown as AppConfig;
-    const [endpoint] = catalogEndpoints(catalog, [provider], decrypt);
+    const [endpoint] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
 
     const merged = withTenantEndpoints(config, [endpoint]);
 
@@ -148,7 +197,7 @@ describe('getAppConfig with a tenant catalog', () => {
   };
 
   function service(failing = false) {
-    const [endpoint] = catalogEndpoints(catalog, [provider], decrypt);
+    const [endpoint] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
     const loadTenantEndpoints = jest.fn(async (tenantId: string) => {
       if (failing) throw new Error('db down');
       return tenantId === 'tenant-a' ? [endpoint] : [];
@@ -196,7 +245,7 @@ describe('getAppConfig with a tenant catalog', () => {
 describe('admin config reads of a tenant catalog', () => {
   it("never carry an assigned provider's key", async () => {
     const { redactConfigSecrets } = await import('~/admin/secrets');
-    const [endpoint] = catalogEndpoints(catalog, [provider], decrypt);
+    const [endpoint] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
     const config = withTenantEndpoints(
       { endpoints: { custom: [] }, config: { endpoints: { custom: [] } } } as unknown as AppConfig,
       [endpoint],
