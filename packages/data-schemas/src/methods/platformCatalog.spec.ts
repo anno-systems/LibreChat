@@ -71,6 +71,27 @@ describe('platform providers', () => {
     const cleared = await methods.upsertPlatformProvider(mistral);
     expect(cleared).not.toHaveProperty('dropParams');
   });
+
+  it('stores the all-tenants flag and finds those providers with the named ones', async () => {
+    const created = await methods.upsertPlatformProvider(mistral);
+    expect(created.allTenants).toBe(false);
+    await methods.upsertPlatformProvider({ ...mistral, name: 'Everyone', allTenants: true });
+    await methods.upsertPlatformProvider({ ...mistral, name: 'Other' });
+
+    expect((await methods.findCatalogProviders([])).map((p) => p.name)).toEqual(['Everyone']);
+    expect(
+      (await methods.findCatalogProviders(['Mistral Platform', 'Everyone'])).map((p) => [
+        p.name,
+        p.allTenants,
+      ]),
+    ).toEqual([
+      ['Everyone', true],
+      ['Mistral Platform', false],
+    ]);
+
+    await methods.upsertPlatformProvider({ ...mistral, name: 'Everyone', allTenants: false });
+    expect(await methods.findCatalogProviders([])).toEqual([]);
+  });
 });
 
 describe('tenant catalogs', () => {

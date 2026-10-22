@@ -1,6 +1,6 @@
 export { createTenantEndpointLoader, catalogEndpoints, withTenantEndpoints } from './catalog';
 export type { TenantEndpointLoader, TenantEndpointLoaderDeps } from './catalog';
-export { createPlatformCatalogHandlers, requirePlatformToken } from './handlers';
+export { createPlatformCatalogHandlers, operatorActor, requirePlatformToken } from './handlers';
 export type { PlatformCatalogHandlerDeps, PlatformCatalogHandlers } from './handlers';
 export {
   createToolPolicyHandlers,
@@ -21,3 +21,5 @@ export type {
 } from './toolPolicy';
 export { createTenantPurgeHandler, purgeTenant } from './purge';
 export type { TenantPurgeDeps, TenantPurgeResult } from './purge';
+export { createTenantAdminHandler, setTenantAdmin } from './admins';
+export type { TenantAdminDeps, TenantAdminResult, TenantAdminUser } from './admins';

@@ -23,6 +23,8 @@ export interface PlatformProvider {
   region?: string;
   /** Request fields the provider rejects; absent means the catalog's default. */
   dropParams?: string[];
+  /** Offered to every tenant with all its models, without an assignment. */
+  allTenants?: boolean;
   updatedAt?: Date;
 }
 
@@ -51,6 +53,8 @@ export interface TenantCatalog {
 export interface PlatformCatalogMethods {
   listPlatformProviders(): Promise<PlatformProvider[]>;
   findPlatformProviders(names: string[]): Promise<PlatformProvider[]>;
+  /** The providers named in `names` and every provider offered to all tenants, in one query. */
+  findCatalogProviders(names: string[]): Promise<PlatformProvider[]>;
   upsertPlatformProvider(provider: PlatformProvider): Promise<PlatformProvider>;
   /** False when no provider has the name. */
   deletePlatformProvider(name: string): Promise<boolean>;
@@ -92,6 +96,7 @@ const platformProviderSchema = new Schema<PlatformProvider>(
     models: { type: [String], default: [] },
     region: { type: String },
     dropParams: { type: [String], default: undefined },
+    allTenants: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -115,6 +120,7 @@ function toProvider(doc: PlatformProvider): PlatformProvider {
     models: [...(doc.models ?? [])],
     ...(doc.region && { region: doc.region }),
     ...(doc.dropParams && { dropParams: [...doc.dropParams] }),
+    allTenants: doc.allTenants === true,
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
   };
 }
@@ -161,6 +167,15 @@ export function createPlatformCatalogMethods(
       return docs.map(toProvider);
     },
 
+    async findCatalogProviders(names) {
+      const docs = await Provider.find({
+        $or: [{ name: { $in: names } }, { allTenants: true }],
+      })
+        .sort({ name: 1 })
+        .lean<PlatformProvider[]>();
+      return docs.map(toProvider);
+    },
+
     async upsertPlatformProvider(provider) {
       const { name, ...fields } = provider;
       const unset = {
@@ -169,7 +184,10 @@ export function createPlatformCatalogMethods(
       };
       const doc = await Provider.findOneAndUpdate(
         { name },
-        { $set: { ...fields, name }, ...(Object.keys(unset).length > 0 && { $unset: unset }) },
+        {
+          $set: { ...fields, name, allTenants: provider.allTenants === true },
+          ...(Object.keys(unset).length > 0 && { $unset: unset }),
+        },
         { upsert: true, new: true, runValidators: true },
       ).lean<PlatformProvider>();
       return toProvider(doc as PlatformProvider);
