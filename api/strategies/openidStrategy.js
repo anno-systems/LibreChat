@@ -33,6 +33,9 @@ const {
   getLibreChatRolesForOpenIdSync,
   syncOpenIdGroups,
   DEFAULT_OAUTH_TOKEN_TTL_SECONDS,
+  hasSecondFactor,
+  requiresAdminMfa,
+  ADMIN_MFA_REQUIRED,
 } = require('@librechat/api');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
@@ -876,10 +879,14 @@ async function processOpenIDAuth(tokenset, existingUsersOnly = false) {
  * @param {boolean | undefined} [existingUsersOnly]
  * @param {boolean} [tenantAware] - Reject logins whose tenant claim differs from the request tenant.
  */
-function createOpenIDCallback(existingUsersOnly, tenantAware = false) {
+function createOpenIDCallback(existingUsersOnly, tenantAware = false, requireMfa = false) {
   return async (tokenset, done) => {
     try {
       const claims = tokenset.claims ? tokenset.claims() : tokenset;
+      if (requireMfa && !hasSecondFactor(claims)) {
+        logger.warn('[openidStrategy] Admin login rejected: no second factor');
+        return done(null, false, { message: ADMIN_MFA_REQUIRED });
+      }
       const tenantCheck = tenantAware
         ? checkOpenIdTenantClaim(claims, getTenantId(), process.env)
         : { ok: true };
@@ -928,7 +935,7 @@ const setupOpenIdAdmin = (openidConfig) => {
         tenantAware: true,
         callbackPath: ADMIN_CALLBACK_PATH,
       },
-      createOpenIDCallback(true, true),
+      createOpenIDCallback(true, true, requiresAdminMfa()),
     );
 
     passport.use('openidAdmin', openidAdminLogin);
