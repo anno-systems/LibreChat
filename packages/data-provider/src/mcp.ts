@@ -194,6 +194,18 @@ export const MCP_SERVER_TITLE_PATTERN = new RegExp(
 export const MCP_SERVER_TITLE_ERROR =
   'Title must start with a letter or number and can include spaces, hyphens, and apostrophes';
 
+export const MCPFileOutputsSchema = z.union([
+  z.boolean(),
+  z.object({
+    /** Allowed MIME types; an entry ending in `*` matches by prefix. */
+    mimeTypes: z.array(z.string().min(1)).optional(),
+    /** Largest file accepted, in bytes. */
+    maxBytes: z.number().int().positive().optional(),
+  }),
+]);
+
+export type TMCPFileOutputs = z.infer<typeof MCPFileOutputsSchema>;
+
 const BaseOptionsSchema = z.object({
   /** Display name for the MCP server */
   title: z.string().regex(MCP_SERVER_TITLE_PATTERN, MCP_SERVER_TITLE_ERROR).optional(),
@@ -211,6 +223,14 @@ const BaseOptionsSchema = z.object({
    * request's `_meta` under `librechat/context`. Default: false. Admin-only (fork: MCP call context).
    */
   callContext: z.boolean().optional(),
+  /**
+   * Turns a tool result's embedded binary resource (`{ type: 'resource', resource: { uri,
+   * mimeType, blob } }`) into a file the user can download under the reply, stored like other
+   * generated files, instead of a summary line for the model. `true` uses the default MIME types
+   * and size limit; an object narrows or widens them (`mimeTypes` entries may end in `*` to match
+   * a prefix). Default: off. Admin-only (fork: MCP file outputs).
+   */
+  fileOutputs: MCPFileOutputsSchema.optional(),
   /**
    * `false` switches the server off for the scope of the config document that sets it (a tenant,
    * group or role override): its users neither see it nor load or call its tools. A document of
@@ -505,6 +525,7 @@ const omitServerManagedFields = <T extends z.ZodObject<z.ZodRawShape>>(schema: T
   schema.omit({
     startup: true,
     callContext: true,
+    fileOutputs: true,
     enabled: true,
     timeout: true,
     sseReadTimeout: true,

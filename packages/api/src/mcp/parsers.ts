@@ -9,7 +9,9 @@ import {
   resolveMCPUIResourceMimeType,
 } from 'librechat-data-provider';
 import type { UIResource, TMCPAppsPolicy } from 'librechat-data-provider';
+import type { MCPFileOutputsPolicy } from './files';
 import type * as t from './types';
+import { extractMCPFileOutputs, MCP_FILE_OUTPUTS_ARTIFACT_KEY } from './files';
 
 export const DEFAULT_MCP_IMAGE_DATA_MAX_BYTES: number = 10 * 1024 * 1024;
 
@@ -336,7 +338,22 @@ export function formatToolContent(
     serverBinding?: string;
     toolArgs?: Record<string, unknown>;
     mcpApps?: TMCPAppsPolicy;
+    /** The server's file output policy; only an admin-defined server's caller passes one. */
+    fileOutputs?: MCPFileOutputsPolicy;
   },
+): t.FormattedContentResult {
+  const extracted = extractMCPFileOutputs(result, metadata?.fileOutputs);
+  const formatted = formatExtractedToolContent(extracted?.result ?? result, provider, metadata);
+  if (!extracted) {
+    return formatted;
+  }
+  return [formatted[0], { ...formatted[1], [MCP_FILE_OUTPUTS_ARTIFACT_KEY]: extracted.files }];
+}
+
+function formatExtractedToolContent(
+  result: t.MCPToolCallResponse,
+  provider: t.Provider,
+  metadata?: Parameters<typeof formatToolContent>[2],
 ): t.FormattedContentResult {
   const mcpApps = metadata?.mcpApps ?? resolveMCPAppsPolicy();
   const isRecognizedProvider = RECOGNIZED_PROVIDERS.has(provider);

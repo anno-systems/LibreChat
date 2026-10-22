@@ -59,6 +59,29 @@ describe('MCPOptionsSchema', () => {
     expect(user.success && 'enabled' in user.data).toBe(false);
   });
 
+  it('accepts fileOutputs on admin configs only (fork)', () => {
+    const url = 'https://mcp.example.com/mcp';
+    for (const fileOutputs of [true, false, { mimeTypes: ['application/pdf'], maxBytes: 1024 }]) {
+      const admin = MCPOptionsSchema.safeParse({ type: 'streamable-http', url, fileOutputs });
+      expect(admin.success && (admin.data as { fileOutputs?: unknown }).fileOutputs).toEqual(
+        fileOutputs,
+      );
+      const user = MCPServerUserInputSchema.safeParse({
+        type: 'streamable-http',
+        url,
+        fileOutputs,
+      });
+      expect(user.success).toBe(true);
+      expect(user.success && 'fileOutputs' in user.data).toBe(false);
+    }
+    expect(MCP_USER_INPUT_FIELDS.has('fileOutputs')).toBe(false);
+    for (const fileOutputs of ['yes', { maxBytes: 0 }, { mimeTypes: [''] }]) {
+      expect(
+        MCPOptionsSchema.safeParse({ type: 'streamable-http', url, fileOutputs }).success,
+      ).toBe(false);
+    }
+  });
+
   describe('OBO transport support', () => {
     it('should accept obo on SSE transport', () => {
       const result = MCPOptionsSchema.safeParse({

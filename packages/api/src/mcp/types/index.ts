@@ -160,8 +160,19 @@ export type Artifacts =
       files?: Array<{ id: string; name: string }>;
       session_id?: string;
       file_ids?: string[];
+      /** Files an MCP server with `fileOutputs` returned for the user (fork: MCP file outputs). */
+      mcp_files?: MCPFileOutput[];
     }
   | undefined;
+
+/** A file an MCP server returned in a tool result, still base64 (fork: MCP file outputs). */
+export type MCPFileOutput = {
+  filename: string;
+  /** Lower-cased media type without parameters. */
+  mimeType: string;
+  bytes: number;
+  data: string;
+};
 
 export type FormattedContentResult = [string, Artifacts | undefined];
 

@@ -49,6 +49,7 @@ const {
   createRecordExists,
   createStoredUploadDelete,
   withStoredUploadCleanup,
+  saveMCPFileOutput: saveMCPFileOutputWithDeps,
   resolveStoredUploadTarget,
   startExpiredFileSweep: startExpiredFileSweepWithDeps,
   resolveToolRoleGrants,
@@ -1797,6 +1798,27 @@ async function saveBase64Image(
 }
 
 /**
+ * Stores a file an MCP server returned (fork: MCP file outputs) through the document strategy.
+ * @param {import('@librechat/api').MCPFileOutput} file
+ * @param {{ req: ServerRequest; conversationId?: string; messageId?: string }} params
+ */
+function saveMCPFileOutput(file, { req, conversationId, messageId }) {
+  const source = getFileStrategy(req.config, { context: FileContext.mcp_output });
+  return saveMCPFileOutputWithDeps(file, {
+    req,
+    source,
+    logger,
+    messageId,
+    conversationId,
+    createFile: db.createFile,
+    recordExists: fileRecordExists,
+    retentionExpiry: getRetentionExpiry(req),
+    saveBuffer: getStrategyFunctions(source).saveBuffer,
+    resolveDeleteFile: () => getStrategyFunctions(source).deleteFile,
+  });
+}
+
+/**
  * Filters a file based on its size and the endpoint origin.
  *
  * @param {Object} params - The parameters for the function.
@@ -1902,6 +1924,7 @@ module.exports = {
   filterFile,
   processFileURL,
   saveBase64Image,
+  saveMCPFileOutput,
   processImageFile,
   uploadImageBuffer,
   sweepExpiredFiles,

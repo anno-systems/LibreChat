@@ -33,6 +33,8 @@ export enum FileContext {
   message_attachment = 'message_attachment',
   run_artifact = 'run_artifact',
   skill_file = 'skill_file',
+  /** A file an admin-defined MCP server returned from a tool call (fork: MCP file outputs). */
+  mcp_output = 'mcp_output',
   filename = 'filename',
   updatedAt = 'updatedAt',
   source = 'source',
