@@ -55,12 +55,14 @@ function setup({
   base = settings,
   oauth = makeOAuth(),
   user = { role: 'USER' },
+  relay,
 }: {
   settings?: Record<string, unknown> | undefined;
   base?: Record<string, unknown> | undefined;
   oauth?: jest.Mocked<PullRequestOAuth>;
   /** The stored user a callback's state names; null when it no longer exists. */
   user?: { role?: string; tenantId?: string } | null;
+  relay?: { serverDomain: () => string | undefined; callbackUrl: string };
 } = {}) {
   const getAppConfig = jest
     .fn()
@@ -68,7 +70,13 @@ function setup({
       configWith(options.baseOnly ? base : settings),
     );
   const getUser = jest.fn(async (id: string) => (user == null ? null : { id, ...user }));
-  const handlers = createPullRequestConnectionHandlers({ oauth, getAppConfig, getUser, env });
+  const handlers = createPullRequestConnectionHandlers({
+    oauth,
+    getAppConfig,
+    getUser,
+    env,
+    ...(relay ? { relay } : {}),
+  });
   const res = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
@@ -84,7 +92,11 @@ const asRes = (res: unknown) => res as Response;
 const signedIn = (user: Record<string, unknown> | null = { id: 'u1' }) =>
   ({ user, params: {}, query: {} }) as unknown as ServerRequest;
 const callbackRequest = (query: Record<string, string>, cookies: Record<string, string> = {}) =>
-  ({ query, cookies }) as unknown as Request;
+  ({
+    query,
+    cookies,
+    originalUrl: `/api/pull-requests/oauth/callback?${new URLSearchParams(query).toString()}`,
+  }) as unknown as Request;
 const bound = () => ({
   [OAUTH_CSRF_COOKIE]: generateOAuthCsrfToken(claims.flowId, env.JWT_SECRET),
 });
@@ -304,6 +316,59 @@ describe('callback', () => {
     const { oauth, res } = await run({ state: 's', code: 'c' }, bound(), options);
     expect(oauth.complete).not.toHaveBeenCalled();
     expect(res.redirect).toHaveBeenCalledWith(`/oauth/error?error=invalid_state${flowParam}`);
+  });
+});
+
+describe('tenant hosts', () => {
+  const callbackUrl = 'https://chat.example.com/api/pull-requests/oauth/callback';
+  const relayOn = (serverDomain: string) => ({ serverDomain: () => serverDomain, callbackUrl });
+
+  it('signs the tenant host into a flow started there', async () => {
+    const { handlers, oauth, res } = setup({ relay: relayOn('https://t1.example.com') });
+    await handlers.connect(signedIn(), asRes(res));
+    expect(oauth.authorizationUrl).toHaveBeenCalledWith({ id: 'u1' }, expect.anything(), {
+      serverUrl: 'https://t1.example.com',
+    });
+  });
+
+  it('signs nothing into a flow started on the host the provider calls back', async () => {
+    const { handlers, oauth, res } = setup({ relay: relayOn('https://chat.example.com') });
+    await handlers.connect(signedIn(), asRes(res));
+    expect(oauth.authorizationUrl).toHaveBeenCalledWith({ id: 'u1' }, expect.anything());
+  });
+
+  it("relays a callback on the deployment host to the flow's tenant host, storing nothing", async () => {
+    const tenantClaims = { ...claims, tenantId: 't1', serverUrl: 'https://t1.example.com' };
+    const { handlers, oauth, res } = setup({
+      oauth: makeOAuth({ verifyState: jest.fn(() => tenantClaims) }),
+      relay: relayOn('https://chat.example.com'),
+    });
+    /** No cookie here: they live on the tenant host. */
+    await handlers.callback(callbackRequest({ state: 's', code: 'c' }, {}), asRes(res));
+    expect(res.redirect).toHaveBeenCalledWith(
+      'https://t1.example.com/api/pull-requests/oauth/callback?state=s&code=c',
+    );
+    expect(oauth.complete).not.toHaveBeenCalled();
+  });
+
+  it('finishes a relayed callback on the tenant host it started on', async () => {
+    const tenantClaims = { ...claims, serverUrl: 'https://t1.example.com' };
+    const { handlers, oauth, res } = setup({
+      oauth: makeOAuth({ verifyState: jest.fn(() => tenantClaims) }),
+      relay: relayOn('https://t1.example.com'),
+    });
+    await handlers.callback(callbackRequest({ state: 's', code: 'c' }, bound()), asRes(res));
+    expect(oauth.complete).toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith(`/oauth/success?serverName=GitHub${flowParam}`);
+  });
+
+  it('relays nothing for a state this server did not sign', async () => {
+    const { handlers, res } = setup({
+      oauth: makeOAuth({ verifyState: jest.fn(() => null) }),
+      relay: relayOn('https://chat.example.com'),
+    });
+    await handlers.callback(callbackRequest({ state: 's', code: 'c' }), asRes(res));
+    expect(res.redirect).toHaveBeenCalledWith('/oauth/error?error=invalid_state');
   });
 });
 

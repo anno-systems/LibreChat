@@ -14,6 +14,9 @@ import type { ConfigOverrideIssue } from '@librechat/data-schemas';
  *   their boolean switches `enabled` and `chatMenu`. A URL, header or new server would let the
  *   admin send users' tokens (`{{LIBRECHAT_OPENID_ACCESS_TOKEN}}`) to a server of their choosing.
  *   A tombstone under these sections may only target those two switches.
+ * - `endpoints.agents` may set only `pullRequests.enabled`, the boolean that switches the
+ *   conversation pull request chip on or off for the scope. Where pull requests are looked up,
+ *   with which token and which repositories, stays as the operator configured it.
  */
 
 export type CatalogIssueCode =
@@ -31,6 +34,11 @@ const MCP_SECTIONS = ['mcpServers', 'mcpConfig'] as const;
 const MCP_SWITCHES: ReadonlySet<string> = new Set(['enabled', 'chatMenu']);
 
 const ENV_REFERENCE = /\$\{[^}]*\}/;
+
+/** The agents endpoint fields an admin may set under the lock: section, then its booleans. */
+const AGENTS_SWITCHES: Readonly<Record<string, ReadonlySet<string>>> = {
+  pullRequests: new Set(['enabled']),
+};
 
 interface CatalogEndpoint {
   name?: unknown;
@@ -174,6 +182,26 @@ function checkMCPServers(
   }
 }
 
+function checkAgentsEndpoint(agents: unknown, issues: ConfigOverrideIssue[]): void {
+  const segments = ['endpoints', 'agents'];
+  if (!isRecord(agents)) {
+    issues.push(issue(segments, 'catalog_field_locked'));
+    return;
+  }
+  for (const [section, value] of Object.entries(agents)) {
+    const switches = AGENTS_SWITCHES[section];
+    if (switches == null || !isRecord(value)) {
+      issues.push(issue([...segments, section], 'catalog_field_locked'));
+      continue;
+    }
+    for (const [key, flag] of Object.entries(value)) {
+      if (!switches.has(key) || typeof flag !== 'boolean') {
+        issues.push(issue([...segments, section, key], 'catalog_field_locked'));
+      }
+    }
+  }
+}
+
 /**
  * Returns the catalog-lock violation of an admin config tombstone, or `null` when allowed.
  * Only MCP sections are restricted: there a tombstone may target `<section>.<name>.enabled` or
@@ -216,7 +244,9 @@ export function getCatalogLockIssues(
     return issues;
   }
   for (const key of Object.keys(overrides.endpoints)) {
-    if (key !== 'custom') {
+    if (key === 'agents') {
+      checkAgentsEndpoint(overrides.endpoints.agents, issues);
+    } else if (key !== 'custom') {
       issues.push(issue(['endpoints', key], 'catalog_endpoint_locked'));
     }
   }

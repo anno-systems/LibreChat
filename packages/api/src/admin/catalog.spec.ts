@@ -88,6 +88,32 @@ describe('getCatalogLockIssues', () => {
     ]);
   });
 
+  it('accepts switching conversation pull requests on or off (fork)', () => {
+    expect(codes({ 'endpoints.agents.pullRequests.enabled': true })).toEqual([]);
+    expect(codes({ endpoints: { agents: { pullRequests: { enabled: false } } } })).toEqual([]);
+  });
+
+  it('refuses every other agents endpoint field, and a pull request switch that is no boolean', () => {
+    expect(
+      codes({
+        endpoints: {
+          agents: {
+            pullRequests: { enabled: 'yes', allowAllRepositories: true, token: 'ghp_x' },
+            capabilities: ['execute_code'],
+          },
+        },
+      }),
+    ).toEqual([
+      { path: 'endpoints.agents.pullRequests.enabled', code: 'catalog_field_locked' },
+      { path: 'endpoints.agents.pullRequests.allowAllRepositories', code: 'catalog_field_locked' },
+      { path: 'endpoints.agents.pullRequests.token', code: 'catalog_field_locked' },
+      { path: 'endpoints.agents.capabilities', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ 'endpoints.agents': true })).toEqual([
+      { path: 'endpoints.agents', code: 'catalog_field_locked' },
+    ]);
+  });
+
   it('refuses narrowing an endpoint whose models are fetched at runtime', () => {
     expect(
       codes({ 'endpoints.custom': [{ name: 'Fetched', models: { default: ['a'] } }] }),
@@ -307,6 +333,28 @@ describe('admin config handlers with the catalog lock', () => {
       'USER',
       expect.anything(),
       { 'mcpServers.gmail.enabled': false },
+      expect.any(Number),
+    );
+  });
+
+  it('stores a PATCH that switches conversation pull requests on for a group (fork)', async () => {
+    const { handlers, deps } = createHandlers(true);
+    const res = mockRes();
+
+    await handlers.patchConfigField(
+      mockReq({
+        params: { principalType: 'group', principalId: 'g1' },
+        body: { entries: [{ fieldPath: 'endpoints.agents.pullRequests.enabled', value: true }] },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(deps.patchConfigFields).toHaveBeenCalledWith(
+      'group',
+      'g1',
+      expect.anything(),
+      { 'endpoints.agents.pullRequests.enabled': true },
       expect.any(Number),
     );
   });

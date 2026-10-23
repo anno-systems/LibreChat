@@ -168,6 +168,23 @@ describe('authorizationUrl and verifyState', () => {
     });
   });
 
+  it('signs the server URL a flow started on, and keeps the registered callback', async () => {
+    const { oauth } = setup([]);
+    const { url } = await oauth.authorizationUrl({ id: 'u1', tenantId: 't1' }, gitlab, {
+      serverUrl: 'https://t1.example.com',
+    });
+    const parsed = new URL(url);
+    /** The provider always calls back the one registered URL; the relay takes it from there. */
+    expect(parsed.searchParams.get('redirect_uri')).toBe(redirectUri);
+    expect(oauth.verifyState(parsed.searchParams.get('state') ?? '')).toMatchObject({
+      tenantId: 't1',
+      serverUrl: 'https://t1.example.com',
+    });
+    const plain = await oauth.authorizationUrl({ id: 'u1' }, gitlab);
+    const state = new URL(plain.url).searchParams.get('state') ?? '';
+    expect(oauth.verifyState(state)).not.toHaveProperty('serverUrl');
+  });
+
   it('asks GitHub for no scope unless one is configured', async () => {
     const { oauth } = setup([]);
     expect(
