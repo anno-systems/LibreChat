@@ -1,5 +1,9 @@
 const express = require('express');
-const { requirePlatformToken, createTenantAdminHandler } = require('@librechat/api');
+const {
+  requirePlatformToken,
+  createTenantAdminHandler,
+  createPlatformBannerHandlers,
+} = require('@librechat/api');
 const handlers = require('~/server/services/Config/platformCatalog');
 const { deleteTenant } = require('~/server/services/platformTenants');
 const db = require('~/models');
@@ -17,6 +21,8 @@ const putTenantAdmin = createTenantAdminHandler({
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
 });
 
+const banners = createPlatformBannerHandlers(db);
+
 router.use(requirePlatformToken(process.env.PLATFORM_API_TOKEN));
 router.get('/providers', handlers.listProviders);
 router.put('/providers/:name', handlers.putProvider);
@@ -25,5 +31,8 @@ router.get('/tenants/:tenantId/catalog', handlers.getTenantCatalog);
 router.put('/tenants/:tenantId/catalog', handlers.putTenantCatalog);
 router.put('/tenants/:tenantId/admins/:subject', putTenantAdmin);
 router.delete('/tenants/:tenantId', deleteTenant);
+router.get('/banners', banners.listBanners);
+router.put('/banners/:id', banners.putBanner);
+router.delete('/banners/:id', banners.deleteBanner);
 
 module.exports = router;

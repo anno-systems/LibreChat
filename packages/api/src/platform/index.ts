@@ -23,3 +23,5 @@ export { createTenantPurgeHandler, purgeTenant } from './purge';
 export type { TenantPurgeDeps, TenantPurgeResult } from './purge';
 export { createTenantAdminHandler, setTenantAdmin } from './admins';
 export type { TenantAdminDeps, TenantAdminResult, TenantAdminUser } from './admins';
+export { createBannerResolver, createPlatformBannerHandlers } from './banners';
+export type { PlatformBannerHandlers, PlatformBannerStore, ShownBanner } from './banners';

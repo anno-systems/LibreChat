@@ -4,6 +4,8 @@ import { createToolApprovalGrantMethods } from './toolApprovalGrant';
 import { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createPlatformCatalogMethods } from './platformCatalog';
+export { createPlatformBannerMethods } from './platformBanner';
+export type { PlatformBanner } from './platformBanner';
 export { createMcpToolPolicyMethods } from './mcpToolPolicy';
 export type { McpToolMode, McpToolPolicyRule, PlatformMcpTool } from './mcpToolPolicy';
 export type { ScheduleMCPConsentStorage, ScheduleConsentSnapshot } from './scheduleConsent';
@@ -93,6 +95,7 @@ import { createActionMethods, type ActionMethods } from './action';
 import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
+import { createPlatformBannerMethods, type PlatformBannerMethods } from './platformBanner';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
@@ -305,6 +308,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   AssistantMethods &
   BannerMethods &
   PlatformCatalogMethods &
+  PlatformBannerMethods &
   McpToolPolicyMethods &
   TenantPurgeMethods &
   TenantUsageMethods &
@@ -554,6 +558,7 @@ export function createMethods(
     ...createAssistantMethods(mongoose),
     ...createBannerMethods(mongoose),
     ...createPlatformCatalogMethods(mongoose),
+    ...createPlatformBannerMethods(mongoose),
     ...createMcpToolPolicyMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
     ...createTenantUsageMethods(mongoose),
@@ -630,6 +635,7 @@ export type {
   AssistantMethods,
   BannerMethods,
   PlatformCatalogMethods,
+  PlatformBannerMethods,
   McpToolPolicyMethods,
   TenantPurgeMethods,
   TenantUsageMethods,
