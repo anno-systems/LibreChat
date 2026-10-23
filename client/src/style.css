@@ -1262,6 +1262,10 @@ html {
 .markdown h2 {
   font-weight: 600;
 }
+/* Fork: headings in answers take the theme's display family, the UI family unless a theme names one. */
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--theme-display-font-family, inherit);
+}
 .markdown h2 {
   margin-bottom: 0.4rem;
   margin-top: 0.8rem;

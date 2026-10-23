@@ -45,6 +45,7 @@ import {
 import { getCatalogLockIssues, getCatalogLockTombstoneIssue } from './catalog';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { createAdminAuditEmitter } from './audit';
+import { getThemeWriteIssues } from './theme';
 
 const UNSAFE_SEGMENTS = /(?:^|\.)(__[\w]*|constructor|prototype)(?:\.|$)/;
 const MAX_PATCH_ENTRIES = 100;
@@ -802,6 +803,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
       if (catalogIssues.length > 0) {
         return invalidOverrideResponse(res, catalogIssues);
       }
+      const themeIssues = getThemeWriteIssues(filteredOverrides as Record<string, unknown>);
+      if (themeIssues.length > 0) {
+        return invalidOverrideResponse(res, themeIssues);
+      }
       const existingConfig = needsExisting ? stored : null;
       const preservedOverrides = preserveConfigSecrets(
         encryptedOverrides,
@@ -1001,6 +1006,10 @@ export function createAdminConfigHandlers(deps: AdminConfigDeps): {
       const catalogIssues = catalogLock ? getCatalogLockIssues(fields, baseYaml) : [];
       if (catalogIssues.length > 0) {
         return invalidOverrideResponse(res, catalogIssues);
+      }
+      const themeIssues = getThemeWriteIssues(fields);
+      if (themeIssues.length > 0) {
+        return invalidOverrideResponse(res, themeIssues);
       }
       const preservedFields = preservePatchedConfigSecretFields(
         encryptedFields,
