@@ -45,6 +45,14 @@ function setup(balance: BalanceRecord | null = { tokenCredits: 500, autoRefillEn
       stored = { autoRefillEnabled: false, ...stored, ...fields };
       return stored;
     }),
+    updateBalance: jest.fn(async ({ incrementValue }: { user: string; incrementValue: number }) => {
+      stored = {
+        autoRefillEnabled: false,
+        ...stored,
+        tokenCredits: (stored?.tokenCredits ?? 0) + incrementValue,
+      };
+      return stored;
+    }),
     recordAuditEntry: jest.fn().mockResolvedValue(undefined),
   };
   return { deps, handlers: createAdminBalanceHandlers(deps) };
@@ -116,6 +124,43 @@ describe('admin balance handlers', () => {
       expect(deps.upsertBalanceFields).not.toHaveBeenCalled();
     },
   );
+
+  it('adds credits on top of the balance and audits the amount', async () => {
+    const { handlers, deps } = setup();
+    const res = mockRes();
+
+    await handlers.addUserCredits(mockReq(USER_ID, { amount: 1500 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(deps.updateBalance).toHaveBeenCalledWith({ user: USER_ID, incrementValue: 1500 });
+    expect((res.body?.balance as BalanceRecord).tokenCredits).toBe(2000);
+    expect(deps.recordAuditEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'user.balance_updated',
+        metadata: { added: 1500, tokenCredits: 2000 },
+      }),
+    );
+  });
+
+  it.each([[0], [-5], [2.5], ['10'], [undefined]])('refuses to add %p credits', async (amount) => {
+    const { handlers, deps } = setup();
+    const res = mockRes();
+
+    await handlers.addUserCredits(mockReq(USER_ID, { amount }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(deps.updateBalance).not.toHaveBeenCalled();
+  });
+
+  it('adds nothing for a user outside the tenant', async () => {
+    const { handlers, deps } = setup();
+    const res = mockRes();
+
+    await handlers.addUserCredits(mockReq('b'.repeat(24), { amount: 10 }), res);
+
+    expect(res.statusCode).toBe(404);
+    expect(deps.updateBalance).not.toHaveBeenCalled();
+  });
 
   it('answers 500 without details when the database fails', async () => {
     const { handlers, deps } = setup();

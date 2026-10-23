@@ -291,8 +291,8 @@ search path does not apply upstream's sensitive-variable denylist).
 - `endpoints` writes may only name a custom endpoint from `librechat.yaml` and set
   `models.default` to a subset of its catalog list. Every other endpoint field and section is
   refused, as are endpoints the catalog does not have.
-- No written value may contain `${…}`. Operator-owned references such as the tenants' search keys
-  are written by the operator directly (`platform-infra` seed), not through the API.
+- No written value may contain `${…}`. Operator-owned references such as the web search key live
+  in `librechat.yaml`, not in tenant documents.
 
 LibreChat enforces the resulting list on every chat request (`validateAgentModel`, a model outside
 the list fails with `illegal_model_request`), so the narrowing is a real limit, not a UI filter.
@@ -336,8 +336,7 @@ domain and branding, grants it LibreChat's project, adds the admin app's service
 tenant's callback URLs to LibreChat's OIDC app and invites the first admin with `tenant-admin`.
 A failed step undoes the ones before it. LibreChat itself needs nothing per tenant. The operator
 area also suspends, reactivates and deletes tenants, sets their custom domains and keeps the
-platform providers of the tenant catalog. Missing: plans, and a web search key for new
-tenants.
+platform providers of the tenant catalog. Missing: plans.
 
 The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
 `SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
@@ -832,8 +831,11 @@ Decided:
   the origin LibreChat uses for that request; certificates on demand only for known domains.
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
-  instance and as Serper's scraper with a key per tenant. The gateway counts every search and
-  scrape per tenant for billing, never stores queries, and can cap a tenant per month.
+  instance and as Serper's scraper. Since 2026-10-23 one web search config in `librechat.yaml`
+  serves every tenant: its key is the gateway's platform key with `{{LIBRECHAT_TENANT_ID}}`, which
+  LibreChat fills with the caller's tenant, so a new tenant can search at once without a key of
+  its own. The gateway counts every search and scrape per tenant for billing, never stores
+  queries, and can cap a tenant per month.
 
 Open:
 
