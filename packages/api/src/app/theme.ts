@@ -23,7 +23,7 @@ export interface ConfigThemeCheck {
 const formatIssue = ({ path, message }: ThemeIssue): string =>
   `${[...THEME_PATH, ...path].join('.')}: ${message}`;
 
-function collectErrors(theme: unknown): ThemeIssue[] {
+export function collectErrors(theme: unknown): ThemeIssue[] {
   if (typeof theme !== 'string' && !isPlainThemeRecord(theme)) {
     return [{ path: [], message: 'Expected a bundled theme name or an inline theme definition' }];
   }
