@@ -90,6 +90,12 @@ const providerInputSchema = z
     apiKey: z.string().trim().min(1).max(4096).optional(),
     models: modelsSchema,
     region: z.string().trim().max(64).optional(),
+    /** ISO 3166-1 alpha-2 code of the hosting country. */
+    country: z
+      .string()
+      .regex(/^[A-Za-z]{2}$/)
+      .transform((code) => code.toUpperCase())
+      .optional(),
     dropParams: dropParamsSchema,
     /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
     allTenants: z.boolean().optional(),
@@ -227,6 +233,7 @@ export function createPlatformCatalogHandlers(
       baseURL: provider.baseURL,
       models: provider.models,
       ...(provider.region && { region: provider.region }),
+      ...(provider.country && { country: provider.country }),
       ...(provider.dropParams && { dropParams: provider.dropParams }),
       allTenants: provider.allTenants === true,
       apiKeyPreview: preview(provider.apiKey, decrypt),
@@ -404,6 +411,7 @@ export function createPlatformCatalogHandlers(
         name: provider.name,
         label: provider.label,
         ...(provider.region && { region: provider.region }),
+        ...(provider.country && { country: provider.country }),
         models,
         allTenants: provider.allTenants === true,
       });

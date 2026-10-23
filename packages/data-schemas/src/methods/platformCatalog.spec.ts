@@ -20,6 +20,7 @@ const mistral = {
   apiKey: 'v3:encrypted',
   models: ['small', 'large'],
   region: 'EU (Paris)',
+  country: 'FR',
 };
 
 beforeAll(async () => {
@@ -48,10 +49,12 @@ describe('platform providers', () => {
       ...mistral,
       models: ['small'],
       region: undefined,
+      country: undefined,
     });
 
     expect(updated).toMatchObject({ name: 'Mistral Platform', models: ['small'] });
     expect(updated.region).toBeUndefined();
+    expect(updated.country).toBeUndefined();
     expect(await methods.listPlatformProviders()).toHaveLength(1);
     expect(await methods.findPlatformProviders(['Mistral Platform', 'Other'])).toHaveLength(1);
     expect(await methods.deletePlatformProvider('Mistral Platform')).toBe(true);
