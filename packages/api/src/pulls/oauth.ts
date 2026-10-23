@@ -1001,7 +1001,9 @@ export function createPullRequestOAuthFromEnv({
 }
 
 /** The callback registered with the provider: on `DOMAIN_SERVER`, whatever host a flow starts on. */
-export function pullRequestOAuthCallbackUrl(env: Readonly<Record<string, string | undefined>>) {
+export function pullRequestOAuthCallbackUrl(
+  env: Readonly<Record<string, string | undefined>>,
+): string {
   return getOAuthCallbackUrl(
     env.DOMAIN_SERVER || 'http://localhost:3080',
     PULL_REQUEST_OAUTH_CALLBACK_PATH,
