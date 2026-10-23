@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-
+import { productNameProcessor } from './productName';
 import translationEn from './en/translation.json';
 
 export const defaultNS = 'translation';
@@ -285,8 +285,11 @@ export function syncDocumentLanguage(locale: SupportedLocale) {
   document.documentElement.dir = i18n.dir(locale);
 }
 
+i18n.use(productNameProcessor);
+
 export const i18nInitPromise = i18n.use(initReactI18next).init({
   lng: 'en',
+  postProcess: ['productName'],
   fallbackLng: {
     'zh-TW': ['zh-Hant', 'en'],
     'zh-HK': ['zh-Hant', 'en'],
