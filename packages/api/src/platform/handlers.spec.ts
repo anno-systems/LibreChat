@@ -90,6 +90,7 @@ const provider = {
   apiKey: KEY,
   models: ['small', 'large'],
   region: 'EU (Paris)',
+  country: 'fr',
 };
 
 async function call(
@@ -329,15 +330,28 @@ describe('providers offered to all tenants', () => {
         name: 'Mistral Platform',
         label: 'Mistral',
         region: 'EU (Paris)',
+        country: 'FR',
         models: ['small'],
         allTenants: false,
       },
-      { name: 'Everyone', label: 'Mistral', models: ['small', 'large'], allTenants: true },
+      {
+        name: 'Everyone',
+        label: 'Mistral',
+        country: 'FR',
+        models: ['small', 'large'],
+        allTenants: true,
+      },
     ]);
     expect(withoutCatalog.body).toEqual({
       byok: false,
       providers: [
-        { name: 'Everyone', label: 'Mistral', models: ['small', 'large'], allTenants: true },
+        {
+          name: 'Everyone',
+          label: 'Mistral',
+          country: 'FR',
+          models: ['small', 'large'],
+          allTenants: true,
+        },
       ],
       own: [],
     });
@@ -373,6 +387,7 @@ describe('tenant admin API', () => {
           name: 'Mistral Platform',
           label: 'Mistral',
           region: 'EU (Paris)',
+          country: 'FR',
           models: ['small'],
           allTenants: false,
         },
