@@ -21,6 +21,8 @@ export interface PlatformProvider {
   models: string[];
   /** Where the provider processes data, shown to tenant admins (e.g. `EU (Paris)`). */
   region?: string;
+  /** ISO 3166-1 alpha-2 code of the hosting country, shown to tenant admins as a flag. */
+  country?: string;
   /** Request fields the provider rejects; absent means the catalog's default. */
   dropParams?: string[];
   /** Offered to every tenant with all its models, without an assignment. */
@@ -95,6 +97,7 @@ const platformProviderSchema = new Schema<PlatformProvider>(
     apiKey: { type: String, required: true },
     models: { type: [String], default: [] },
     region: { type: String },
+    country: { type: String },
     dropParams: { type: [String], default: undefined },
     allTenants: { type: Boolean, default: false },
   },
@@ -119,6 +122,7 @@ function toProvider(doc: PlatformProvider): PlatformProvider {
     apiKey: doc.apiKey,
     models: [...(doc.models ?? [])],
     ...(doc.region && { region: doc.region }),
+    ...(doc.country && { country: doc.country }),
     ...(doc.dropParams && { dropParams: [...doc.dropParams] }),
     allTenants: doc.allTenants === true,
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
@@ -180,6 +184,7 @@ export function createPlatformCatalogMethods(
       const { name, ...fields } = provider;
       const unset = {
         ...(provider.region ? {} : { region: 1 }),
+        ...(provider.country ? {} : { country: 1 }),
         ...(provider.dropParams ? {} : { dropParams: 1 }),
       };
       const doc = await Provider.findOneAndUpdate(
