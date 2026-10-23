@@ -106,6 +106,9 @@ export type PullRequestOAuthState = {
   provider: PullRequestProvider;
   host: string;
   tenantId?: string;
+  /** The public server URL the flow started on, when the provider calls back elsewhere (see
+   *  `relay.ts`). */
+  serverUrl?: string;
   /** Binds the CSRF cookie to this one flow. */
   flowId: string;
   nonce: string;
@@ -249,6 +252,7 @@ export type PullRequestOAuth = {
   authorizationUrl(
     user: { id: string; tenantId?: string },
     config: PullRequestOAuthConfig,
+    options?: { serverUrl?: string },
   ): Promise<{ url: string; flowId: string }>;
   /** The claims of a `state` this server issued and that has not expired; null otherwise. */
   verifyState(state: string): PullRequestOAuthState | null;
@@ -751,7 +755,7 @@ export function createPullRequestOAuth({
   }
 
   return {
-    async authorizationUrl(user, config) {
+    async authorizationUrl(user, config, options) {
       const nonce = base64url(randomBytes(16));
       const generation = await generationOf(user.id);
       const state = jwt.sign(
@@ -762,6 +766,7 @@ export function createPullRequestOAuth({
           n: nonce,
           g: generation,
           ...(user.tenantId ? { t: user.tenantId } : {}),
+          ...(options?.serverUrl ? { o: options.serverUrl } : {}),
         },
         secret,
         {
@@ -801,7 +806,8 @@ export function createPullRequestOAuth({
         typeof claims.n !== 'string' ||
         typeof claims.g !== 'string' ||
         (claims.p !== 'github' && claims.p !== 'gitlab' && claims.p !== 'bitbucket') ||
-        (claims.t !== undefined && typeof claims.t !== 'string')
+        (claims.t !== undefined && typeof claims.t !== 'string') ||
+        (claims.o !== undefined && typeof claims.o !== 'string')
       ) {
         return null;
       }
@@ -813,6 +819,7 @@ export function createPullRequestOAuth({
         generation: claims.g,
         flowId: flowIdOf(claims.sub, claims.n),
         ...(typeof claims.t === 'string' ? { tenantId: claims.t } : {}),
+        ...(typeof claims.o === 'string' ? { serverUrl: claims.o } : {}),
       };
     },
 
@@ -989,9 +996,14 @@ export function createPullRequestOAuthFromEnv({
     store,
     fetchFn,
     secret,
-    redirectUri: getOAuthCallbackUrl(
-      env.DOMAIN_SERVER || 'http://localhost:3080',
-      PULL_REQUEST_OAUTH_CALLBACK_PATH,
-    ),
+    redirectUri: pullRequestOAuthCallbackUrl(env),
   });
+}
+
+/** The callback registered with the provider: on `DOMAIN_SERVER`, whatever host a flow starts on. */
+export function pullRequestOAuthCallbackUrl(env: Readonly<Record<string, string | undefined>>) {
+  return getOAuthCallbackUrl(
+    env.DOMAIN_SERVER || 'http://localhost:3080',
+    PULL_REQUEST_OAUTH_CALLBACK_PATH,
+  );
 }

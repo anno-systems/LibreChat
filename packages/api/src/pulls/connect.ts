@@ -15,6 +15,7 @@ import type { PullRequestFetch } from './shared';
 import type { ServerRequest } from '~/types';
 import {
   PULL_REQUEST_OAUTH_CALLBACK_PATH,
+  pullRequestOAuthCallbackUrl,
   createPullRequestOAuthFromEnv,
   DEFAULT_PULL_REQUEST_OAUTH_FLOW_MINUTES,
 } from './oauth';
@@ -25,6 +26,8 @@ import {
   validateOAuthSession,
 } from '~/oauth/csrf';
 import { isPullRequestFeatureActive, resolvePullRequestOAuth } from './settings';
+import { getTenantDomains } from '~/auth/openid/tenant';
+import { flowServerUrl, relayTarget } from './relay';
 import { readPullRequestSettings } from './handler';
 import { getSafeErrorMetadata } from '~/utils';
 import { getBasePath } from '~/utils/path';
@@ -51,6 +54,9 @@ export function createPullRequestConnectionHandlers(deps: {
   /** The user a callback's signed state names, as config resolution needs it; null if gone. */
   getUser: (userId: string) => Promise<AppConfigUserLike | null>;
   env: Env;
+  /** With per-tenant hosts: the request's public server URL and the callback registered with
+   *  the provider, so a callback that arrives on another host is relayed (see `relay.ts`). */
+  relay?: { serverDomain: () => string | undefined; callbackUrl: string };
 }) {
   /**
    * A user's connection settings: the feature as that user's effective config resolves it (role,
@@ -117,10 +123,12 @@ export function createPullRequestConnectionHandlers(deps: {
           return;
         }
         const tenantId = getTenantId() ?? user.tenantId;
-        const { url, flowId } = await deps.oauth.authorizationUrl(
-          { id: user.id, ...(tenantId ? { tenantId } : {}) },
-          config,
-        );
+        const flowUser = { id: user.id, ...(tenantId ? { tenantId } : {}) };
+        const serverUrl =
+          deps.relay && flowServerUrl(deps.relay.serverDomain(), deps.relay.callbackUrl);
+        const { url, flowId } = serverUrl
+          ? await deps.oauth.authorizationUrl(flowUser, config, { serverUrl })
+          : await deps.oauth.authorizationUrl(flowUser, config);
         /** How long the signed state stays valid: the binding cookie lives as long, and the
          *  client watches for exactly that long, so an approval inside the window can finish. */
         const expiresInSeconds =
@@ -143,6 +151,14 @@ export function createPullRequestConnectionHandlers(deps: {
       const claims = deps.oauth.verifyState(state);
       if (claims == null) {
         fail(res, 'invalid_state');
+        return;
+      }
+      /** A flow started on another host finishes there, where its cookies are. */
+      const target =
+        deps.relay &&
+        relayTarget(claims.serverUrl, deps.relay.serverDomain(), req.originalUrl ?? '');
+      if (target) {
+        res.redirect(target);
         return;
       }
       /** The browser finishing the flow must be the one that started it, for that user. */
@@ -300,6 +316,10 @@ export function createPullRequestConnectionRouter(
       };
     },
     env: deps.env,
+    relay: {
+      serverDomain: () => getTenantDomains(getTenantId(), deps.env).server,
+      callbackUrl: pullRequestOAuthCallbackUrl(deps.env),
+    },
   });
   /** Behind `requireJwtAuth`, which puts the signed-in user on the request. */
   const authed = (handler: (req: ServerRequest, res: Response) => Promise<void>) =>
