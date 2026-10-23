@@ -12,6 +12,7 @@ import type { TStartupConfig, TUser } from 'librechat-data-provider';
 import { cleanupTimestampedStorage } from '~/utils/timestamps';
 import useSpeechSettingsInit from './useSpeechSettingsInit';
 import { useHasAccess, useCatalogReady } from '~/hooks';
+import { setProductName } from '~/locales/productName';
 import { useMCPServersQuery } from '~/data-provider';
 import { setBrandFavicon } from '~/utils/favicon';
 import { setDocumentTitle } from '~/utils';
@@ -48,6 +49,7 @@ export default function useAppStartup({
       return;
     }
     setDocumentTitle(appTitle, true);
+    setProductName(appTitle);
     localStorage.setItem(LocalStorageKeys.APP_TITLE, appTitle);
   }, [startupConfig]);
 

@@ -11,6 +11,7 @@ import {
 import type { TWebSearchKeys, TWebSearchCategories } from '@librechat/data-schemas';
 import type { TCustomConfig, TWebSearchConfig } from 'librechat-data-provider';
 import { isSSRFTarget, resolveHostnameSSRF, getEffectivePort } from '../auth';
+import { withTenantId } from './tenant';
 
 /**
  * User-provided URL keys and their paired API keys, checked after SSRF preflight.
@@ -167,11 +168,14 @@ interface KeenableAuthResolution {
  */
 export async function loadWebSearchAuth({
   userId,
+  tenantId,
   webSearchConfig,
   loadAuthValues,
   throwError = true,
 }: {
   userId: string;
+  /** Fills `{{LIBRECHAT_TENANT_ID}}` in the resolved keys and URLs (see `./tenant`). */
+  tenantId?: string;
   webSearchConfig: TCustomConfig['webSearch'];
   loadAuthValues: (params: {
     userId: string;
@@ -665,7 +669,7 @@ export async function loadWebSearchAuth({
 
   return {
     authTypes,
-    authResult,
+    authResult: withTenantId(authResult, tenantId),
     authenticated,
   };
 }
