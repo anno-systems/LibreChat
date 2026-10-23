@@ -23,4 +23,26 @@ describe('api/db/index.js', () => {
 
     expect(callOrder).toEqual(['createModels', 'indexSync']);
   });
+
+  test('indexSync runs in the system context, across tenants', async () => {
+    jest.resetModules();
+    const contexts = [];
+    jest.mock('@librechat/data-schemas', () => ({
+      createModels: jest.fn(),
+      runAsSystem: jest.fn((fn) => {
+        contexts.push('system');
+        return fn();
+      }),
+    }));
+    jest.mock('./indexSync', () =>
+      jest.fn(async () => {
+        contexts.push('sync');
+      }),
+    );
+    jest.mock('./connect', () => ({ connectDb: jest.fn() }));
+
+    await require('./index').indexSync();
+
+    expect(contexts).toEqual(['system', 'sync']);
+  });
 });
