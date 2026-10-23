@@ -490,6 +490,58 @@ describe('web.ts', () => {
       }
     });
 
+    it("puts the caller's tenant into system keys and URLs that name it", async () => {
+      mockIsSSRFTarget.mockReturnValue(false);
+      mockResolveHostnameSSRF.mockResolvedValue(false);
+      const originalEnv = process.env;
+      try {
+        process.env = {
+          ...originalEnv,
+          SEARCH_GATEWAY_URL: 'http://search-gateway:3000',
+          SEARCH_GATEWAY_KEY: 'platform-secret:{{LIBRECHAT_TENANT_ID}}',
+        };
+        mockLoadAuthValues.mockImplementation(({ authFields }) =>
+          Promise.resolve(
+            Object.fromEntries(
+              authFields
+                .filter((field: string) => process.env[field])
+                .map((field: string) => [field, process.env[field]]),
+            ),
+          ),
+        );
+        const config = {
+          searchProvider: 'searxng' as SearchProviders,
+          searxngInstanceUrl: '${SEARCH_GATEWAY_URL}',
+          searxngApiKey: '${SEARCH_GATEWAY_KEY}',
+          scraperProvider: 'serper' as ScraperProviders,
+          serperApiKey: '${SEARCH_GATEWAY_KEY}',
+          rerankerType: 'none' as RerankerTypes,
+          allowedAddresses: ['search-gateway:3000'],
+        } as TWebSearchConfig;
+
+        const tenant = await loadWebSearchAuth({
+          userId,
+          tenantId: 'tenant-a',
+          webSearchConfig: config,
+          loadAuthValues: mockLoadAuthValues,
+        });
+        const none = await loadWebSearchAuth({
+          userId,
+          webSearchConfig: config,
+          loadAuthValues: mockLoadAuthValues,
+        });
+
+        expect(tenant.authenticated).toBe(true);
+        expect(tenant.authResult.searxngApiKey).toBe('platform-secret:tenant-a');
+        expect(tenant.authResult.serperApiKey).toBe('platform-secret:tenant-a');
+        expect(tenant.authResult.searxngInstanceUrl).toBe('http://search-gateway:3000');
+        // Without a tenant the placeholder stays, and the gateway refuses the key.
+        expect(none.authResult.searxngApiKey).toBe('platform-secret:{{LIBRECHAT_TENANT_ID}}');
+      } finally {
+        process.env = originalEnv;
+      }
+    });
+
     it('should preserve safeSearch setting from webSearchConfig', async () => {
       // Mock successful authentication
       mockLoadAuthValues.mockImplementation(({ authFields }) => {

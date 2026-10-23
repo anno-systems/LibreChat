@@ -88,6 +88,7 @@ const balanceHandlers = createAdminBalanceHandlers({
   getUserById: db.getUserById,
   findBalanceByUser: db.findBalanceByUser,
   upsertBalanceFields: db.upsertBalanceFields,
+  updateBalance: db.updateBalance,
   recordAuditEntry: db.recordAuditEntry,
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
 });
@@ -100,5 +101,6 @@ router.get('/search', requireReadUsers, handlers.searchUsers);
 router.delete('/:id', requireAdminUserDeletion, requireManageUsers, handlers.deleteUser);
 router.get('/:id/balance', requireReadUsers, balanceHandlers.getUserBalance);
 router.put('/:id/balance', requireManageUsers, balanceHandlers.setUserBalance);
+router.post('/:id/balance/credits', requireManageUsers, balanceHandlers.addUserCredits);
 
 module.exports = router;
