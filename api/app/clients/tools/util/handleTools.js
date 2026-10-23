@@ -401,6 +401,7 @@ const loadTools = async ({
     } else if (tool === Tools.web_search) {
       const result = await loadWebSearchAuth({
         userId: user,
+        tenantId: options.req?.user?.tenantId,
         loadAuthValues,
         webSearchConfig: webSearch,
       });
