@@ -541,21 +541,42 @@ sees one trail in the panel and can verify the MCP server's entries against it.
 ### First servers
 
 Built (2026-10-20, Excel, Planner and To Do 2026-10-21, Atlassian, Slack, Notion, Calendly,
-Google Workspace, Zendesk and Personio 2026-10-22, `anno-systems/mcp-servers`):
+Google Workspace, Zendesk and Personio 2026-10-22, `anno-systems/mcp-servers`; Entra lookups,
+Azure DevOps, Odoo, sevDesk, Stripe, DHL Parcel DE, GitHub, GitLab, Todoist, Miro, Postman,
+LinkedIn, Zabbix, Grafana, Datadog, PagerDuty, Sentry and incident.io 2026-10-24, in review as
+`anno-systems/mcp-servers` #15 to #18, wired in `platform-infra` with the compose profiles
+`business`, `devtools` and `ops`):
 
-| Server                                                                                   | Process     | Notes                                                                                                                                                           |
-| ---------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint`, `excel`, `planner`, `todo` | `microsoft` | One process, one connected account per user; Graph as the user, on `/me` only; Planner changes carry the task's etag                                            |
-| `google-calendar`, `gmail`, `google-docs`, `google-sheets`                               | `google`    | One process, one connected account per user of the tenant's Workspace domain; no domain-wide delegation                                                         |
-| `zendesk`                                                                                | `zendesk`   | One connected account per agent, through the tenant's own OAuth client on its subdomain                                                                         |
-| `personio`                                                                               | `personio`  | Tenant API credential; the caller (by verified email) sees own profile and time off, a minimal directory and who is away, never salary or others' absence types |
-| `jira`, `confluence`                                                                     | `atlassian` | One process, one connected account per user; pinned to the tenant's Atlassian site                                                                              |
-| `slack`                                                                                  | `slack`     | User token in the tenant's workspace; no direct messages, no `@channel` broadcasts                                                                              |
-| `notion`                                                                                 | `notion`    | Pages and databases the user shared with the platform's integration in the tenant's workspace                                                                   |
-| `calendly`                                                                               | `calendly`  | Event types, events, availability, single-use booking links, cancelling                                                                                         |
-| `lexware`                                                                                | `lexware`   | Drafts and issuing separate; author note, net ceiling, request spacing                                                                                          |
-| `deepl`                                                                                  | `deepl`     | Translate and DeepL Write with the tenant's key (or the operator's)                                                                                             |
-| `einvoice`                                                                               | `einvoice`  | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator                                                         |
+| Server                                                                                   | Process      | Notes                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `outlook-mail`, `outlook-calendar`, `onedrive`, `sharepoint`, `excel`, `planner`, `todo` | `microsoft`  | One process, one connected account per user; Graph as the user, on `/me` only; Planner changes carry the task's etag                                            |
+| `entra`, `azure-devops`                                                                  | `microsoft`  | Read-only people lookups in the user's directory (manager, reports, own groups); Azure DevOps in the tenant's organization, a second connection                 |
+| `google-calendar`, `gmail`, `google-docs`, `google-sheets`                               | `google`     | One process, one connected account per user of the tenant's Workspace domain; no domain-wide delegation                                                         |
+| `zendesk`                                                                                | `zendesk`    | One connected account per agent, through the tenant's own OAuth client on its subdomain                                                                         |
+| `personio`                                                                               | `personio`   | Tenant API credential; the caller (by verified email) sees own profile and time off, a minimal directory and who is away, never salary or others' absence types |
+| `jira`, `confluence`                                                                     | `atlassian`  | One process, one connected account per user; pinned to the tenant's Atlassian site                                                                              |
+| `slack`                                                                                  | `slack`      | User token in the tenant's workspace; no direct messages, no `@channel` broadcasts                                                                              |
+| `notion`                                                                                 | `notion`     | Pages and databases the user shared with the platform's integration in the tenant's workspace                                                                   |
+| `calendly`                                                                               | `calendly`   | Event types, events, availability, single-use booking links, cancelling                                                                                         |
+| `lexware`                                                                                | `lexware`    | Drafts and issuing separate; author note, net ceiling, request spacing                                                                                          |
+| `deepl`                                                                                  | `deepl`      | Translate and DeepL Write with the tenant's key (or the operator's)                                                                                             |
+| `einvoice`                                                                               | `einvoice`   | XRechnung (UBL, CII) and ZUGFeRD EN 16931 XML: create and check; output accepted by the KoSIT validator                                                         |
+| `odoo`                                                                                   | `odoo`       | Tenant's integration user; callers linked by email, optionally own orders only; quotation drafts with author note and ceiling, never confirmed                  |
+| `sevdesk`                                                                                | `sevdesk`    | Tenant's API token; invoice drafts only, the author in the foot text, net ceiling                                                                               |
+| `stripe`                                                                                 | `stripe`     | Tenant's restricted key; payment links and draft invoices in one currency under a ceiling, refunds only when allowed, idempotent writes                         |
+| `dhl`                                                                                    | `dhl`        | Parcel DE labels (the PDF as a file output), tracking, cancelling; DHL's sandbox until the tenant switches; sender from the settings only                       |
+| `github`                                                                                 | `github`     | One connected account per user through the platform's GitHub App, inside the tenant's organizations; pull requests stay LibreChat's own flow                    |
+| `gitlab`                                                                                 | `gitlab`     | One connected account per user on gitlab.com or the tenant's instance, inside the tenant's group                                                                |
+| `todoist`                                                                                | `todoist`    | One connected account per user, bound by email; nothing is deleted                                                                                              |
+| `miro`                                                                                   | `miro`       | One connected account per user in the tenant's team, bound to the team (Miro's token names no email)                                                            |
+| `postman`                                                                                | `postman`    | Read-only, with each user's own API key, in the tenant's team; no request secrets or environment values                                                         |
+| `linkedin`                                                                               | `linkedin`   | The member's own profile basics and text posts; public posts only when the tenant allows them                                                                   |
+| `zabbix`                                                                                 | `zabbix`     | Tenant URL and API token; problems, hosts, events, item values; acknowledging names the user                                                                    |
+| `grafana`                                                                                | `grafana`    | Self-hosted or Cloud; only saved panel queries run, never query text; narrow, short silences                                                                    |
+| `datadog`                                                                                | `datadog`    | Site from a fixed list; bounded log, metric and event reads; muting one monitor for a limited time                                                              |
+| `pagerduty`                                                                              | `pagerduty`  | Writes as the caller's PagerDuty user (same email, `From`); resolving has its own scope                                                                         |
+| `sentry`                                                                                 | `sentry`     | sentry.io, its EU host or self-hosted; end users left out and addresses masked unless the tenant allows                                                         |
+| `incidentio`                                                                             | `incidentio` | Declarations and updates with the organization's severities and statuses; a retried declaration is not repeated                                                 |
 
 Each customer's Entra admin consents once to the platform's multi-tenant app; the admin app
 guides the tenant admin through that consent and stores the directory id. Atlassian, Slack, Notion
@@ -568,10 +589,32 @@ tenant's API credential and enforces itself what a user may see. Google accepts 
 are restricted: publishing the OAuth app needs Google's verification with a yearly CASA security
 assessment; until then each customer's Workspace admin trusts the client id in API controls.
 
-Next, as listed by the owner: Entra lookups, Odoo, sevDesk, DHL Parcel DE,
-ELSTER, LinkedIn, Postman, Stripe, Todoist; and for operations Zabbix, Grafana (self-hosted and
-cloud), Datadog, PagerDuty, Sentry, incident.io, GitLab and Miro. Payroll data (Personio) can
-include special-category data (GDPR Art. 9) and needs the finest-grained tools.
+Decided with these servers (2026-10-24):
+
+- **Azure DevOps on the same Entra app.** It is a second provider of the `microsoft` process with
+  the same app registration, so the customer's admin consents once for both. Each user signs in
+  once more, because an Entra token covers one resource (Graph or Azure DevOps). The tenant admin
+  enters the organization (`azureDevOpsOrganization`), which must be connected to the same
+  directory.
+- **New Microsoft scopes.** The Entra lookups need `User.Read.All` (`User.ReadBasic.All` has no
+  managers, job titles or phones) and `GroupMember.Read.All`; with Azure DevOps'
+  `user_impersonation` they are new permissions of the platform's Entra app, so tenants that
+  consented before consent again and connected users reconnect once.
+- **API-key connections.** Systems without OAuth for third parties use the same one-time connect
+  link, which opens a page on the server where the user pastes a personal key (`ApiKeyProvider`
+  in `@anno/mcp-core`, first for Postman). The key is checked like an OAuth account (the tenant's
+  team, the same email), stored encrypted as the connection's token and forgotten on the system's 401.
+- **Egress check for tenant URLs.** URLs a tenant admin enters for Zabbix, Grafana and a
+  self-hosted Sentry are checked on every call (`checkEgressUrl` in `@anno/mcp-core`): https, no
+  credentials, a host that resolves only to public addresses, no redirects, so a tenant cannot
+  send its token, or the server's requests, into the platform's own network. Odoo and a
+  self-hosted GitLab check the origin's form only; their egress stays limited by network policy.
+
+Not built for now: ELSTER, from the owner's list, because filing needs the ERiC library (native
+binaries for a registered developer) and a company certificate per tenant. Fifty further
+candidates for offices in Germany, with their sign-in pattern and priority, are listed in
+[mcp-catalog.md](mcp-catalog.md). Payroll data (Personio) can include special-category data
+(GDPR Art. 9) and needs the finest-grained tools.
 
 ## Code interpreter
 
@@ -783,7 +826,9 @@ Decided:
   with LibreChat's per-user, per-tenant tokens and strict tenant isolation; untrusted code on its
   own node pool (see [Code interpreter](#code-interpreter)).
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
-  SharePoint.
+  SharePoint. The second batch (2026-10-24, business, developer and operations tools) brought
+  Azure DevOps on the same Entra app, API-key connections and the egress check for tenant URLs
+  (see [First servers](#first-servers)).
 
 - Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
   equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
