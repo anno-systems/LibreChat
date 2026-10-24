@@ -643,6 +643,32 @@ changes nothing.
   (nested virtualization). Without it only NsJail-only mode remains, which upstream rates as fit
   for development, not for untrusted code.
 
+## File search (RAG)
+
+Users attach files to a chat or an agent's knowledge, and the model answers from the closest
+passages with citations (2026-10-24). LibreChat's own RAG API (`LibreChat-AI/rag_api`) does it;
+LibreChat already supports it, and the fork only adds the agent-aware delete below.
+
+- **Embeddings on our own machines.** The local and demo stacks embed with `bge-m3`
+  (multilingual, good for German) in Ollama on the CPU, so no document leaves the platform for
+  embedding; only the passages an answer uses reach the chat model. Changing the model later means
+  a new collection and every file embedded again, so it is chosen once per environment.
+- **Per user, inside the tenant.** The RAG API checks LibreChat's short-lived token (`JWT_SECRET`)
+  and filters every read and delete by its user, or by the agent (`entity_id`) a knowledge file
+  belongs to, before ranking. User ids are unique across tenants, and LibreChat checks a file's
+  tenant and access before it asks the RAG API. Pinned to the rag_api commit that added this
+  owner scoping (after v0.9.0).
+- **Deletion.** Agent knowledge is stored under the agent, and the RAG API deletes it only when
+  the request names the agent; upstream LibreChat sends no `entity_id` on delete, which since the
+  owner scoping leaves those chunks behind. The fork deletes once per namespace in the file's
+  `metadata.embeddedEntities` (`deleteRagFile` in `packages/api/src/files/rag.ts`), so deleting a
+  file, also through deleting its user or tenant, removes its vectors.
+- **Per tenant.** Tenant admins switch it on and off in the admin app (Features, "File search",
+  LibreChat's `FILE_SEARCH` permission).
+- **Production.** The RAG API in SKE with its vectors in PostgreSQL Flex (pgvector). Open: whether
+  PostgreSQL Flex offers the `vector` extension, and whether embeddings run in the cluster (Ollama
+  on CPU nodes) or on STACKIT AI Model Serving, which keeps them in Germany on the same bill.
+
 ## Data residency
 
 - Hosting: STACKIT region EU01 (Schwarz Digits, data centres in Germany) for all platform
@@ -650,6 +676,8 @@ changes nothing.
   [Backups](#backups)).
 - Models: only EU-region endpoints in the catalog; region shown per model in the admin app. Open
   models can run in Germany on STACKIT AI Model Serving (OpenAI-compatible, the same bill).
+- File search: embeddings computed on the platform's own machines (see
+  [File search](#file-search-rag)); the vectors stay in the platform's database.
 - MCP targets: the data stays in the customer's own systems (Microsoft 365 etc.); the MCP servers
   do not persist it beyond the audit metadata.
 - Telemetry and tracing (for example Langfuse) self-hosted in the EU or off.
@@ -825,6 +853,9 @@ Decided:
 - Code interpreter (2026-10-22): the self-hosted Code API of `LibreChat-AI/code-interpreter`
   with LibreChat's per-user, per-tenant tokens and strict tenant isolation; untrusted code on its
   own node pool (see [Code interpreter](#code-interpreter)).
+- File search (2026-10-24): LibreChat's RAG API with pgvector and local `bge-m3` embeddings in
+  Ollama, scoped per user and agent; the fork deletes agent knowledge by its agent (see
+  [File search](#file-search-rag)).
 - Company MCP servers in a separate monorepo; first targets Outlook mail, Outlook calendar,
   SharePoint. The second batch (2026-10-24, business, developer and operations tools) brought
   Azure DevOps on the same Entra app, API-key connections and the egress check for tenant URLs

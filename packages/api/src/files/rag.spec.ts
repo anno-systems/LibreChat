@@ -94,6 +94,64 @@ describe('deleteRagFile', () => {
     });
   });
 
+  describe('when the file was embedded under agents', () => {
+    it('deletes once per entity, naming it, so agent-owned chunks are removed', async () => {
+      const file = {
+        file_id: 'file-123',
+        embedded: true,
+        metadata: { embeddedEntities: ['agent-a', 'agent-b', 'agent-a'] },
+      };
+      mockedAxios.delete.mockResolvedValue({ status: 200 });
+
+      const result = await deleteRagFile({ userId: 'user123', file });
+
+      expect(result).toBe(true);
+      expect(mockedAxios.delete).toHaveBeenCalledTimes(2);
+      expect(mockedAxios.delete.mock.calls.map(([, config]) => config?.params)).toEqual([
+        { entity_id: 'agent-a' },
+        { entity_id: 'agent-b' },
+      ]);
+      expect(mockedAxios.delete.mock.calls[0][1]?.data).toEqual(['file-123']);
+    });
+
+    it('treats a namespace without the file as already deleted', async () => {
+      const file = {
+        file_id: 'file-123',
+        embedded: true,
+        metadata: { embeddedEntities: ['agent-a', 'agent-b'] },
+      };
+      mockedAxios.delete
+        .mockRejectedValueOnce({ response: { status: 404 } })
+        .mockResolvedValueOnce({ status: 200 });
+
+      expect(await deleteRagFile({ userId: 'user123', file })).toBe(true);
+      expect(mockedAxios.delete).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports failure when one namespace fails, after trying the others', async () => {
+      const file = {
+        file_id: 'file-123',
+        embedded: true,
+        metadata: { embeddedEntities: ['agent-a', 'agent-b'] },
+      };
+      mockedAxios.delete
+        .mockRejectedValueOnce({ response: { status: 500 }, message: 'boom' })
+        .mockResolvedValueOnce({ status: 200 });
+
+      expect(await deleteRagFile({ userId: 'user123', file })).toBe(false);
+      expect(mockedAxios.delete).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends no entity when the list is empty', async () => {
+      const file = { file_id: 'file-123', embedded: true, metadata: { embeddedEntities: [] } };
+      mockedAxios.delete.mockResolvedValueOnce({ status: 200 });
+
+      await deleteRagFile({ userId: 'user123', file });
+
+      expect(mockedAxios.delete.mock.calls[0][1]).not.toHaveProperty('params');
+    });
+  });
+
   describe('when file is not embedded', () => {
     it('should skip RAG deletion and return true', async () => {
       const file = { file_id: 'file-123', embedded: false };

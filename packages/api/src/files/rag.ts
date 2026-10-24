@@ -9,7 +9,20 @@ interface DeleteRagFileParams {
   file: {
     file_id: string;
     embedded?: boolean;
+    metadata?: { embeddedEntities?: string[] } | null;
   };
+}
+
+/**
+ * The RAG API owns an agent's chunks by the agent (`entity_id`) and deletes them only when the
+ * request names it; without it the API answers 404 and keeps them. One delete per namespace the
+ * file was embedded under, or one without an entity when it names none.
+ */
+export function ragDeleteScopes(file: DeleteRagFileParams['file']): Array<string | undefined> {
+  const entities = (file.metadata?.embeddedEntities ?? []).filter(
+    (entity): entity is string => typeof entity === 'string' && entity.length > 0,
+  );
+  return entities.length > 0 ? [...new Set(entities)] : [undefined];
 }
 
 /**
@@ -33,28 +46,32 @@ export async function deleteRagFile({ userId, file }: DeleteRagFileParams): Prom
   }
 
   const jwtToken = generateShortLivedToken(userId);
+  let ok = true;
 
-  try {
-    await axios.delete(`${process.env.RAG_API_URL}/documents`, {
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        'Content-Type': 'application/json',
-        accept: 'application/json',
-      },
-      data: [file.file_id],
-    });
-    logger.debug(`[deleteRagFile] Successfully deleted document ${file.file_id} from RAG API`);
-    return true;
-  } catch (error) {
-    const axiosError = error as { response?: { status?: number }; message?: string };
-    if (axiosError.response?.status === 404) {
-      logger.warn(
-        `[deleteRagFile] Document ${file.file_id} not found in RAG API, may have been deleted already`,
-      );
-      return true;
-    } else {
-      logger.error('[deleteRagFile] Error deleting document from RAG API:', axiosError.message);
-      return false;
+  for (const entityId of ragDeleteScopes(file)) {
+    try {
+      await axios.delete(`${process.env.RAG_API_URL}/documents`, {
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        },
+        ...(entityId ? { params: { entity_id: entityId } } : {}),
+        data: [file.file_id],
+      });
+      logger.debug(`[deleteRagFile] Successfully deleted document ${file.file_id} from RAG API`);
+    } catch (error) {
+      const axiosError = error as { response?: { status?: number }; message?: string };
+      if (axiosError.response?.status === 404) {
+        logger.warn(
+          `[deleteRagFile] Document ${file.file_id} not found in RAG API, may have been deleted already`,
+        );
+      } else {
+        logger.error('[deleteRagFile] Error deleting document from RAG API:', axiosError.message);
+        ok = false;
+      }
     }
   }
+
+  return ok;
 }
