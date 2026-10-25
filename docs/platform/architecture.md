@@ -406,6 +406,30 @@ read and set through the fork's `GET`/`PUT /api/admin/users/:id/balance`, which 
 offers as a CLI script. A user at zero credits is refused with `token_balance` until the balance
 is raised or refilled. Every set is in the admin audit log (`user.balance_updated`).
 
+### Prices and margin (2026-10-25)
+
+The platform charges its tenants a markup on the providers' token prices and a price per web
+search. The operator sets both in the operator area (`/api/platform/pricing`): a platform default
+(at launch 15 % on tokens, 2 EUR per 1,000 searches), an override per tenant for discounts, and
+the display currency with a fixed USD rate. Decisions:
+
+- **The markup is charged, not only shown.** It scales every model rate where LibreChat resolves
+  rates (`withTokenMarkup` around `getMultiplier`, `packages/data-schemas/src/methods/platformPricing.ts`),
+  so balances, the balance check, the cost shown in chat and the admin price list all carry the
+  same price. The ledger keeps USD-based credits; a transaction's `rate` is the charged rate.
+- **Searches are charged to the user's balance**: each completed `web_search` writes one ledger
+  transaction of context `web_search` (`packages/api/src/platform/searchCharge.ts`). The search
+  gateway stays the meter of record per tenant and enforces the monthly quota.
+- **EUR with a rate the operator sets**, not a daily exchange rate, so a tenant's prices do not
+  move from day to day. The rate goes to the client as `interface.currency`.
+- **Tenant admins see what they spent** (`GET /api/admin/usage/costs`, per day, calendar month,
+  model, user and group) and their price list (`/api/admin/usage/pricing`), always at their own
+  prices; the markup and the providers' prices are never shown to them. Per-user and per-group
+  costs need `read:users` as well as `read:usage`, since they name people.
+- Open: the ledger does not record the markup per transaction, so the operator's margin per period
+  is derived from the current markup; record it per transaction before the first invoice run if a
+  markup changes mid-period.
+
 Added:
 
 - **Budgets per group and tenant**, checked next to the user balance in

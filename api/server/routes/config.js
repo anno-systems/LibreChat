@@ -27,6 +27,7 @@ const {
   getTenantDomains,
   getAdminPanelLink,
   brandedStartupFields,
+  withPricingCurrency,
 } = require('@librechat/api');
 const {
   DEFAULT_MCP_APP_CSP_LIMITS,
@@ -39,6 +40,7 @@ const { hasCapability, hasConfigCapability } = require('~/server/middleware/role
 const { getLdapConfig } = require('~/server/services/Config/ldap');
 const { getRumConfig } = require('~/server/services/Config/rum');
 const { getAppConfig } = require('~/server/services/Config/app');
+const { resolvePricing } = require('~/models');
 
 const router = express.Router();
 const emailLoginEnabled =
@@ -317,7 +319,11 @@ router.get('/', async function (req, res) {
       sharedLinksSnapshotFilesEnabled: sharedLinksEnabled && isFileSnapshotEnabled(appConfig),
       socialLogins: appConfig?.registration?.socialLogins ?? defaultSocialLogins,
       projects: appConfig?.projects,
-      interface: appConfig?.interfaceConfig,
+      /* Fork: the operator's display currency (platformPricing). */
+      interface: withPricingCurrency(
+        appConfig?.interfaceConfig,
+        resolvePricing(req.user?.tenantId).currency,
+      ),
       titleGenerationTiming: resolveTitleTiming({
         appConfig,
         endpoint: EModelEndpoint.agents,

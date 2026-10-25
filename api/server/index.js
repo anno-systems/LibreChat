@@ -76,6 +76,7 @@ const {
   getRoleByName,
   seedDatabase,
   recordAuditEntry,
+  loadPlatformPricing,
 } = require('~/models');
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
@@ -232,6 +233,8 @@ const startServer = async () => {
   }
 
   await runAsSystem(seedDatabase);
+  /* Fork: the operator's prices, held in memory for token rates (platformPricing.ts). */
+  await loadPlatformPricing();
   /* Recover stuck `status: 'pending'` records from a crash mid-render.
    * `runAsSystem` is required — `File` is tenant-isolated and strict
    * mode rejects unscoped queries. Lazy sweep in the preview endpoint

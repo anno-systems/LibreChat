@@ -6,6 +6,10 @@ export { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createPlatformCatalogMethods } from './platformCatalog';
 export { createPlatformBannerMethods } from './platformBanner';
 export type { PlatformBanner } from './platformBanner';
+export { createPlatformPricingMethods, withTokenMarkup } from './platformPricing';
+export type { PlatformPricing, PricingCurrency, ResolvedPricing } from './platformPricing';
+export { isCostMonth, WEB_SEARCH_CONTEXT } from './tenantCosts';
+export type { TenantCosts, TenantCostPeriod } from './tenantCosts';
 export { createMcpToolPolicyMethods } from './mcpToolPolicy';
 export type { McpToolMode, McpToolPolicyRule, PlatformMcpTool } from './mcpToolPolicy';
 export type { ScheduleMCPConsentStorage, ScheduleConsentSnapshot } from './scheduleConsent';
@@ -96,6 +100,13 @@ import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
 import { createPlatformBannerMethods, type PlatformBannerMethods } from './platformBanner';
+import {
+  withTokenMarkup,
+  createPlatformPricingMethods,
+  type PlatformPricingMethods,
+} from './platformPricing';
+import { createTenantCostMethods, type TenantCostMethods } from './tenantCosts';
+import { getTenantId } from '~/config/tenantContext';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
@@ -309,9 +320,11 @@ export type AllMethods = ToolApprovalGrantStorage &
   BannerMethods &
   PlatformCatalogMethods &
   PlatformBannerMethods &
+  PlatformPricingMethods &
   McpToolPolicyMethods &
   TenantPurgeMethods &
   TenantUsageMethods &
+  TenantCostMethods &
   ToolCallMethods &
   CategoriesMethods &
   PresetMethods &
@@ -369,7 +382,16 @@ export function createMethods(
     matchModelName: deps.matchModelName ?? (() => undefined),
     findMatchingPattern: deps.findMatchingPattern ?? (() => undefined),
   };
-  const txMethods = createTxMethods(mongoose, txDeps);
+  /* Fork: the operator's markup on token rates, per the caller's tenant (platformPricing.ts). */
+  const pricingMethods = createPlatformPricingMethods(mongoose);
+  const baseTxMethods = createTxMethods(mongoose, txDeps);
+  const txMethods = {
+    ...baseTxMethods,
+    ...withTokenMarkup(
+      baseTxMethods,
+      () => pricingMethods.resolvePricing(getTenantId()).tokenMarkup,
+    ),
+  };
 
   // Tier 3: transaction methods need tx's getMultiplier/getCacheMultiplier
   const transactionMethods = createTransactionMethods(mongoose, {
@@ -559,9 +581,11 @@ export function createMethods(
     ...createBannerMethods(mongoose),
     ...createPlatformCatalogMethods(mongoose),
     ...createPlatformBannerMethods(mongoose),
+    ...pricingMethods,
     ...createMcpToolPolicyMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
     ...createTenantUsageMethods(mongoose),
+    ...createTenantCostMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
     ...createPresetMethods(mongoose),
@@ -636,9 +660,11 @@ export type {
   BannerMethods,
   PlatformCatalogMethods,
   PlatformBannerMethods,
+  PlatformPricingMethods,
   McpToolPolicyMethods,
   TenantPurgeMethods,
   TenantUsageMethods,
+  TenantCostMethods,
   ToolCallMethods,
   CategoriesMethods,
   PresetMethods,

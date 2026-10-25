@@ -5,6 +5,7 @@ const middlewareCalls = [];
 const mockGetTenantUsage = jest.fn();
 const mockGetAppConfig = jest.fn();
 const mockGetModelsConfig = jest.fn();
+const mockGetTenantCosts = jest.fn();
 
 jest.mock('@librechat/data-schemas', () => ({
   SystemCapabilities: { ACCESS_ADMIN: 'access:admin', READ_USAGE: 'read:usage' },
@@ -15,6 +16,11 @@ jest.mock('@librechat/api', () => ({
     ({ getTenantUsage }) =>
     async (req, res) =>
       res.json(await getTenantUsage({ tenantId: req.user.tenantId, days: 30 })),
+  createAdminCostsHandler: (deps) => async (req, res) => {
+    const costs = await deps.getTenantCosts({ tenantId: req.user.tenantId });
+    const people = await deps.hasCapability(req.user, 'read:users');
+    res.json({ ...costs, people, currency: deps.resolvePricing(req.user.tenantId).currency });
+  },
   createAdminPricingHandler: (deps) => async (req, res) => {
     const config = await deps.getTenantAppConfig(req.user.tenantId);
     const models = await deps.getModelsConfig(req);
@@ -31,6 +37,7 @@ jest.mock('~/server/controllers/ModelController', () => ({
 }));
 
 jest.mock('~/server/middleware/roles/capabilities', () => ({
+  hasCapability: async () => true,
   requireCapability: (capability) => (_req, _res, next) => {
     middlewareCalls.push(capability);
     next();
@@ -50,6 +57,8 @@ jest.mock('~/models', () => ({
   getValueKey: jest.fn(),
   getMultiplier: () => 2.5,
   getCacheMultiplier: jest.fn(),
+  getTenantCosts: (...args) => mockGetTenantCosts(...args),
+  resolvePricing: () => ({ currency: { code: 'EUR', rate: 0.92 } }),
 }));
 
 describe('admin usage route', () => {
@@ -86,5 +95,22 @@ describe('admin usage route', () => {
     });
     expect(middlewareCalls).toEqual(['jwt', 'access:admin', 'read:usage']);
     expect(mockGetAppConfig).toHaveBeenCalledWith({ tenantId: 'tenant-a' });
+  });
+
+  it('serves the tenant costs with READ_USAGE and the display currency', async () => {
+    mockGetTenantCosts.mockResolvedValue({ totals: { tokenCredits: 3950 } });
+    const app = express();
+    app.use('/api/admin/usage', require('./usage'));
+
+    const res = await request(app).get('/api/admin/usage/costs');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      totals: { tokenCredits: 3950 },
+      people: true,
+      currency: { code: 'EUR', rate: 0.92 },
+    });
+    expect(middlewareCalls).toEqual(['jwt', 'access:admin', 'read:usage']);
+    expect(mockGetTenantCosts).toHaveBeenCalledWith({ tenantId: 'tenant-a' });
   });
 });

@@ -59,6 +59,9 @@ export {
   createMCPAuthorityCredentialRevision,
   createMCPAuthorityDatabaseSourceRevision,
   digestMCPAuthorityValue,
+  /* Fork: platform pricing and tenant costs. */
+  isCostMonth,
+  WEB_SEARCH_CONTEXT,
 } from './methods';
 export { FAVORITE_ITEM_TYPES } from './types/favorite';
 export {

@@ -3,6 +3,7 @@ const {
   requirePlatformToken,
   createTenantAdminHandler,
   createPlatformBannerHandlers,
+  createPlatformPricingHandlers,
 } = require('@librechat/api');
 const handlers = require('~/server/services/Config/platformCatalog');
 const { deleteTenant } = require('~/server/services/platformTenants');
@@ -22,6 +23,7 @@ const putTenantAdmin = createTenantAdminHandler({
 });
 
 const banners = createPlatformBannerHandlers(db);
+const pricing = createPlatformPricingHandlers(db);
 
 router.use(requirePlatformToken(process.env.PLATFORM_API_TOKEN));
 router.get('/providers', handlers.listProviders);
@@ -34,5 +36,9 @@ router.delete('/tenants/:tenantId', deleteTenant);
 router.get('/banners', banners.listBanners);
 router.put('/banners/:id', banners.putBanner);
 router.delete('/banners/:id', banners.deleteBanner);
+router.get('/pricing', pricing.getPricing);
+router.put('/pricing', pricing.putDefaultPricing);
+router.put('/tenants/:tenantId/pricing', pricing.putTenantPricing);
+router.delete('/tenants/:tenantId/pricing', pricing.deleteTenantPricing);
 
 module.exports = router;
