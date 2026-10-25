@@ -38,6 +38,7 @@ const {
   loadToolApprovalHooks,
   maybeInjectQueryDevtoolsBootstrap,
   injectConfiguredFooterBootstrap,
+  injectShellTitle,
   injectColorModeHandoff,
   readBundledThemeBoot,
   createDeploymentThemeShell,
@@ -556,6 +557,12 @@ if (cluster.isMaster) {
     indexHTML = injectConfiguredFooterBootstrap(indexHTML, {
       customFooter: process.env.CUSTOM_FOOTER,
       landingFooter: baseAppConfig?.interfaceConfig?.landingFooter,
+    });
+
+    /* Fork: the deployment's name in the shell, for link previews (packages/api/src/html/title.ts). */
+    indexHTML = injectShellTitle(indexHTML, {
+      title: baseAppConfig?.interfaceConfig?.branding?.appTitle ?? process.env.APP_TITLE,
+      description: baseAppConfig?.interfaceConfig?.branding?.description,
     });
 
     indexHTML = injectColorModeHandoff(indexHTML, baseAppConfig?.interfaceConfig?.colorModeFromUrl);

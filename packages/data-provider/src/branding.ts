@@ -13,6 +13,7 @@ import { z } from 'zod';
 export const MAX_BRANDING_IMAGE_LENGTH = 131_072;
 export const MAX_BRANDING_TITLE_LENGTH = 60;
 export const MAX_BRANDING_FOOTER_LENGTH = 500;
+export const MAX_BRANDING_DESCRIPTION_LENGTH = 200;
 
 const DATA_IMAGE =
   /^data:image\/(png|jpeg|webp|gif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
@@ -40,6 +41,8 @@ export const brandingSchema = z
   .object({
     /** Replaces `APP_TITLE` in the tab title and on the sign-in page. */
     appTitle: z.string().trim().min(1).max(MAX_BRANDING_TITLE_LENGTH).optional(),
+    /** The deployment's description in link previews (base config only; the title stands in). */
+    description: z.string().trim().min(1).max(MAX_BRANDING_DESCRIPTION_LENGTH).optional(),
     /** Replaces the LibreChat logo on the sign-in pages. */
     logo: brandingImageSchema.optional(),
     /** Replaces the favicon. */

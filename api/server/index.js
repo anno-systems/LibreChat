@@ -45,6 +45,7 @@ const {
   loadToolApprovalHooks,
   maybeInjectQueryDevtoolsBootstrap,
   injectConfiguredFooterBootstrap,
+  injectShellTitle,
   injectColorModeHandoff,
   readBundledThemeBoot,
   createDeploymentThemeShell,
@@ -314,6 +315,12 @@ const startServer = async () => {
   indexHTML = injectConfiguredFooterBootstrap(indexHTML, {
     customFooter: process.env.CUSTOM_FOOTER,
     landingFooter: appConfig?.interfaceConfig?.landingFooter,
+  });
+
+  /* Fork: the deployment's name in the shell, for link previews (packages/api/src/html/title.ts). */
+  indexHTML = injectShellTitle(indexHTML, {
+    title: appConfig?.interfaceConfig?.branding?.appTitle ?? process.env.APP_TITLE,
+    description: appConfig?.interfaceConfig?.branding?.description,
   });
 
   indexHTML = injectColorModeHandoff(indexHTML, appConfig.interfaceConfig?.colorModeFromUrl);
