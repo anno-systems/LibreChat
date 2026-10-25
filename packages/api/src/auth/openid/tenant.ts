@@ -23,6 +23,8 @@ export interface TenantOpenIdSettings {
   OPENID_TENANT_SCOPE?: string;
   /** ID token claim that must equal the request's tenant id for a login to succeed. */
   OPENID_TENANT_CLAIM?: string;
+  /** Where the provider sends the browser after its logout; may contain `{tenantid}`. */
+  OPENID_POST_LOGOUT_REDIRECT_URI?: string;
 }
 
 export interface TenantDomains {
@@ -62,6 +64,26 @@ export function getTenantDomains(
     client: fillTemplate(settings.TENANT_DOMAIN_CLIENT, tenantId) ?? settings.DOMAIN_CLIENT,
     server: fillTemplate(settings.TENANT_DOMAIN_SERVER, tenantId) ?? settings.DOMAIN_SERVER,
   };
+}
+
+/**
+ * Where the OpenID provider sends the browser after RP-initiated logout: the configured
+ * `OPENID_POST_LOGOUT_REDIRECT_URI` (with `{tenantid}` filled in), else the tenant's own login
+ * page, so a user who signs out on their tenant's host lands back there and not on the
+ * deployment's `DOMAIN_CLIENT`. Each value must be a post-logout redirect URI of the OpenID
+ * client.
+ */
+export function getTenantPostLogoutRedirectUri(
+  tenantId: string | undefined,
+  settings: TenantOpenIdSettings,
+): string {
+  const configured = settings.OPENID_POST_LOGOUT_REDIRECT_URI;
+  if (configured) {
+    return configured.includes(TENANT_ID_PLACEHOLDER)
+      ? (fillTemplate(configured, tenantId) ?? `${settings.DOMAIN_CLIENT}/login`)
+      : configured;
+  }
+  return `${getTenantDomains(tenantId, settings).client}/login`;
 }
 
 /**

@@ -14,9 +14,12 @@ jest.mock('@librechat/api', () => ({
   isEnabled: (...args) => mockIsEnabled(...args),
   math: (_value, fallback) => fallback,
   clearCloudFrontCookies: (...args) => mockClearCloudFrontCookies(...args),
+  getTenantPostLogoutRedirectUri: (...args) =>
+    jest.requireActual('@librechat/api').getTenantPostLogoutRedirectUri(...args),
 }));
 jest.mock('@librechat/data-schemas', () => ({
   logger: mockLogger,
+  getTenantId: () => undefined,
   DEFAULT_REFRESH_TOKEN_EXPIRY: 7 * 24 * 60 * 60 * 1000,
 }));
 jest.mock('~/server/services/AuthService', () => ({
@@ -212,6 +215,22 @@ describe('LogoutController', () => {
       expect(url.searchParams.get('post_logout_redirect_uri')).toBe(
         'https://app.example.com/login',
       );
+    });
+
+    it("returns to the user's tenant host with TENANT_DOMAIN_CLIENT", async () => {
+      delete process.env.OPENID_POST_LOGOUT_REDIRECT_URI;
+      process.env.TENANT_DOMAIN_CLIENT = 'https://{tenantid}.example.com';
+      const req = buildReq({ user: { ...buildReq().user, tenantId: 'acme' } });
+      const res = buildRes();
+
+      await logoutController(req, res);
+
+      const body = res.send.mock.calls[0][0];
+      const url = new URL(body.redirect);
+      expect(url.searchParams.get('post_logout_redirect_uri')).toBe(
+        'https://acme.example.com/login',
+      );
+      delete process.env.TENANT_DOMAIN_CLIENT;
     });
   });
 
