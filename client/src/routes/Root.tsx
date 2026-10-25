@@ -4,6 +4,7 @@ import { Outlet } from 'react-router-dom';
 import { useMediaQuery } from '@librechat/client';
 import {
   useFileMap,
+  useBranding,
   useAgentsMap,
   useAuthContext,
   useReplyAlerts,
@@ -149,6 +150,8 @@ function RootLayout() {
   );
 
   useSearchEnabled(isAuthenticated);
+  /* Fork: name and favicon on every signed-in page, not only the chat. */
+  useBranding(config);
 
   useEffect(() => {
     if (termsData) {
