@@ -42,4 +42,11 @@ describe('brandingSchema', () => {
     expect(brandingSchema.safeParse({ appTitle: 'x'.repeat(61) }).success).toBe(false);
     expect(brandingSchema.safeParse({ logo: 'http://acme.example/logo.png' }).success).toBe(false);
   });
+
+  it('accepts a description for link previews up to 200 characters', () => {
+    expect(brandingSchema.parse({ description: ' AI for teams ' })).toEqual({
+      description: 'AI for teams',
+    });
+    expect(brandingSchema.safeParse({ description: 'x'.repeat(201) }).success).toBe(false);
+  });
 });
