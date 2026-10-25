@@ -4,3 +4,4 @@ export * from './footer';
 export * from './handoff';
 export * from './theme';
 export * from './title';
+export * from './manifest';
