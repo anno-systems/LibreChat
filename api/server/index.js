@@ -46,6 +46,7 @@ const {
   maybeInjectQueryDevtoolsBootstrap,
   injectConfiguredFooterBootstrap,
   injectShellTitle,
+  createManifestHandler,
   injectColorModeHandoff,
   readBundledThemeBoot,
   createDeploymentThemeShell,
@@ -403,6 +404,14 @@ const startServer = async () => {
   }
 
   app.get('/index.html', sendIndexHtml);
+  /* Fork: the deployment's name when the app is installed (packages/api/src/html/manifest.ts). */
+  app.get(
+    '/manifest.webmanifest',
+    createManifestHandler(
+      path.join(appConfig.paths.dist, 'manifest.webmanifest'),
+      appConfig?.interfaceConfig?.branding?.appTitle ?? process.env.APP_TITLE,
+    ),
+  );
   app.use(staticCache(appConfig.paths.dist));
   app.use(staticCache(appConfig.paths.fonts));
   app.use(staticCache(appConfig.paths.assets));
