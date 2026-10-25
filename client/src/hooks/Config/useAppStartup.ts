@@ -14,7 +14,6 @@ import useSpeechSettingsInit from './useSpeechSettingsInit';
 import { useHasAccess, useCatalogReady } from '~/hooks';
 import { setProductName } from '~/locales/productName';
 import { useMCPServersQuery } from '~/data-provider';
-import { setBrandFavicon } from '~/utils/favicon';
 import { setDocumentTitle } from '~/utils';
 import store from '~/store';
 
@@ -51,13 +50,6 @@ export default function useAppStartup({
     setDocumentTitle(appTitle, true);
     setProductName(appTitle);
     localStorage.setItem(LocalStorageKeys.APP_TITLE, appTitle);
-  }, [startupConfig]);
-
-  /** Show the tenant's favicon (fork-only) */
-  useEffect(() => {
-    if (startupConfig) {
-      setBrandFavicon(startupConfig.interface?.branding?.favicon);
-    }
   }, [startupConfig]);
 
   /** Set the default spec's preset as default */
