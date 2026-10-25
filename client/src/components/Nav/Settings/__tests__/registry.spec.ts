@@ -69,6 +69,17 @@ describe('settings registry', () => {
     }
   });
 
+  /** The admin app is opened from the account menu, below Settings, not from the dialog. */
+  it('offers no admin panel link, even to admins', () => {
+    const adminContext = { ...settingsContext, adminPanelURL: 'https://admin.example.com' };
+    const adminEntries = registry.filter(
+      (e) =>
+        (e.section === 'admin' || e.labelKey === 'com_ui_admin_panel') &&
+        (e.show?.(adminContext) ?? true),
+    );
+    expect(adminEntries).toHaveLength(0);
+  });
+
   it('offers the analytics consent toggle only when GTM is configured', () => {
     const entry = registry.find((e) => e.id === 'analyticsConsent');
     expect(entry?.show?.(settingsContext)).toBe(false);
