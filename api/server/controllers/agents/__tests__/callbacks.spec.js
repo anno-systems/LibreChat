@@ -37,9 +37,18 @@ jest.mock('@librechat/api', () => ({
   captureSubagentIdentity: jest.requireActual('@librechat/api').captureSubagentIdentity,
   createToolTimingAdapter: jest.requireActual('@librechat/api').createToolTimingAdapter,
   stampCommandExecutor: jest.requireActual('@librechat/api').stampCommandExecutor,
+  createWebSearchCharge: jest.requireActual('@librechat/api').createWebSearchCharge,
+}));
+
+const mockWebSearchCredits = jest.fn(() => 0);
+const mockCreateTransaction = jest.fn(async () => undefined);
+jest.mock('~/models', () => ({
+  webSearchCredits: (...args) => mockWebSearchCredits(...args),
+  createTransaction: (...args) => mockCreateTransaction(...args),
 }));
 
 jest.mock('@librechat/data-schemas', () => ({
+  WEB_SEARCH_CONTEXT: 'web_search',
   logger: {
     debug: jest.fn(),
     info: jest.fn(),
@@ -627,6 +636,36 @@ describe('createToolEndCallback', () => {
       write: jest.fn(),
     };
     artifactPromises = [];
+  });
+
+  it("charges each completed web search at the tenant's search price", async () => {
+    mockWebSearchCredits.mockReturnValueOnce(2174);
+    req.user.tenantId = 'tenant-a';
+    req.config = { balance: { enabled: true } };
+    const toolEndCallback = createToolEndCallback({ req, res, artifactPromises });
+    await toolEndCallback(
+      {
+        output: {
+          tool_call_id: 'call_0',
+          artifact: { [Tools.web_search]: { turn: 0, organic: [] } },
+        },
+      },
+      { run_id: 'run456', thread_id: 'thread789' },
+    );
+    await Promise.all(artifactPromises);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockWebSearchCredits).toHaveBeenCalledWith('tenant-a');
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: 'user123',
+        tokenType: 'credits',
+        context: 'web_search',
+        rawAmount: -2174,
+        conversationId: 'thread789',
+        balance: { enabled: true },
+      }),
+    );
   });
 
   it('preserves separate owners for final search artifacts with repeated tool-call IDs', async () => {

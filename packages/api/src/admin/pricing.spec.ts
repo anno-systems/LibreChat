@@ -78,6 +78,31 @@ describe('createAdminPricingHandler', () => {
     expect(tenantConfig.interfaceConfig?.contextCost).toBe(false);
   });
 
+  it("adds the tenant's search price and display currency from platform pricing", async () => {
+    const resolvePricing = jest.fn(() => ({
+      searchPer1000: 2,
+      currency: { code: 'EUR', rate: 0.92 },
+    }));
+    const { res, handler } = setup({ resolvePricing });
+    await handler(adminReq('tenant-a'), res as unknown as Response);
+
+    expect(resolvePricing).toHaveBeenCalledWith('tenant-a');
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { per1000: 2 },
+        currency: { code: 'EUR', rate: 0.92 },
+      }),
+    );
+  });
+
+  it('answers models only without platform pricing', async () => {
+    const { res, handler } = setup({ resolvePricing: () => ({ searchPer1000: 0 }) });
+    await handler(adminReq('tenant-a'), res as unknown as Response);
+
+    const body = res.json.mock.calls[0][0];
+    expect(Object.keys(body)).toEqual(['models']);
+  });
+
   it('answers an empty list when the tenant offers no models', async () => {
     const { res, handler } = setup({ getModelsConfig: jest.fn().mockResolvedValue({}) });
 

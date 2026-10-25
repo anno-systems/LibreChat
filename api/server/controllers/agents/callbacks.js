@@ -38,11 +38,26 @@ const {
   createToolTimingAdapter,
   stampCommandExecutor,
   MCP_FILE_OUTPUTS_ARTIFACT_KEY,
+  createWebSearchCharge,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
 const { preflightCodeOutputBatch } = require('~/server/services/Files/Code/preflight');
 const { saveBase64Image, saveMCPFileOutput } = require('~/server/services/Files/process');
+
+/** Fork: a completed web search costs the operator's search price (platform pricing). Built on
+ *  first use, so loading this module does not load the models; never rejects. */
+let webSearchCharge;
+async function chargeWebSearch(req, conversationId) {
+  if (!webSearchCharge) {
+    const db = require('~/models');
+    webSearchCharge = createWebSearchCharge({
+      webSearchCredits: (tenantId) => db.webSearchCredits(tenantId),
+      createTransaction: (tx) => db.createTransaction(tx),
+    });
+  }
+  return webSearchCharge(req, conversationId);
+}
 
 function isHostFileAuthoringArtifact(artifact) {
   return artifact?.[HOST_FILE_AUTHORING_ARTIFACT_KEY] === true;
@@ -1057,6 +1072,9 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
     }
 
     if (output.artifact[Tools.web_search]) {
+      chargeWebSearch(req, metadata.thread_id).catch((error) => {
+        logger.error('Error charging a web search:', error);
+      });
       artifactPromises.push(
         (async () => {
           const attachment = {
@@ -1446,6 +1464,9 @@ function createResponsesToolEndCallback({ req, res, tracker, artifactPromises })
     }
 
     if (output.artifact[Tools.web_search]) {
+      chargeWebSearch(req, metadata.thread_id).catch((error) => {
+        logger.error('Error charging a web search:', error);
+      });
       artifactPromises.push(
         (async () => {
           const attachment = {
