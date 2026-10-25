@@ -4,6 +4,7 @@ import {
   withHeaderTenant,
   getTenantDomains,
   getAdminPanelLink,
+  getTenantPostLogoutRedirectUri,
   getTenantOpenIdScope,
   checkOpenIdTenantClaim,
 } from './tenant';
@@ -46,6 +47,33 @@ describe('getTenantDomains', () => {
   it('never templates the system tenant or a malformed id', () => {
     expect(getTenantDomains('__SYSTEM__', multi).client).toBe('https://chat.example.com');
     expect(getTenantDomains('evil.com/x', multi).client).toBe('https://chat.example.com');
+  });
+});
+
+describe('getTenantPostLogoutRedirectUri', () => {
+  it("returns to the tenant's own login page", () => {
+    expect(getTenantPostLogoutRedirectUri('acme', multi)).toBe('https://acme.example.com/login');
+  });
+
+  it('keeps the deployment login page without tenant templates or a tenant', () => {
+    expect(getTenantPostLogoutRedirectUri('acme', single)).toBe('https://chat.example.com/login');
+    expect(getTenantPostLogoutRedirectUri(undefined, multi)).toBe('https://chat.example.com/login');
+    expect(getTenantPostLogoutRedirectUri('evil.com/x', multi)).toBe(
+      'https://chat.example.com/login',
+    );
+  });
+
+  it('uses the configured URI, with the tenant filled in', () => {
+    const fixed = { ...multi, OPENID_POST_LOGOUT_REDIRECT_URI: 'https://bye.example.com' };
+    expect(getTenantPostLogoutRedirectUri('acme', fixed)).toBe('https://bye.example.com');
+    const templated = {
+      ...multi,
+      OPENID_POST_LOGOUT_REDIRECT_URI: 'https://{tenantid}.example.com/bye',
+    };
+    expect(getTenantPostLogoutRedirectUri('acme', templated)).toBe('https://acme.example.com/bye');
+    expect(getTenantPostLogoutRedirectUri(undefined, templated)).toBe(
+      'https://chat.example.com/login',
+    );
   });
 });
 

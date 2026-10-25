@@ -4,8 +4,9 @@ const {
   math,
   clearCloudFrontCookies,
   clearSessionHintCookie,
+  getTenantPostLogoutRedirectUri,
 } = require('@librechat/api');
-const { logger, DEFAULT_REFRESH_TOKEN_EXPIRY } = require('@librechat/data-schemas');
+const { logger, getTenantId, DEFAULT_REFRESH_TOKEN_EXPIRY } = require('@librechat/data-schemas');
 const { logoutUser } = require('~/server/services/AuthService');
 const { deleteAllRefreshTokenBridges } = require('~/server/services/RefreshTokenBridge');
 const { revokeOpenIDRefreshTokenChain } = require('~/server/services/OpenIDRefreshRecovery');
@@ -114,8 +115,10 @@ const logoutController = async (req, res) => {
         const endSessionEndpoint = openIdConfig.serverMetadata().end_session_endpoint;
         if (endSessionEndpoint) {
           const endSessionUrl = new URL(endSessionEndpoint);
-          const postLogoutRedirectUri =
-            process.env.OPENID_POST_LOGOUT_REDIRECT_URI || `${process.env.DOMAIN_CLIENT}/login`;
+          const postLogoutRedirectUri = getTenantPostLogoutRedirectUri(
+            getTenantId() ?? req.user?.tenantId,
+            process.env,
+          );
           endSessionUrl.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri);
 
           /**
