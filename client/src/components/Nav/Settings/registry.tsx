@@ -50,7 +50,6 @@ import ChangeEmail from '../SettingsTabs/Account/ChangeEmail';
 import { RevokeKeys } from '../SettingsTabs/Data/RevokeKeys';
 import { ClearChats } from '../SettingsTabs/Data/ClearChats';
 import { TokenCredits, AutoRefill } from './BillingControls';
-import AdminPanel from '../SettingsTabs/General/AdminPanel';
 import SharedLinks from '../SettingsTabs/Data/SharedLinks';
 import ImageResize from '../SettingsTabs/Chat/ImageResize';
 import Passkeys from '../SettingsTabs/Account/Passkeys';
@@ -271,17 +270,6 @@ export const registry: SettingEntry[] = [
       switchId: 'keepScreenAwake',
     }),
   },
-  // General · Admin
-  {
-    id: 'adminPanel',
-    tab: GENERAL,
-    section: 'admin',
-    labelKey: 'com_ui_admin_panel',
-    keywords: ['admin', 'panel', 'dashboard'],
-    Component: AdminPanel,
-    show: (ctx) => ctx.adminPanelURL !== '',
-  },
-
   // Chat · Sending
   {
     id: 'enterToSend',

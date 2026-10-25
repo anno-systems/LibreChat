@@ -13,6 +13,7 @@ import {
   LogOut,
   Scale,
   ShieldCheck,
+  UserCog,
 } from 'lucide-react';
 import { ArchivedChatsModal } from '~/components/Nav/SettingsTabs/General/ArchivedChatsModal';
 import { filesDialogTriggerAtom, showFilesDialogAtom } from '~/store/filesDialog';
@@ -104,6 +105,8 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const setShowShortcutsDialog = useSetRecoilState(store.showShortcutsDialog);
   const [showArchived, setShowArchived] = useState(false);
   const accountSettingsButtonRef = useRef<HTMLButtonElement>(null);
+  /** Sent only to users with admin access (`/api/config`), naming their tenant. */
+  const adminPanelURL = startupConfig?.adminPanelURL ?? '';
 
   return (
     <Menu.MenuProvider placement={collapsed ? 'right-end' : undefined}>
@@ -176,6 +179,16 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
           <GearIcon className="icon-md" aria-hidden="true" />
           {localize('com_nav_settings')}
         </Menu.MenuItem>
+        {adminPanelURL && (
+          <Menu.MenuItem
+            onClick={() => openInNewTab(adminPanelURL)}
+            className="select-item text-sm"
+            data-testid="nav-admin-panel"
+          >
+            <UserCog className="icon-md" aria-hidden="true" />
+            {localize('com_ui_admin_panel')}
+          </Menu.MenuItem>
+        )}
         <DropdownMenuSeparator />
         <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
           <LogOut className="icon-md" aria-hidden="true" />
