@@ -346,6 +346,23 @@ describe('providers offered to all tenants', () => {
     expect(deleted.statusCode).toBe(204);
   });
 
+  it('refuses to delete a provider a platform agent runs on', async () => {
+    const { deps } = setup();
+    const handlers = createPlatformCatalogHandlers({
+      ...deps,
+      agentsUsingProvider: async (name: string) => (name === 'Plain' ? ['platform_support'] : []),
+    });
+    await call(handlers.putProvider, operatorReq({ name: 'Plain' }, provider));
+
+    const refused = await call(handlers.deleteProvider, operatorReq({ name: 'Plain' }));
+
+    expect(refused.statusCode).toBe(409);
+    expect(refused.body).toEqual({
+      error: 'provider_used_by_agents',
+      agents: ['platform_support'],
+    });
+  });
+
   it('shows tenant admins those providers with all models, without duplicates', async () => {
     const { handlers } = setup();
     await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));

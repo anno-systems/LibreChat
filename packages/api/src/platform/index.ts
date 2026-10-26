@@ -1,7 +1,21 @@
-export { createTenantEndpointLoader, catalogEndpoints, withTenantEndpoints } from './catalog';
+export {
+  createTenantEndpointLoader,
+  catalogEndpoints,
+  providerEndpoint,
+  withTenantEndpoints,
+} from './catalog';
 export type { TenantEndpointLoader, TenantEndpointLoaderDeps } from './catalog';
-export { createPlatformCatalogHandlers, operatorActor, requirePlatformToken } from './handlers';
-export type { PlatformCatalogHandlerDeps, PlatformCatalogHandlers } from './handlers';
+export {
+  createOperatorAudit,
+  createPlatformCatalogHandlers,
+  operatorActor,
+  requirePlatformToken,
+} from './handlers';
+export type {
+  OperatorAudit,
+  PlatformCatalogHandlerDeps,
+  PlatformCatalogHandlers,
+} from './handlers';
 export {
   createToolPolicyHandlers,
   createToolPolicyHookFactory,
@@ -29,3 +43,14 @@ export { createPlatformPricingHandlers, withPricingCurrency } from './pricing';
 export type { PlatformPricingHandlers, PlatformPricingStore } from './pricing';
 export { createWebSearchCharge } from './searchCharge';
 export type { WebSearchCharge, WebSearchChargeDeps } from './searchCharge';
+export { createPlatformAgentService, isActiveFor, targetsTenant, withRunEndpoint } from './agents';
+export type {
+  PlatformAgentRef,
+  PlatformAgentRun,
+  PlatformAgentService,
+  PlatformAgentServiceDeps,
+} from './agents';
+export { createPlatformAgentHandlers } from './agentApi';
+export type { PlatformAgentHandlerDeps, PlatformAgentHandlers } from './agentApi';
+export { createPlatformAgentLock, markPlatformAgents, platformAgentListFilter } from './agentLock';
+export type { PlatformAgentLock, PlatformAgentLockDeps } from './agentLock';

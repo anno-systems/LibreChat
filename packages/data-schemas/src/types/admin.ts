@@ -132,6 +132,12 @@ export const AUDIT_ACTIONS = [
   'catalog.tenant_updated',
   'catalog.own_endpoint_updated',
   'catalog.own_endpoint_deleted',
+  /** Fork: platform agents. The operator saves and deletes them (`{ type: 'service' }` actor,
+   * no tenant); a tenant admin switches one on or off for the tenant. Target
+   * `{ type: 'agent', id: platformAgentId, name }`. */
+  'catalog.agent_updated',
+  'catalog.agent_deleted',
+  'catalog.agent_toggled',
   /** Fork: per-tool policy of the platform's MCP servers, written by tenant admins; target
    * `{ type: 'mcp_tool', id: '<server>/<tool>' }`. */
   'mcp_tool.policy_updated',
@@ -187,6 +193,9 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'catalog.tenant_updated': 'config',
   'catalog.own_endpoint_updated': 'config',
   'catalog.own_endpoint_deleted': 'config',
+  'catalog.agent_updated': 'config',
+  'catalog.agent_deleted': 'config',
+  'catalog.agent_toggled': 'config',
   'mcp_tool.policy_updated': 'mcp',
   'tenant.purged': 'user',
 };

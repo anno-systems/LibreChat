@@ -326,6 +326,7 @@
   "com_agents_no_contact_available": "No contact available",
   "com_agents_no_more_results": "You've reached the end of the results",
   "com_agents_not_available": "Agent Not Available",
+  "com_agents_platform_locked": "This agent is provided by the platform and cannot be changed here.",
   "com_agents_recommended": "Our recommended agents",
   "com_agents_run_code_files": "Files below are for Code Environment only:",
   "com_agents_run_code_info": "Lets the agent write and run code in a secure sandbox to handle calculations, data analysis, and file processing.",

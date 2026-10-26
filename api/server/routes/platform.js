@@ -7,6 +7,7 @@ const {
 } = require('@librechat/api');
 const handlers = require('~/server/services/Config/platformCatalog');
 const { deleteTenant } = require('~/server/services/platformTenants');
+const platformAgents = require('~/server/services/platformAgents');
 const db = require('~/models');
 
 /**
@@ -40,5 +41,9 @@ router.get('/pricing', pricing.getPricing);
 router.put('/pricing', pricing.putDefaultPricing);
 router.put('/tenants/:tenantId/pricing', pricing.putTenantPricing);
 router.delete('/tenants/:tenantId/pricing', pricing.deleteTenantPricing);
+router.get('/agents', platformAgents.handlers.listAgents);
+router.get('/agents/tools', platformAgents.handlers.listTools);
+router.put('/agents/:id', platformAgents.handlers.putAgent);
+router.delete('/agents/:id', platformAgents.handlers.deleteAgent);
 
 module.exports = router;

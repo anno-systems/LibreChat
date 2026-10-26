@@ -461,6 +461,8 @@ const startServer = async () => {
   app.use('/api/admin/audit-log', routes.adminAuditLog);
   /* Fork: the platform model catalog (tenant admins, and the operator API). */
   app.use('/api/admin/catalog', routes.adminCatalog);
+  /* Fork: the platform agents a tenant's admins switch on or off. */
+  app.use('/api/admin/platform-agents', routes.adminPlatformAgents);
   /* Fork: the per-tool policy of the platform's MCP servers. */
   app.use('/api/admin/mcp-tools', routes.adminMcpTools);
   /* Fork: the tenant's chat usage for the admin dashboard. */

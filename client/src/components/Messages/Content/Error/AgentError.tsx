@@ -35,6 +35,7 @@ export default function AgentError({ json, message }: ErrorRendererProps) {
   const canEdit =
     agent != null &&
     builderAvailable &&
+    !agent.platformAgentId &&
     (agent.isEditable !== false || user?.role === SystemRoles.ADMIN);
 
   const supportName = agent?.support_contact?.name?.trim() ?? '';

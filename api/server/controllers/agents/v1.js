@@ -52,6 +52,8 @@ const {
   checkInstructionsPromptWrite,
   applyInstructionsPromptUnset,
   instructionsContentForScan,
+  markPlatformAgents,
+  platformAgentListFilter,
 } = require('@librechat/api');
 const {
   Time,
@@ -95,6 +97,7 @@ const {
 const { hasCapability } = require('~/server/middleware/roles/capabilities');
 const { attachOwnerContacts } = require('~/server/services/Agents/ownerContact');
 const { instructionsPromptAccess } = require('~/server/services/Agents/instructionsPrompt');
+const { service: platformAgents } = require('~/server/services/platformAgents');
 const { getMCPServersRegistry } = require('~/config');
 const { getLogStores } = require('~/cache');
 const db = require('~/models');
@@ -984,6 +987,7 @@ const getAgentHandler = async (req, res, expandProperties = false) => {
         model_parameters: getSafeModelParameters(agent.model_parameters),
         isPublic: agent.isPublic,
         version: agent.version,
+        platformAgentId: agent.platformAgentId,
         // Safe metadata
         createdAt: agent.createdAt,
         updatedAt: agent.updatedAt,
@@ -1792,6 +1796,8 @@ const getListAgentsHandler = async (req, res) => {
     // "Only my agents": the contribution comes from `marketplaceMineFilter`, which owns
     // what the filter says; this merges it on top of the ACL-resolved `accessibleIds`.
     Object.assign(filter, marketplaceMineFilter(listQuery, userId));
+    /** Fork: copies of platform agents are never offered for editing. */
+    Object.assign(filter, platformAgentListFilter(requiredPermission));
 
     // Handle search filter (escape regex and cap length)
     if (search && search.trim() !== '') {
@@ -1819,6 +1825,8 @@ const getListAgentsHandler = async (req, res) => {
      * omission would cost this handler another `User.findById`, once per lookup.
      */
     const { idOnTheSource } = req.user;
+    /** Fork: a tenant gets its platform agents' copies here first (cached, best effort). */
+    await platformAgents.ensureTenant(req.user.tenantId);
     const [
       { accessibleIds, editableIds },
       publiclyAccessibleIds,
@@ -1896,6 +1904,7 @@ const getListAgentsHandler = async (req, res) => {
       }
       return agent;
     });
+    markPlatformAgents(data.data);
 
     return res.json(data);
   } catch (error) {

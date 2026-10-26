@@ -118,6 +118,7 @@ const { logViolation } = require('~/cache');
 const db = require('~/models');
 const { getAppConfig } = require('~/server/services/Config');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
+const { service: platformAgents } = require('~/server/services/platformAgents');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
 const { determineFileType } = require('~/server/utils');
@@ -233,7 +234,8 @@ const initializeClientWithProvider = async ({
   if (!endpointOption) {
     throw new Error('Endpoint option not provided');
   }
-  const appConfig = req.config;
+  /** Reassigned once the primary agent is known: a platform agent's run adds its provider. */
+  let appConfig = req.config;
   const completionWakeupsEnabled = backgroundCompletionWakeupsEnabled(
     appConfig?.endpoints?.[EModelEndpoint.agents],
   );
@@ -372,10 +374,17 @@ const initializeClientWithProvider = async ({
   const primaryAgentPromise = endpointOption.agent;
   const modelsConfigPromise = getModelsConfig(req);
   const validatedPrimaryAgentPromise = Promise.all([primaryAgentPromise, modelsConfigPromise]).then(
-    async ([primaryAgent, modelsConfig]) => {
+    async ([primaryAgent, loadedModelsConfig]) => {
       if (!primaryAgent) {
         throw new Error('Agent not found');
       }
+      /** Fork: a platform agent's copy runs on its catalog provider, for this run only. */
+      const { appConfig: runAppConfig, modelsConfig } = await platformAgents.prepareRun({
+        agent: primaryAgent,
+        tenantId: req.user?.tenantId,
+        appConfig: req.config,
+        modelsConfig: loadedModelsConfig,
+      });
 
       const validationResult = await validateAgentModel({
         req,
@@ -388,7 +397,7 @@ const initializeClientWithProvider = async ({
         throw new Error(validationResult.error?.message);
       }
 
-      return { primaryAgent, modelsConfig };
+      return { primaryAgent, modelsConfig, runAppConfig };
     },
   );
 
@@ -641,7 +650,7 @@ const initializeClientWithProvider = async ({
     editableSkillIds,
     skillCreateAllowed,
     { skillStates, defaultActiveOnShare },
-    { primaryAgent, modelsConfig },
+    { primaryAgent, modelsConfig, runAppConfig },
     requestConversation,
     chatProjectContext,
     toolRoleGrants,
@@ -656,6 +665,7 @@ const initializeClientWithProvider = async ({
     chatProjectContextPromise,
     toolRoleGrantsPromise,
   ]);
+  req.config = appConfig = runAppConfig;
   /** Preserve the owner-scoped fallback for loaders that share this request. */
   req.resolvedConversation = requestConversation;
   req.chatProjectContext = chatProjectContext;

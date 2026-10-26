@@ -32,6 +32,7 @@ const { checkPermission, findAccessibleResources } = require('~/server/services/
 const { createMulterInstance } = require('~/server/routes/files/multer');
 const { handleFileUpload } = require('~/server/routes/files/files');
 const { checkCapability, getEndpointsConfig } = require('~/server/services/Config');
+const { lock: platformAgentLock } = require('~/server/services/platformAgents');
 const v1 = require('~/server/controllers/agents/v1');
 const db = require('~/models');
 const { requireAgentManagementAuth } = require('./middleware');
@@ -141,6 +142,8 @@ const uploadSingleFile = async (req, res, next) => {
     return next(error);
   }
 };
+/** Fork: a platform agent's copy is changed by the operator only. */
+const lockPlatformAgent = platformAgentLock.byAgentId('id', { management: true });
 const handleUploadError = (error, _req, res, _next) => {
   const status = Number(error?.statusCode);
   const isMultipartRequestError =
@@ -164,16 +167,17 @@ router.post(
   fileUploadIpLimiter,
   fileUploadUserLimiter,
   fileHandlers.authorizeUpload,
+  lockPlatformAgent,
   uploadSingleFile,
   restoreTenantContextFromReq,
   fileHandlers.upload,
   handleUploadError,
 );
 router.get('/:id/files', fileHandlers.list);
-router.delete('/:id/files/:fileId', fileHandlers.remove);
+router.delete('/:id/files/:fileId', lockPlatformAgent, fileHandlers.remove);
 router.get('/:id', readHandlers.get);
-router.patch('/:id', configMiddleware, updateHandler);
-router.delete('/:id', deleteHandler);
+router.patch('/:id', configMiddleware, lockPlatformAgent, updateHandler);
+router.delete('/:id', lockPlatformAgent, deleteHandler);
 
 router.use((_req, res) => {
   const { status, body } = mapAgentManagementError('not_found');
