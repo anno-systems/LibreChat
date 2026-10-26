@@ -110,6 +110,7 @@ import {
   blockRecovery,
 } from '~/components/Chat/Steering/recovery';
 import { pendingApprovalActionFamily } from '~/components/Chat/approval/state';
+import { queueStatusFamily } from '~/components/Chat/Messages/queue';
 import { useChatTransport } from '~/Providers/ChatTransportContext';
 import { reopenTermsOnRefusal } from '~/utils/terms';
 import { useAuthContext } from '~/hooks/AuthContext';
@@ -451,6 +452,8 @@ export default function useResumableSSE(
           setGenerationEpoch: updateActiveGenerationCreatedAt,
           setPendingAction: (conversationId, action) =>
             jotaiStore.set(pendingApprovalActionFamily(conversationId), action),
+          setQueueStatus: (conversationId, status) =>
+            jotaiStore.set(queueStatusFamily(conversationId), status),
           clearComposerDrafts: (conversationId, options) =>
             clearComposerDrafts(runIndex, conversationId, options),
           publishRunEnd: setRunEnd,

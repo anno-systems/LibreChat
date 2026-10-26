@@ -39,6 +39,7 @@ import {
   scheduledMCPResourceBindingSchema,
   scheduledMCPReadOnlyPolicySchema,
 } from './types/scheduleConsent';
+import { providerLimitsSchema } from './queue';
 import { brandingSchema } from './branding';
 
 export const AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_DEFAULT = 24 * 1024;
@@ -2197,6 +2198,8 @@ export const endpointSchema = baseEndpointSchema.merge(
       .optional(),
     directEndpoint: z.boolean().optional(),
     titleMessageRole: z.enum(['system', 'user', 'assistant']).optional(),
+    /** Fork: limits whose excess waits in the provider's queue instead of failing (`queue.ts`). */
+    limits: providerLimitsSchema.optional(),
     /** Static per-model token config: context window and per-million-token rates */
     tokenConfig: z
       .record(
@@ -5044,6 +5047,10 @@ export enum ErrorTypes {
    * Provider accepted the request, then sent nothing for longer than the model response timeout
    */
   MODEL_STREAM_STALLED = 'model_stream_stalled',
+  /**
+   * Fork: the turn waited the provider queue's maximum time without being admitted
+   */
+  QUEUE_TIMEOUT = 'queue_timeout',
   /**
    * An agent model provider failed and the run could not recover.
    */

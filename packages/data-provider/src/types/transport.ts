@@ -18,6 +18,7 @@ import type {
   TReasoningLabelAttemptEvent,
 } from './runs';
 import type { TMessage, TPayload, TConversation } from '../types';
+import type { QueueEvents, TQueueStatusEvent } from '../queue';
 import type { StreamContentData } from './content';
 import type { TAttachment } from '../schemas';
 import type { Agents } from './agents';
@@ -127,7 +128,8 @@ export type ChatEventFrame =
   | { event: SteerEvents.ON_STEER_UPDATED; data: TSteerUpdatedEvent }
   | { event: ActivityLabelEvents.ON_ACTIVITY_LABEL; data: TActivityLabelEvent }
   | { event: ReasoningLabelEvents.ON_REASONING_LABEL; data: TReasoningLabelEvent }
-  | { event: ReasoningLabelEvents.ON_REASONING_LABEL_ATTEMPT; data: TReasoningLabelAttemptEvent };
+  | { event: ReasoningLabelEvents.ON_REASONING_LABEL_ATTEMPT; data: TReasoningLabelAttemptEvent }
+  | { event: QueueEvents.ON_QUEUE_STATUS; data: TQueueStatusEvent };
 
 /** Cumulative text from legacy (non-agent) streams, keyed by `message: true`. */
 export type ChatTextFrame = {
@@ -219,6 +221,8 @@ export type ChatEvent =
   | { type: 'reasoning_label'; data: TReasoningLabelEvent }
   /** Server bookkeeping that clients deliberately do not render. */
   | { type: 'reasoning_label_attempt'; data: TReasoningLabelAttemptEvent }
+  /** No AI SDK equivalent (fork): the turn waits in its provider's queue, or no longer does. */
+  | { type: 'queue_status'; data: TQueueStatusEvent }
   /**
    * AI SDK: `text-delta`, `reasoning-delta`, `tool-input-*`, `tool-output-*`,
    * `start-step` and `finish-step`, which LibreChat carries as graph step events.

@@ -3244,6 +3244,114 @@ describe('AgentClient - startup telemetry', () => {
     );
   });
 
+  describe('provider queue', () => {
+    const makeQueuedClient = (streamId, limits) => {
+      const client = new AgentClient({
+        req: {
+          user: { id: 'user-123' },
+          body: {},
+          config: {
+            endpoints: {
+              [EModelEndpoint.agents]: {},
+              [EModelEndpoint.custom]: [{ name: `Queued ${streamId}`, limits }],
+            },
+          },
+          _resumableStreamId: streamId,
+        },
+        res: {},
+        agent: {
+          id: 'agent-123',
+          endpoint: `Queued ${streamId}`,
+          provider: EModelEndpoint.openAI,
+          model_parameters: { model: 'small' },
+          hide_sequential_outputs: false,
+        },
+        endpointTokenConfig: {},
+        eventHandlers: {},
+        contentParts: [],
+        collectedUsage: [],
+        artifactPromises: [],
+      });
+      client.conversationId = streamId;
+      client.responseMessageId = `response-${streamId}`;
+      client.parentMessageId = `parent-${streamId}`;
+      client.recordCollectedUsage = jest.fn().mockResolvedValue();
+      return client;
+    };
+    const rateLimited = (headers) =>
+      Object.assign(new Error('429 Too Many Requests'), { status: 429, headers });
+
+    let emitChunk;
+    beforeEach(() => {
+      emitChunk = jest.spyOn(GenerationJobManager, 'emitChunk').mockResolvedValue();
+    });
+    afterEach(() => {
+      emitChunk.mockRestore();
+    });
+
+    it('runs the agents again after a rate limit before any content, telling the client why', async () => {
+      const processStream = jest
+        .fn()
+        .mockRejectedValueOnce(rateLimited({ 'retry-after-ms': '20' }))
+        .mockResolvedValueOnce(undefined);
+      mockCreateRun.mockResolvedValue({
+        Graph: null,
+        processStream,
+        getCalibrationRatio: jest.fn(() => 0),
+      });
+      mockIsHITLEnabled.mockReturnValue(false);
+      const client = makeQueuedClient('queue-retry', { maxWaitSeconds: 30 });
+
+      await client.chatCompletion({ payload: [] });
+
+      expect(processStream).toHaveBeenCalledTimes(2);
+      expect(client.contentParts).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: ContentTypes.ERROR })]),
+      );
+      const statuses = emitChunk.mock.calls
+        .filter(([, event]) => event?.event === 'on_queue_status')
+        .map(([streamId, event]) => [streamId, event.data]);
+      expect(statuses).toEqual([
+        [
+          'queue-retry',
+          {
+            queued: true,
+            position: 1,
+            reason: 'rate_limited',
+            conversationId: 'queue-retry',
+            responseMessageId: 'response-queue-retry',
+          },
+        ],
+        [
+          'queue-retry',
+          {
+            queued: false,
+            conversationId: 'queue-retry',
+            responseMessageId: 'response-queue-retry',
+          },
+        ],
+      ]);
+    });
+
+    it('ends with a typed queue timeout when the provider asks for longer than the wait', async () => {
+      const processStream = jest.fn().mockRejectedValue(rateLimited({ 'retry-after': '60' }));
+      mockCreateRun.mockResolvedValue({
+        Graph: null,
+        processStream,
+        getCalibrationRatio: jest.fn(() => 0),
+      });
+      mockIsHITLEnabled.mockReturnValue(false);
+      const client = makeQueuedClient('queue-timeout', { maxWaitSeconds: 5 });
+
+      await client.chatCompletion({ payload: [] });
+
+      expect(processStream).toHaveBeenCalledTimes(1);
+      const errorPart = client.contentParts.find((part) => part?.type === ContentTypes.ERROR);
+      const [, payload] = errorPart[ContentTypes.ERROR].split('\n');
+      expect(JSON.parse(payload)).toEqual({ type: ErrorTypes.QUEUE_TIMEOUT });
+    });
+  });
+
   it('records collected usage as an abort when the run is stopped', async () => {
     jest.clearAllMocks();
     const abortController = new AbortController();

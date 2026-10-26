@@ -38,6 +38,8 @@ export function clearPendingApprovalForTerminal(
   ]);
   for (const id of conversationIds) {
     host.pane.setPendingAction(id, null);
+    /** A run that ends while queued (timeout, Stop) leaves no queue line behind either. */
+    host.pane.setQueueStatus?.(id, null);
   }
 }
 

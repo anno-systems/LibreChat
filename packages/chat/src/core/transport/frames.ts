@@ -1,4 +1,5 @@
 import {
+  QueueEvents,
   UsageEvents,
   SteerEvents,
   ApprovalEvents,
@@ -48,6 +49,8 @@ function normalizeEventFrame(frame: ChatEventFrame): ChatEvent {
       return { type: 'reasoning_label', data: frame.data };
     case ReasoningLabelEvents.ON_REASONING_LABEL_ATTEMPT:
       return { type: 'reasoning_label_attempt', data: frame.data };
+    case QueueEvents.ON_QUEUE_STATUS:
+      return { type: 'queue_status', data: frame.data };
     default:
       return { type: 'step', data: frame };
   }

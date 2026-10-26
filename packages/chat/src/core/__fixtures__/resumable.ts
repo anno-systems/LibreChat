@@ -93,6 +93,7 @@ export const createHost = (
       setStreamId: jest.fn(),
       setGenerationEpoch: jest.fn(() => true),
       setPendingAction: jest.fn(),
+      setQueueStatus: jest.fn(),
       clearComposerDrafts: jest.fn(),
       publishRunEnd: jest.fn(),
       clearDrainAfterAbort: jest.fn(),

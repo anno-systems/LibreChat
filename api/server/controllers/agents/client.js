@@ -208,6 +208,10 @@ const {
   markCompactionOutcome,
   resolvePersistableCodeEnvironmentDecision,
   getChatProjectContextKey,
+  sumTokenCounts,
+  runProviderQueuedTurn,
+  isProviderQueueTimeout,
+  getProviderQueueErrorText,
 } = require('@librechat/api');
 const {
   Run,
@@ -228,6 +232,7 @@ const {
   ErrorTypes,
   ContentTypes,
   FileSources,
+  QueueEvents,
   ApprovalEvents,
   EModelEndpoint,
   PermissionTypes,
@@ -248,6 +253,7 @@ const {
 const { resolveConfigServers, getAccessibleMcpServerNames } = require('~/server/services/MCP');
 const { getMCPServerTools } = require('~/server/services/Config');
 const { getAccessibleMCPServers } = require('~/server/services/MCP');
+const { providerGate } = require('~/server/services/providerQueue');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
@@ -365,6 +371,10 @@ function getUserFacingRequestError(baseMessage, error, appConfig) {
   /** Carries no model or user content, so it is safe under every filter. */
   if (error?.name === 'ManualSummarizationSkippedError') {
     return JSON.stringify({ type: ErrorTypes.COMPACTION_SKIPPED, reason: error.reason });
+  }
+  /** Fork: the provider queue's wait ran out; carries no provider text either. */
+  if (isProviderQueueTimeout(error)) {
+    return getProviderQueueErrorText();
   }
   const protectionEnabled = hasModelBoundContentProtection(
     appConfig?.filters,
@@ -785,6 +795,33 @@ class AgentClient extends BaseClient {
   /**
    * Returns the aggregated content parts for the current run.
    * @returns {MessageContentComplex[]} */
+  /** Fork: how the provider queue sees this turn (`runProviderQueuedTurn`). */
+  getProviderQueueOptions(signal) {
+    const streamId = this.options.req?._resumableStreamId;
+    return {
+      gate: providerGate,
+      appConfig: this.options.req?.config,
+      endpoint: this.options.agent?.endpoint,
+      signal,
+      usage: () => this.collectedUsage,
+      content: () => this.contentParts,
+      statusContext: {
+        conversationId: this.conversationId,
+        responseMessageId: this.responseMessageId,
+      },
+      emitStatus: streamId
+        ? (data) =>
+            GenerationJobManager.emitChunk(
+              streamId,
+              { event: QueueEvents.ON_QUEUE_STATUS, data },
+              { expectedCreatedAt: this.jobCreatedAt },
+            )
+        : undefined,
+      onEmitError: (error) =>
+        logger.warn('[AgentClient] Failed to emit queue status', getSafeErrorMetadata(error)),
+    };
+  }
+
   getContentParts() {
     return this.contentParts;
   }
@@ -4949,7 +4986,8 @@ class AgentClient extends BaseClient {
         );
         config = withPrivateTextAdmissionConfig(config, initialModelBoundAdmission);
 
-        if (this.processMemory && !isCompactionTurn) {
+        /** Once per turn, also when the provider queue runs the agents again after a 429. */
+        if (this.processMemory && !isCompactionTurn && memoryPromise == null) {
           memoryPromise = this.runMemory(memoryMessages);
         }
 
@@ -5181,7 +5219,11 @@ class AgentClient extends BaseClient {
       };
 
       this.options.startupTelemetry?.mark('run_input_prepared');
-      await runAgents(initialMessages);
+      await runProviderQueuedTurn({
+        ...AgentClient.prototype.getProviderQueueOptions.call(this, abortController.signal),
+        promptTokens: () => sumTokenCounts(indexTokenCountMap),
+        run: () => runAgents(initialMessages),
+      });
 
       /**
        * Surface a completed `skill` tool_call content part per *manually*-
@@ -5946,12 +5988,18 @@ class AgentClient extends BaseClient {
       }
       await this.publishRunContextMeta?.();
       try {
-        await run.resume(
-          resumeValue,
-          config,
-          { callbacks: { [Callback.TOOL_ERROR]: logToolError } },
-          commandOptions,
-        );
+        /** A resumed turn already has content, so a 429 fails as before instead of retrying. */
+        await runProviderQueuedTurn({
+          ...AgentClient.prototype.getProviderQueueOptions.call(this, abortController.signal),
+          retryRateLimited: false,
+          run: () =>
+            run.resume(
+              resumeValue,
+              config,
+              { callbacks: { [Callback.TOOL_ERROR]: logToolError } },
+              commandOptions,
+            ),
+        });
       } finally {
         reasoningLabel?.complete();
       }

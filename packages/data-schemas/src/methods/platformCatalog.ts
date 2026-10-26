@@ -1,4 +1,5 @@
 import { Schema } from 'mongoose';
+import type { TProviderLimits } from 'librechat-data-provider';
 import type { Model } from 'mongoose';
 import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
 import { runAsSystem, tenantStorage } from '~/config/tenantContext';
@@ -27,6 +28,8 @@ export interface PlatformProvider {
   dropParams?: string[];
   /** Offered to every tenant with all its models, without an assignment. */
   allTenants?: boolean;
+  /** Limits whose excess waits in the provider's queue (fork, `packages/api/src/queue`). */
+  limits?: TProviderLimits;
   updatedAt?: Date;
 }
 
@@ -89,6 +92,17 @@ const ownEndpointSchema = new Schema<OwnEndpoint>(
   { _id: false },
 );
 
+const limitsSchema = new Schema<TProviderLimits>(
+  {
+    concurrency: { type: Number },
+    requestsPerMinute: { type: Number },
+    tokensPerMinute: { type: Number },
+    maxWaitSeconds: { type: Number },
+    pauseSeconds: { type: Number },
+  },
+  { _id: false },
+);
+
 const platformProviderSchema = new Schema<PlatformProvider>(
   {
     name: { type: String, required: true, unique: true },
@@ -100,6 +114,7 @@ const platformProviderSchema = new Schema<PlatformProvider>(
     country: { type: String },
     dropParams: { type: [String], default: undefined },
     allTenants: { type: Boolean, default: false },
+    limits: { type: limitsSchema, default: undefined },
   },
   { timestamps: true },
 );
@@ -114,6 +129,24 @@ const tenantCatalogSchema = new Schema<TenantCatalog>(
   { timestamps: true },
 );
 
+/** The set limit fields only; a stored subdocument may carry unset ones as `null`. */
+function limitsOf(limits: TProviderLimits): TProviderLimits {
+  const result: TProviderLimits = {};
+  for (const key of [
+    'concurrency',
+    'requestsPerMinute',
+    'tokensPerMinute',
+    'maxWaitSeconds',
+    'pauseSeconds',
+  ] as const) {
+    const value = limits[key];
+    if (typeof value === 'number') {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function toProvider(doc: PlatformProvider): PlatformProvider {
   return {
     name: doc.name,
@@ -125,6 +158,7 @@ function toProvider(doc: PlatformProvider): PlatformProvider {
     ...(doc.country && { country: doc.country }),
     ...(doc.dropParams && { dropParams: [...doc.dropParams] }),
     allTenants: doc.allTenants === true,
+    ...(doc.limits && { limits: limitsOf(doc.limits) }),
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
   };
 }
@@ -186,6 +220,7 @@ export function createPlatformCatalogMethods(
         ...(provider.region ? {} : { region: 1 }),
         ...(provider.country ? {} : { country: 1 }),
         ...(provider.dropParams ? {} : { dropParams: 1 }),
+        ...(provider.limits ? {} : { limits: 1 }),
       };
       const doc = await Provider.findOneAndUpdate(
         { name },

@@ -1,5 +1,6 @@
 import {
   StepEvents,
+  QueueEvents,
   UsageEvents,
   SteerEvents,
   ContentTypes,
@@ -50,6 +51,7 @@ describe('normalizeFrame', () => {
       [ActivityLabelEvents.ON_ACTIVITY_LABEL, 'activity_label'],
       [ReasoningLabelEvents.ON_REASONING_LABEL, 'reasoning_label'],
       [ReasoningLabelEvents.ON_REASONING_LABEL_ATTEMPT, 'reasoning_label_attempt'],
+      [QueueEvents.ON_QUEUE_STATUS, 'queue_status'],
     ];
 
     for (const [event, type] of cases) {

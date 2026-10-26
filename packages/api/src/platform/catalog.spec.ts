@@ -57,6 +57,19 @@ describe('catalogEndpoints', () => {
     expect(endpoints.map((e) => e.dropParams)).toEqual([['user', 'stop'], []]);
   });
 
+  it("carries a platform provider's queue limits to its endpoint, never to a tenant's own", () => {
+    const limits = { concurrency: 2, maxWaitSeconds: 60 };
+    const [platform, own] = catalogEndpoints(
+      'tenant-a',
+      catalog,
+      [{ ...provider, limits }],
+      decrypt,
+    );
+
+    expect(platform).toEqual(expect.objectContaining({ limits }));
+    expect(own).not.toHaveProperty('limits');
+  });
+
   it('leaves out the tenant endpoints without BYOK and assignments without models', () => {
     const endpoints = catalogEndpoints(
       'tenant-a',
