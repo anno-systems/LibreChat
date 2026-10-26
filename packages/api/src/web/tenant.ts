@@ -9,13 +9,24 @@ export const TENANT_PLACEHOLDER = '{{LIBRECHAT_TENANT_ID}}';
 
 const TENANT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function fill(values: Record<string, unknown>, tenantId: string): Record<string, unknown> {
+  const entries = Object.entries(values).map(([key, value]) => {
+    if (typeof value === 'string') {
+      return [key, value.replaceAll(TENANT_PLACEHOLDER, tenantId)];
+    }
+    /** Nested options carry keys too (`keenableScraperOptions.apiKey`). */
+    return [key, isPlainObject(value) ? fill(value, tenantId) : value];
+  });
+  return Object.fromEntries(entries);
+}
+
 export function withTenantId<T extends object>(values: T, tenantId: string | undefined): T {
   if (!tenantId || !TENANT_ID.test(tenantId)) {
     return values;
   }
-  const entries = Object.entries(values).map(([key, value]) => [
-    key,
-    typeof value === 'string' ? value.replaceAll(TENANT_PLACEHOLDER, tenantId) : value,
-  ]);
-  return Object.fromEntries(entries) as T;
+  return fill(values as Record<string, unknown>, tenantId) as T;
 }

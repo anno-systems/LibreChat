@@ -286,7 +286,7 @@ therefore point a catalog endpoint's `baseURL` at their own server and receive t
 provider key, or set a web search key to `${JWT_SECRET}` or another tenant's search key (the web
 search path does not apply upstream's sensitive-variable denylist).
 
-`ADMIN_CONFIG_CATALOG_LOCK=true` (fork, `packages/api/src/admin/catalog.ts`) closes that:
+`ADMIN_CONFIG_CATALOG_LOCK=true` (fork, `packages/api/src/admin/catalogLock.ts`) closes that:
 
 - `endpoints` writes may only name a custom endpoint from `librechat.yaml` and set
   `models.default` to a subset of its catalog list. Every other endpoint field and section is

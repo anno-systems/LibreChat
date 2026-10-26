@@ -29,7 +29,11 @@ const {
   restoreUserSchedulesFromDeletion,
 } = require('~/server/services/Schedules');
 const db = require('~/models');
-const { getAppConfig, invalidateCodeEnvironmentConfigCache } = require('~/server/services/Config');
+const {
+  getAppConfig,
+  invalidateConfigCaches,
+  invalidateCodeEnvironmentConfigCache,
+} = require('~/server/services/Config');
 
 const router = express.Router();
 
@@ -73,6 +77,7 @@ const handlers = createAdminUsersHandlers({
   deleteUserCodeEnvironments: db.deleteUserCodeEnvironments,
   invalidateCodeEnvironmentConfigCache,
   deleteConfig: db.deleteConfig,
+  invalidateConfigCaches,
   deleteAclEntries: db.deleteAclEntries,
   deletePasskeysByUser: db.deletePasskeysByUser,
   resolveErasure,
