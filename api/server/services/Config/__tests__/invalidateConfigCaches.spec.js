@@ -33,16 +33,31 @@ jest.mock('../getCachedTools', () => ({
 }));
 
 const mockClearMcpConfigCache = jest.fn().mockResolvedValue(undefined);
+const mockTenantEndpoints = { load: jest.fn(), invalidate: jest.fn() };
+const mockCreateRedisPubSub = jest.fn(() => undefined);
+/** The invalidation the module composes; its own behavior is covered in packages/api. */
+const mockCreateConfigCacheInvalidation = jest.fn(({ clears }) => ({
+  invalidate: async (tenantId) => {
+    await Promise.allSettled(clears.map(({ clear }) => clear(tenantId)));
+  },
+  close: async () => undefined,
+}));
 jest.mock('@librechat/api', () => ({
+  isEnabled: (value) => value === 'true',
+  expandCustomEndpoint: jest.fn((endpoint) => endpoint),
   createAppConfigService: jest.fn(() => ({
     getAppConfig: jest.fn().mockResolvedValue({ availableTools: {} }),
     clearAppConfigCache: mockClearAppConfigCache,
     clearOverrideCache: mockClearOverrideCache,
   })),
   clearMcpConfigCache: mockClearMcpConfigCache,
+  createConfigCacheInvalidation: mockCreateConfigCacheInvalidation,
+  createRedisConfigInvalidationPubSub: mockCreateRedisPubSub,
+  ioredisClient: null,
+  cacheConfig: { USE_REDIS: false, REDIS_KEY_PREFIX: 'deploy-a' },
   createCodeEnvironmentRegistry: jest.fn(() => ({})),
   mergeAccessibleCodeEnvironments: jest.fn(({ appConfig }) => appConfig),
-  createTenantEndpointLoader: jest.fn(() => ({ load: jest.fn(), invalidate: jest.fn() })),
+  createTenantEndpointLoader: jest.fn(() => mockTenantEndpoints),
 }));
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -51,6 +66,8 @@ const { getAppConfig, invalidateConfigCaches } = require('../app');
 const { initializeMessageBudget } = require('~/models');
 // Capture module-composition calls before clearMocks resets the spy history.
 const budgetInitializations = [...initializeMessageBudget.mock.calls];
+const invalidationOptions = mockCreateConfigCacheInvalidation.mock.calls[0][0];
+const pubSubOptions = mockCreateRedisPubSub.mock.calls[0][0];
 
 test('Config supplies its actual reader exactly once during composition', () => {
   expect(budgetInitializations).toEqual([[getAppConfig]]);
@@ -61,75 +78,45 @@ describe('invalidateConfigCaches', () => {
     jest.clearAllMocks();
   });
 
-  it('clears all caches', async () => {
+  it('clears the YAML base config, the override caches and the MCP config caches', async () => {
     await invalidateConfigCaches();
 
+    const labels = invalidationOptions.clears.map(({ label }) => label);
+    expect(labels).toHaveLength(4);
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        'clearAppConfigCache',
+        'clearOverrideCache',
+        'clearMcpConfigCache',
+        'invalidateTenantEndpoints',
+      ]),
+    );
     expect(mockClearAppConfigCache).toHaveBeenCalledTimes(1);
     expect(mockClearOverrideCache).toHaveBeenCalledTimes(1);
-    expect(mockInvalidateCachedTools).toHaveBeenCalledWith({ invalidateGlobal: true });
     expect(mockClearMcpConfigCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the global tool cache for the base reload to republish', async () => {
+    await invalidateConfigCaches('tenant-a');
+
+    expect(mockClearAppConfigCache).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateCachedTools).not.toHaveBeenCalled();
   });
 
   it('passes tenantId through to clearOverrideCache', async () => {
     await invalidateConfigCaches('tenant-a');
 
     expect(mockClearOverrideCache).toHaveBeenCalledWith('tenant-a');
-    expect(mockClearAppConfigCache).toHaveBeenCalledTimes(1);
-    expect(mockInvalidateCachedTools).toHaveBeenCalledWith({ invalidateGlobal: true });
   });
 
-  it('all operations run in parallel (not sequentially)', async () => {
-    const order = [];
+  it("drops the tenant's cached platform catalog endpoints (fork)", async () => {
+    await invalidateConfigCaches('tenant-a');
 
-    mockClearAppConfigCache.mockImplementation(
-      () =>
-        new Promise((r) =>
-          setTimeout(() => {
-            order.push('base');
-            r();
-          }, 10),
-        ),
-    );
-    mockClearOverrideCache.mockImplementation(
-      () =>
-        new Promise((r) =>
-          setTimeout(() => {
-            order.push('override');
-            r();
-          }, 10),
-        ),
-    );
-    mockInvalidateCachedTools.mockImplementation(
-      () =>
-        new Promise((r) =>
-          setTimeout(() => {
-            order.push('tools');
-            r();
-          }, 10),
-        ),
-    );
-    mockClearMcpConfigCache.mockImplementation(
-      () =>
-        new Promise((r) =>
-          setTimeout(() => {
-            order.push('mcp');
-            r();
-          }, 10),
-        ),
-    );
-
-    await invalidateConfigCaches();
-
-    expect(order).toHaveLength(4);
-    expect(new Set(order)).toEqual(new Set(['base', 'override', 'tools', 'mcp']));
+    expect(mockTenantEndpoints.invalidate).toHaveBeenCalledWith('tenant-a');
   });
 
-  it('resolves even when clearAppConfigCache throws (partial failure)', async () => {
-    mockClearAppConfigCache.mockRejectedValueOnce(new Error('cache connection lost'));
-
-    await expect(invalidateConfigCaches()).resolves.not.toThrow();
-
-    expect(mockClearOverrideCache).toHaveBeenCalledTimes(1);
-    expect(mockInvalidateCachedTools).toHaveBeenCalledWith({ invalidateGlobal: true });
+  it('asks for the Redis pub/sub with the deployment settings, and broadcasts nothing without it', () => {
+    expect(pubSubOptions).toEqual({ useRedis: false, client: null, namespace: 'deploy-a' });
+    expect(invalidationOptions.pubsub).toBeUndefined();
   });
 });

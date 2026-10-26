@@ -29,3 +29,21 @@ export function getThemeWriteIssues(fields: Record<string, unknown>): ConfigOver
     return { path: segments.join('.'), segments, code: THEME_INVALID };
   });
 }
+
+/**
+ * The theme issues of one write addressed by path segments (a PATCH entry, or a `set` of the
+ * changes endpoint): checked when it sets the whole `interface.theme` or an `interface` section.
+ */
+export function getThemeEntryWriteIssues(
+  segments: readonly string[],
+  value: unknown,
+): ConfigOverrideIssue[] {
+  if (segments.length === 0) {
+    return isRecord(value) ? getThemeWriteIssues(value) : [];
+  }
+  if (segments[0] !== 'interface' || segments.length > 2) return [];
+  if (segments.length === 2) {
+    return segments[1] === 'theme' ? getThemeWriteIssues({ 'interface.theme': value }) : [];
+  }
+  return getThemeWriteIssues({ interface: value });
+}

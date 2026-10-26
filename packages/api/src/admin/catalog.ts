@@ -1,272 +1,644 @@
-import type { ConfigOverrideIssue } from '@librechat/data-schemas';
+import { createHash } from 'node:crypto';
+import { logger, isBaseConfigPrincipal, BASE_CONFIG_PRINCIPAL_ID } from '@librechat/data-schemas';
+import {
+  AuthType,
+  PrincipalType,
+  EModelEndpoint,
+  isSensitiveEnvVar,
+  extractEnvVariable,
+  getEnabledEndpoints,
+  normalizeEndpointName,
+  isProcessMCPServerConfig,
+} from 'librechat-data-provider';
+import type {
+  AppConfig,
+  ConfigRecord,
+  ConfigSection,
+  AdminCatalogTool,
+  AdminConfigEnvSource,
+  AdminConfigEnvStatus,
+  AdminCatalogModels,
+  AdminCatalogEndpoint,
+  AdminCatalogMcpServer,
+  AdminCatalogEndpointReason,
+  AdminConfigCatalogResponse,
+  AdminConfigEnvStatusResponse,
+} from '@librechat/data-schemas';
+import type {
+  TPlugin,
+  TEndpoint,
+  TModelsConfig,
+  TCustomConfig,
+  TEndpointsConfig,
+} from 'librechat-data-provider';
+import type { Response } from 'express';
+import type { CapabilityUser } from '~/middleware/capabilities';
+import type { GetAppConfigOptions } from '~/app/service';
+import type { ManifestTool } from '~/tools/available';
+import type { ServerRequest } from '~/types/http';
+import {
+  canReadSection,
+  getCapabilityUser,
+  validatePrincipalType,
+  forbiddenResponse,
+  authRequiredResponse,
+  principalNotFoundResponse,
+} from './config';
+import {
+  parseEnvAllowlist,
+  collectEnvReferenceSections,
+  collectDefaultEnvReferenceSections,
+} from '~/app/allowlist';
+import { resolveServedCustomEndpoints } from '~/endpoints/custom/config';
+import { listAvailableTools } from '~/tools/available';
+import { getSafeErrorMetadata } from '~/utils/errors';
+import { resolveConfigSecret } from './secrets';
+import { getCatalogModelsTtlMs } from './meta';
+import { isUserProvided } from '~/utils';
 
 /**
- * Catalog lock for the admin config API (fork-only, `ADMIN_CONFIG_CATALOG_LOCK=true`).
- *
- * Under the lock, `librechat.yaml` is the operator's catalog and admins writing through the API
- * may only narrow it:
- * - `endpoints` may contain only `custom` entries that name a catalog endpoint and set
- *   `models.default` to a subset of that endpoint's catalog models. URLs, keys, headers and
- *   every other endpoint field stay as the operator configured them.
- * - No value may reference an environment variable (`${NAME}`), because the server resolves
- *   those from its own environment and would send the secret wherever the admin points it.
- * - `mcpServers` (or its alias `mcpConfig`) may name only servers of `librechat.yaml` and set only
- *   their boolean switches `enabled` and `chatMenu`. A URL, header or new server would let the
- *   admin send users' tokens (`{{LIBRECHAT_OPENID_ACCESS_TOKEN}}`) to a server of their choosing.
- *   A tombstone under these sections may only target those two switches.
- * - `endpoints.agents` may set only `pullRequests.enabled`, the boolean that switches the
- *   conversation pull request chip on or off for the scope. Where pull requests are looked up,
- *   with which token and which repositories, stays as the operator configured it.
+ * Who a scope's endpoint, model and tool lists are resolved for: the scope, never a user. It has
+ * no user id, so nothing reads a user's stored keys, and header templates that name a user
+ * resolve to nothing instead of to the admin's identity.
  */
+export interface CatalogScopeUser {
+  tenantId?: string;
+  role?: string;
+}
 
-export type CatalogIssueCode =
-  | 'catalog_env_reference'
-  | 'catalog_endpoint_locked'
-  | 'catalog_unknown_endpoint'
-  | 'catalog_field_locked'
-  | 'catalog_unknown_model'
-  | 'catalog_models_fetched'
-  | 'catalog_unknown_mcp_server';
+/** The request-like argument the endpoint and model loaders read: a scope's config and user. */
+export interface CatalogScopeRequest {
+  config: AppConfig;
+  user: CatalogScopeUser;
+}
 
-/** Sections that hold MCP servers; `mcpConfig` is the resolved alias of `mcpServers`. */
-const MCP_SECTIONS = ['mcpServers', 'mcpConfig'] as const;
-/** The MCP server fields an admin may set under the lock, each a boolean. */
-const MCP_SWITCHES: ReadonlySet<string> = new Set(['enabled', 'chatMenu']);
+export interface AdminConfigCatalogDeps {
+  hasAnyConfigReadAccess: (user: CapabilityUser) => Promise<boolean>;
+  getReadableConfigSections: (
+    user: CapabilityUser,
+    sections: ConfigSection[],
+  ) => Promise<{ broad: boolean; sections: Set<string> }>;
+  hasConfigCapability: (
+    user: CapabilityUser,
+    section: ConfigSection | null,
+    verb?: 'manage' | 'read',
+  ) => Promise<boolean>;
+  /** The resolved config, as the app config service serves it (secrets decrypted). */
+  getAppConfig: (options: GetAppConfigOptions) => Promise<AppConfig>;
+  /** What `GET /api/endpoints` serves for a request's config. */
+  getEndpointsConfig: (req: CatalogScopeRequest) => Promise<TEndpointsConfig>;
+  /** The built-in endpoints' models for a request's config (`loadDefaultModels`). */
+  loadDefaultModels: (req: CatalogScopeRequest) => Promise<TModelsConfig>;
+  /** The configured and custom endpoints' models for a request's config (`loadConfigModels`). */
+  loadConfigModels: (req: CatalogScopeRequest) => Promise<TModelsConfig>;
+  /** The tool definitions the server loaded (the tool cache). */
+  getCachedTools?: () => Promise<Record<string, unknown> | null | undefined>;
+  /** The tool manifest and its toolkits (`api/app/clients/tools`). */
+  toolManifest?: ManifestTool[];
+  toolkits?: TPlugin[];
+  /** Whether the principal exists in the caller's tenant partition (`principalExists`). */
+  principalExists?: (principalType: PrincipalType, principalId: string) => Promise<boolean>;
+  /** Every config document of the caller's partition, for the env names profiles reference. */
+  listAllConfigs?: () => Promise<ConfigRecord[]>;
+  /** `CONFIG_OVERRIDE_ENV_ALLOWLIST`, as the app config service is given it. */
+  overrideEnvAllowlist?: string;
+}
 
-const ENV_REFERENCE = /\$\{[^}]*\}/;
-
-/** The agents endpoint fields an admin may set under the lock: section, then its booleans. */
-const AGENTS_SWITCHES: Readonly<Record<string, ReadonlySet<string>>> = {
-  pullRequests: new Set(['enabled']),
+/**
+ * The env names that decide whether each built-in endpoint is served, and with which credentials
+ * or base URL: every name `api/server/services/Config/EndpointService.js` and
+ * `loadAsyncEndpoints.js` read (`ANTHROPIC_USE_VERTEX` serves Anthropic without a key). Every
+ * name overrides may reference as an endpoint credential (`ENDPOINT_CREDENTIAL_ENV_NAMES`) is
+ * here.
+ */
+export const BUILT_IN_ENDPOINT_ENV: Readonly<Record<string, readonly string[]>> = {
+  [EModelEndpoint.openAI]: ['OPENAI_API_KEY', 'OPENAI_REVERSE_PROXY'],
+  [EModelEndpoint.agents]: [],
+  [EModelEndpoint.assistants]: ['ASSISTANTS_API_KEY', 'ASSISTANTS_BASE_URL'],
+  [EModelEndpoint.azureAssistants]: ['AZURE_ASSISTANTS_API_KEY', 'AZURE_ASSISTANTS_BASE_URL'],
+  [EModelEndpoint.azureOpenAI]: ['AZURE_API_KEY', 'AZURE_OPENAI_BASEURL'],
+  [EModelEndpoint.google]: ['GOOGLE_KEY', 'GOOGLE_SERVICE_KEY_FILE'],
+  [EModelEndpoint.anthropic]: ['ANTHROPIC_API_KEY', 'ANTHROPIC_USE_VERTEX'],
+  [EModelEndpoint.bedrock]: [
+    'BEDROCK_AWS_BEARER_TOKEN',
+    'BEDROCK_AWS_ACCESS_KEY_ID',
+    'BEDROCK_AWS_SECRET_ACCESS_KEY',
+    'BEDROCK_AWS_SESSION_TOKEN',
+    'BEDROCK_AWS_PROFILE',
+    'BEDROCK_AWS_DEFAULT_REGION',
+  ],
 };
 
-interface CatalogEndpoint {
-  name?: unknown;
-  models?: { default?: unknown; fetch?: unknown };
+/** Built-in endpoints whose configured `models` list replaces the provider's list. */
+const MODEL_LIST_ENDPOINTS: readonly string[] = [
+  EModelEndpoint.openAI,
+  EModelEndpoint.google,
+  EModelEndpoint.anthropic,
+  EModelEndpoint.bedrock,
+];
+
+/** Most scopes whose model lists are kept at once; the oldest is dropped first. */
+const MAX_CACHED_SCOPES = 100;
+
+const ENV_REFERENCE = /\$\{([^}]+)\}/g;
+
+type CachedModels = { expires: number; models: Promise<Record<string, AdminCatalogModels>> };
+
+function isSet(value: string | undefined): boolean {
+  return value != null && value.trim() !== '';
 }
 
-function issue(segments: string[], code: CatalogIssueCode): ConfigOverrideIssue {
-  return { path: segments.join('.'), segments, code };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === 'object' && !Array.isArray(value);
-}
-
-/** Expands dot-path fields (`{"endpoints.custom": [...]}`) into one nested override object. */
-function expand(fields: Record<string, unknown>): Record<string, unknown> {
-  const root: Record<string, unknown> = {};
-  for (const [fieldPath, value] of Object.entries(fields)) {
-    const parts = fieldPath.split('.');
-    let node = root;
-    for (const part of parts.slice(0, -1)) {
-      if (!isRecord(node[part])) {
-        node[part] = {};
-      }
-      node = node[part] as Record<string, unknown>;
+function namesOf(models: unknown): string[] | undefined {
+  if (!Array.isArray(models)) {
+    return undefined;
+  }
+  return models.flatMap((model) => {
+    if (typeof model === 'string') {
+      return [model];
     }
-    node[parts[parts.length - 1]] = value;
-  }
-  return root;
-}
-
-function collectEnvReferences(
-  value: unknown,
-  segments: string[],
-  issues: ConfigOverrideIssue[],
-): void {
-  if (typeof value === 'string') {
-    if (ENV_REFERENCE.test(value)) {
-      issues.push(issue(segments, 'catalog_env_reference'));
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) =>
-      collectEnvReferences(item, [...segments, String(index)], issues),
-    );
-    return;
-  }
-  if (isRecord(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      collectEnvReferences(child, [...segments, key], issues);
-    }
-  }
-}
-
-function catalogModels(endpoint: CatalogEndpoint): string[] {
-  const models = endpoint.models?.default;
-  return Array.isArray(models) ? models.filter((m): m is string => typeof m === 'string') : [];
-}
-
-function checkCustomEndpoint(
-  entry: unknown,
-  segments: string[],
-  catalog: Map<string, CatalogEndpoint>,
-  issues: ConfigOverrideIssue[],
-): void {
-  if (!isRecord(entry)) {
-    issues.push(issue(segments, 'catalog_field_locked'));
-    return;
-  }
-  const base = typeof entry.name === 'string' ? catalog.get(entry.name) : undefined;
-  if (!base) {
-    issues.push(issue([...segments, 'name'], 'catalog_unknown_endpoint'));
-    return;
-  }
-  for (const key of Object.keys(entry)) {
-    if (key !== 'name' && key !== 'models') {
-      issues.push(issue([...segments, key], 'catalog_field_locked'));
-    }
-  }
-  if (entry.models === undefined) {
-    return;
-  }
-  if (!isRecord(entry.models)) {
-    issues.push(issue([...segments, 'models'], 'catalog_field_locked'));
-    return;
-  }
-  for (const key of Object.keys(entry.models)) {
-    if (key !== 'default') {
-      issues.push(issue([...segments, 'models', key], 'catalog_field_locked'));
-    }
-  }
-  const requested = entry.models.default;
-  if (requested === undefined) {
-    return;
-  }
-  // A fetched list replaces `default` at runtime, so narrowing it would not take effect.
-  if (base.models?.fetch === true) {
-    issues.push(issue([...segments, 'models', 'default'], 'catalog_models_fetched'));
-    return;
-  }
-  if (!Array.isArray(requested)) {
-    issues.push(issue([...segments, 'models', 'default'], 'catalog_field_locked'));
-    return;
-  }
-  const allowed = new Set(catalogModels(base));
-  requested.forEach((model, index) => {
-    if (typeof model !== 'string' || !allowed.has(model)) {
-      issues.push(
-        issue([...segments, 'models', 'default', String(index)], 'catalog_unknown_model'),
-      );
-    }
+    const name = (model as { name?: unknown } | null)?.name;
+    return typeof name === 'string' ? [name] : [];
   });
 }
 
-function checkMCPServers(
-  section: string,
-  servers: unknown,
-  baseServers: unknown,
-  issues: ConfigOverrideIssue[],
-): void {
-  if (!isRecord(servers)) {
-    issues.push(issue([section], 'catalog_field_locked'));
-    return;
-  }
-  const catalog = isRecord(baseServers) ? baseServers : {};
-  for (const [name, entry] of Object.entries(servers)) {
-    if (!Object.prototype.hasOwnProperty.call(catalog, name)) {
-      issues.push(issue([section, name], 'catalog_unknown_mcp_server'));
-      continue;
-    }
-    if (!isRecord(entry)) {
-      issues.push(issue([section, name], 'catalog_field_locked'));
-      continue;
-    }
-    for (const [key, value] of Object.entries(entry)) {
-      if (!MCP_SWITCHES.has(key) || typeof value !== 'boolean') {
-        issues.push(issue([section, name, key], 'catalog_field_locked'));
+function referencedEnvNames(...values: unknown[]): string[] {
+  const names = new Set<string>();
+  for (const value of values) {
+    if (typeof value === 'string') {
+      for (const match of value.matchAll(ENV_REFERENCE)) {
+        names.add(match[1]);
       }
     }
   }
+  return [...names];
 }
 
-function checkAgentsEndpoint(agents: unknown, issues: ConfigOverrideIssue[]): void {
-  const segments = ['endpoints', 'agents'];
-  if (!isRecord(agents)) {
-    issues.push(issue(segments, 'catalog_field_locked'));
-    return;
-  }
-  for (const [section, value] of Object.entries(agents)) {
-    const switches = AGENTS_SWITCHES[section];
-    if (switches == null || !isRecord(value)) {
-      issues.push(issue([...segments, section], 'catalog_field_locked'));
-      continue;
-    }
-    for (const [key, flag] of Object.entries(value)) {
-      if (!switches.has(key) || typeof flag !== 'boolean') {
-        issues.push(issue([...segments, section, key], 'catalog_field_locked'));
-      }
-    }
-  }
-}
-
-/**
- * Returns the catalog-lock violation of an admin config tombstone, or `null` when allowed.
- * Only MCP sections are restricted: there a tombstone may target `<section>.<name>.enabled` or
- * `<section>.<name>.chatMenu`, nothing broader or deeper.
- */
-export function getCatalogLockTombstoneIssue(fieldPath: string): ConfigOverrideIssue | null {
-  const segments = fieldPath.split('.');
-  if (!(MCP_SECTIONS as readonly string[]).includes(segments[0])) {
-    return null;
-  }
-  if (segments.length === 3 && MCP_SWITCHES.has(segments[2])) {
-    return null;
-  }
-  return issue(segments, 'catalog_field_locked');
-}
-
-/**
- * Returns the catalog-lock violations of an admin config write; empty means allowed.
- * `fields` maps dot-paths to values (a PATCH body, or a PUT body's top-level sections);
- * `baseYaml` is the deployment config the write lands on, which holds the catalog.
- */
-export function getCatalogLockIssues(
-  fields: Record<string, unknown>,
-  baseYaml: { endpoints?: unknown; mcpServers?: unknown },
-): ConfigOverrideIssue[] {
-  const issues: ConfigOverrideIssue[] = [];
-  const overrides = expand(fields);
-  collectEnvReferences(overrides, [], issues);
-  for (const section of MCP_SECTIONS) {
-    if (overrides[section] !== undefined) {
-      checkMCPServers(section, overrides[section], baseYaml.mcpServers, issues);
-    }
-  }
-
-  if (overrides.endpoints === undefined) {
-    return issues;
-  }
-  if (!isRecord(overrides.endpoints)) {
-    issues.push(issue(['endpoints'], 'catalog_endpoint_locked'));
-    return issues;
-  }
-  for (const key of Object.keys(overrides.endpoints)) {
-    if (key === 'agents') {
-      checkAgentsEndpoint(overrides.endpoints.agents, issues);
-    } else if (key !== 'custom') {
-      issues.push(issue(['endpoints', key], 'catalog_endpoint_locked'));
-    }
-  }
-  const custom = overrides.endpoints.custom;
-  if (custom === undefined) {
-    return issues;
-  }
-  if (!Array.isArray(custom)) {
-    issues.push(issue(['endpoints', 'custom'], 'catalog_field_locked'));
-    return issues;
-  }
-  const baseEndpoints = isRecord(baseYaml.endpoints) ? baseYaml.endpoints.custom : undefined;
-  const catalog = new Map<string, CatalogEndpoint>();
-  for (const endpoint of Array.isArray(baseEndpoints) ? baseEndpoints : []) {
-    if (isRecord(endpoint) && typeof endpoint.name === 'string') {
-      catalog.set(endpoint.name, endpoint as CatalogEndpoint);
-    }
-  }
-  custom.forEach((entry, index) =>
-    checkCustomEndpoint(entry, ['endpoints', 'custom', String(index)], catalog, issues),
+/** Whether a custom endpoint fetches its models with a key and URL the server holds. */
+function fetchesWithServerKey(endpoint: Partial<TEndpoint>): boolean {
+  return (
+    endpoint.models?.fetch === true &&
+    !isUserProvided(resolveConfigSecret(endpoint.apiKey) ?? '') &&
+    !isUserProvided(extractEnvVariable(endpoint.baseURL ?? ''))
   );
-  return issues;
+}
+
+function getCustomEndpoints(config: AppConfig): TEndpoint[] {
+  const custom = config.endpoints?.custom;
+  return Array.isArray(custom) ? (custom as TEndpoint[]) : [];
+}
+
+/**
+ * The definition the catalog reports for each custom endpoint name: the one the endpoint config
+ * serves under that name (`resolveServedCustomEndpoints`), or the last definition of a name it
+ * serves none of.
+ */
+function resolveCustomEndpoints(config: AppConfig): Map<string, Partial<TEndpoint>> {
+  const custom = getCustomEndpoints(config);
+  const served = resolveServedCustomEndpoints(custom);
+  const resolved = new Map<string, Partial<TEndpoint>>();
+  for (const endpoint of custom) {
+    const name = normalizeEndpointName(endpoint.name ?? '');
+    if (name !== '') {
+      resolved.set(name, served.get(name) ?? endpoint);
+    }
+  }
+  return resolved;
+}
+
+/** `config` without the model lists of built-in endpoints, so their defaults load instead. */
+function withoutModelLists(config: AppConfig): AppConfig {
+  const endpoints = config.endpoints;
+  if (!endpoints) {
+    return config;
+  }
+  const next: Record<string, unknown> = { ...endpoints };
+  for (const name of MODEL_LIST_ENDPOINTS) {
+    const entry = next[name] as { models?: unknown } | undefined;
+    if (entry != null && Array.isArray(entry.models)) {
+      const { models: _configured, ...rest } = entry;
+      next[name] = rest;
+    }
+  }
+  return { ...config, endpoints: next as AppConfig['endpoints'] };
+}
+
+/**
+ * `config` with the configured list left out of each custom endpoint that fetches its models with
+ * the server's key, so the loader reports what the fetch returns rather than the fallback.
+ */
+function withoutFetchFallbacks(config: AppConfig): AppConfig {
+  const custom = getCustomEndpoints(config);
+  if (!custom.some(fetchesWithServerKey)) {
+    return config;
+  }
+  return {
+    ...config,
+    endpoints: {
+      ...config.endpoints,
+      custom: custom.map((endpoint) => {
+        if (!fetchesWithServerKey(endpoint)) {
+          return endpoint;
+        }
+        const { default: _fallback, ...models } = endpoint.models ?? {};
+        return { ...endpoint, models: { ...models, fetch: true } };
+      }),
+    } as AppConfig['endpoints'],
+  };
+}
+
+/** Why a custom endpoint the endpoint config leaves out is not served. */
+function getCustomReason(endpoint: Partial<TEndpoint>): AdminCatalogEndpointReason {
+  if (!endpoint.apiKey) {
+    return 'missing_api_key';
+  }
+  if (!endpoint.baseURL) {
+    return 'missing_base_url';
+  }
+  return 'missing_models';
+}
+
+function getMcpTransport(server: Record<string, unknown>): AdminCatalogMcpServer['transport'] {
+  if (isProcessMCPServerConfig(server)) {
+    return 'stdio';
+  }
+  switch (server.type) {
+    case 'streamable-http':
+    case 'http':
+      return 'streamable-http';
+    case 'websocket':
+      return 'websocket';
+    case 'sse':
+      return 'sse';
+    default:
+      return typeof server.url === 'string' && /^wss?:\/\//i.test(server.url) ? 'websocket' : 'sse';
+  }
+}
+
+/** The MCP servers a scope's config defines (librechat.yaml's and its profiles'), unhidden. */
+function listMcpServers(config: AppConfig): AdminCatalogMcpServer[] {
+  const servers = (config.mcpConfig ?? {}) as Record<string, unknown>;
+  const yaml = (config.config?.mcpServers ?? {}) as Record<string, unknown>;
+  return Object.entries(servers).flatMap(([name, value]) => {
+    if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+      return [];
+    }
+    const server = value as Record<string, unknown>;
+    return [
+      {
+        name,
+        ...(typeof server.title === 'string' && { title: server.title }),
+        transport: getMcpTransport(server),
+        source: Object.prototype.hasOwnProperty.call(yaml, name) ? 'yaml' : 'override',
+        processBacked: isProcessMCPServerConfig(server),
+      },
+    ];
+  });
+}
+
+function toCatalogTool(tool: TPlugin): AdminCatalogTool {
+  return {
+    pluginKey: tool.pluginKey,
+    name: tool.name,
+    ...(tool.description != null && { description: tool.description }),
+    ...(tool.icon != null && { icon: tool.icon }),
+    ...(tool.authenticated === true && { authenticated: true }),
+    ...(tool.toolkit === true && { toolkit: true }),
+  };
+}
+
+/** The `getAppConfig` options that resolve a scope as its users get it, never from a cache. */
+function toScopeOptions(
+  principalType: PrincipalType,
+  principalId: string,
+  tenantId: string | undefined,
+): GetAppConfigOptions {
+  const options: GetAppConfigOptions = {
+    tenantId,
+    bypassOverrideCache: true,
+    skipRuntimeAugmentation: true,
+  };
+  if (isBaseConfigPrincipal({ principalType, principalId })) {
+    return options;
+  }
+  if (principalType === PrincipalType.ROLE) {
+    return { ...options, role: principalId };
+  }
+  return { ...options, resolvedPrincipals: [{ principalType, principalId }] };
+}
+
+/**
+ * The deployment views the admin panel builds its pickers and status badges from, resolved for a
+ * scope instead of for the signed-in admin: `GET /catalog` (`catalogApi`) and `GET /env-status`
+ * (`envStatus`). Neither runs the end-user routes' browser checks, so a server-side client can
+ * call them without forwarding a User-Agent.
+ */
+export function createAdminConfigCatalogHandlers(deps: AdminConfigCatalogDeps): {
+  getConfigCatalog: (req: ServerRequest, res: Response) => Promise<Response>;
+  getEnvStatus: (req: ServerRequest, res: Response) => Promise<Response>;
+} {
+  const {
+    hasAnyConfigReadAccess,
+    getReadableConfigSections,
+    hasConfigCapability,
+    getAppConfig,
+    getEndpointsConfig,
+    loadDefaultModels,
+    loadConfigModels,
+    getCachedTools,
+    toolManifest = [],
+    toolkits = [],
+    principalExists,
+    listAllConfigs,
+    overrideEnvAllowlist,
+  } = deps;
+
+  const envAllowlist = parseEnvAllowlist(overrideEnvAllowlist);
+  const modelsCache = new Map<string, CachedModels>();
+
+  function buildEndpoints(
+    config: AppConfig,
+    served: TEndpointsConfig,
+  ): Record<string, AdminCatalogEndpoint> {
+    const listed = new Set(getEnabledEndpoints());
+    const listsEndpoints = isSet(process.env.ENDPOINTS);
+    const endpoints: Record<string, AdminCatalogEndpoint> = {};
+    for (const [name, envVars] of Object.entries(BUILT_IN_ENDPOINT_ENV)) {
+      const entry = served?.[name];
+      endpoints[name] = {
+        enabled: entry != null,
+        custom: false,
+        envVars: [...envVars],
+        ...(entry != null
+          ? { config: entry }
+          : { reason: listsEndpoints && !listed.has(name) ? 'not_listed' : 'missing_credentials' }),
+      };
+    }
+    for (const [name, endpoint] of resolveCustomEndpoints(config)) {
+      const entry = served?.[name];
+      endpoints[name] = {
+        enabled: entry != null,
+        custom: true,
+        envVars: referencedEnvNames(endpoint.apiKey, endpoint.baseURL),
+        ...(entry != null ? { config: entry } : { reason: getCustomReason(endpoint) }),
+      };
+    }
+    return endpoints;
+  }
+
+  async function loadModels(
+    request: CatalogScopeRequest,
+  ): Promise<Record<string, AdminCatalogModels>> {
+    const [defaults, configured] = await Promise.all([
+      loadDefaultModels({ ...request, config: withoutModelLists(request.config) }),
+      loadConfigModels({ ...request, config: withoutFetchFallbacks(request.config) }),
+    ]);
+    const custom = resolveCustomEndpoints(request.config);
+    const models: Record<string, AdminCatalogModels> = {};
+    for (const name of new Set([
+      ...Object.keys(defaults ?? {}),
+      ...Object.keys(configured ?? {}),
+    ])) {
+      const endpoint = custom.get(name);
+      const loaded = configured?.[name];
+      if (endpoint == null) {
+        const fallback = defaults?.[name] ?? [];
+        models[name] = {
+          served: loaded ?? fallback,
+          ...(loaded && { configured: loaded }),
+          defaults: fallback,
+        };
+        continue;
+      }
+      const list = namesOf(endpoint.models?.default);
+      if (!fetchesWithServerKey(endpoint)) {
+        models[name] = { served: loaded ?? list ?? [], ...(list && { configured: list }) };
+        continue;
+      }
+      const fetched = loaded ?? [];
+      models[name] = {
+        served: fetched.length > 0 ? fetched : (list ?? []),
+        ...(list && { configured: list }),
+        defaults: fetched,
+      };
+    }
+    return models;
+  }
+
+  /**
+   * A scope's model lists, reused for the lifetime librechat.yaml gives them
+   * (`getCatalogModelsTtlMs`, none at `0`) while its endpoint config (and so every provider
+   * request) is the same: a save that changes an endpoint resolves anew, and reads of one scope in
+   * a row share one round of provider requests. Only a hash of the config is kept.
+   */
+  function getModels(
+    request: CatalogScopeRequest,
+    scope: string,
+  ): Promise<Record<string, AdminCatalogModels>> {
+    const ttlMs = getCatalogModelsTtlMs(request.config);
+    if (ttlMs === 0) {
+      return loadModels(request);
+    }
+    const key = createHash('sha256')
+      .update(JSON.stringify([scope, request.user, request.config.endpoints ?? null]))
+      .digest('hex');
+    const now = Date.now();
+    const cached = modelsCache.get(key);
+    if (cached && cached.expires > now) {
+      return cached.models;
+    }
+    modelsCache.delete(key);
+    if (modelsCache.size >= MAX_CACHED_SCOPES) {
+      const oldest = modelsCache.keys().next().value;
+      if (oldest !== undefined) {
+        modelsCache.delete(oldest);
+      }
+    }
+    const models = loadModels(request);
+    modelsCache.set(key, { expires: now + ttlMs, models });
+    models.catch(() => {
+      if (modelsCache.get(key)?.models === models) {
+        modelsCache.delete(key);
+      }
+    });
+    return models;
+  }
+
+  async function listTools(config: AppConfig): Promise<AdminCatalogTool[]> {
+    const toolDefinitions = (await getCachedTools?.()) ?? config.availableTools;
+    return listAvailableTools({
+      manifest: toolManifest,
+      toolkits,
+      toolDefinitions,
+      githubCompare: config.githubCompare,
+    }).map(toCatalogTool);
+  }
+
+  /**
+   * GET /catalog?principalType=&principalId= — the endpoints, models, MCP servers and tools a
+   * scope serves (Base when no principal is named), resolved as `getAppConfig` resolves it for
+   * that scope from the stored documents, never the override cache. Model lists are never loaded
+   * with a user's stored key. A part is left out unless the caller can read its section.
+   */
+  async function getConfigCatalog(req: ServerRequest, res: Response): Promise<Response> {
+    try {
+      const query = req.query as Record<string, unknown>;
+      const principalType = query.principalType ?? PrincipalType.ROLE;
+      const principalId = query.principalId ?? BASE_CONFIG_PRINCIPAL_ID;
+      if (
+        typeof principalType !== 'string' ||
+        typeof principalId !== 'string' ||
+        principalId === '' ||
+        (query.principalType == null) !== (query.principalId == null) ||
+        !validatePrincipalType(principalType)
+      ) {
+        return res.status(400).json({ error: 'Invalid principal', code: 'INVALID_PRINCIPAL' });
+      }
+      const user = getCapabilityUser(req);
+      if (!user) {
+        return authRequiredResponse(res);
+      }
+      if (!(await hasAnyConfigReadAccess(user))) {
+        return forbiddenResponse(res);
+      }
+      const isBase = isBaseConfigPrincipal({ principalType, principalId });
+      const [readable, exists] = await Promise.all([
+        getReadableConfigSections(user, [
+          'endpoints',
+          'mcpServers',
+          'filteredTools',
+          'includedTools',
+        ]),
+        isBase || !principalExists ? true : principalExists(principalType, principalId),
+      ]);
+      if (!exists) {
+        return principalNotFoundResponse(res);
+      }
+
+      const config = await getAppConfig(toScopeOptions(principalType, principalId, user.tenantId));
+      const request: CatalogScopeRequest = {
+        config,
+        user: {
+          tenantId: user.tenantId,
+          ...(principalType === PrincipalType.ROLE && !isBase && { role: principalId }),
+        },
+      };
+      const readsEndpoints = canReadSection(readable, 'endpoints');
+      const readsTools =
+        canReadSection(readable, 'filteredTools') || canReadSection(readable, 'includedTools');
+      const [served, models, tools] = await Promise.all([
+        readsEndpoints ? getEndpointsConfig(request) : undefined,
+        readsEndpoints ? getModels(request, `${principalType}:${principalId}`) : undefined,
+        readsTools ? listTools(config) : undefined,
+      ]);
+      const body: AdminConfigCatalogResponse = {
+        principalType,
+        principalId,
+        ...(served !== undefined && { endpoints: buildEndpoints(config, served) }),
+        ...(models !== undefined && { models }),
+        ...(tools !== undefined && { tools }),
+        ...(canReadSection(readable, 'mcpServers') && { mcpServers: listMcpServers(config) }),
+      };
+      return res.status(200).json(body);
+    } catch (error) {
+      logger.error('[adminConfig] getConfigCatalog error:', getSafeErrorMetadata(error));
+      return res.status(500).json({ error: 'Failed to load config catalog' });
+    }
+  }
+
+  /** The env names stored profiles reference, by section; read only for broad managers. */
+  async function getOverrideReferences(user: CapabilityUser): Promise<Map<string, Set<string>>> {
+    if (
+      !listAllConfigs ||
+      process.env.TENANT_ISOLATION_STRICT === 'true' ||
+      !(await hasConfigCapability(user, null, 'manage'))
+    ) {
+      return new Map();
+    }
+    const references = new Map<string, Set<string>>();
+    for (const config of await listAllConfigs()) {
+      for (const [name, sections] of collectEnvReferenceSections(config.overrides ?? {})) {
+        const held = references.get(name) ?? new Set<string>();
+        sections.forEach((section) => held.add(section));
+        references.set(name, held);
+      }
+    }
+    return references;
+  }
+
+  /**
+   * GET /env-status — whether each env name the deployment's config uses is set on this server,
+   * never its value: the names librechat.yaml references, the defaults it fills in (web search,
+   * OCR), the built-in endpoints' credentials, `CONFIG_OVERRIDE_ENV_ALLOWLIST`, and, for broad
+   * `manage:configs` holders outside strict tenant isolation, the names stored profiles
+   * reference. A name used only in sections the caller cannot read is left out, as are the names
+   * the allowlist and profiles add for a caller without broad read access, and infrastructure
+   * secrets (`CREDS_KEY`, ...) whatever references them.
+   */
+  async function getEnvStatus(req: ServerRequest, res: Response): Promise<Response> {
+    try {
+      const user = getCapabilityUser(req);
+      if (!user) {
+        return authRequiredResponse(res);
+      }
+      if (!(await hasAnyConfigReadAccess(user))) {
+        return forbiddenResponse(res);
+      }
+      const [baseConfig, overrides] = await Promise.all([
+        getAppConfig({ tenantId: user.tenantId, baseOnly: true }),
+        getOverrideReferences(user),
+      ]);
+      const yaml: Partial<TCustomConfig> = baseConfig.config ?? {};
+      const uses = new Map<string, { sources: Set<AdminConfigEnvSource>; sections: Set<string> }>();
+      const add = (name: string, source: AdminConfigEnvSource, sections: Iterable<string>) => {
+        if (isSensitiveEnvVar(name)) {
+          return;
+        }
+        const use = uses.get(name) ?? { sources: new Set(), sections: new Set() };
+        use.sources.add(source);
+        for (const section of sections) {
+          use.sections.add(section);
+        }
+        uses.set(name, use);
+      };
+      for (const [name, sections] of collectEnvReferenceSections(yaml)) {
+        add(name, 'yaml', sections);
+      }
+      for (const [name, sections] of collectDefaultEnvReferenceSections(yaml)) {
+        add(name, 'default', sections);
+      }
+      for (const name of Object.values(BUILT_IN_ENDPOINT_ENV).flat()) {
+        add(name, 'endpoint', ['endpoints']);
+      }
+      for (const name of envAllowlist) {
+        add(name, 'allowlist', []);
+      }
+      for (const [name, sections] of overrides) {
+        add(name, 'override', sections);
+      }
+
+      const sections = new Set([...uses.values()].flatMap(({ sections: held }) => [...held]));
+      const readable = await getReadableConfigSections(user, [...sections] as ConfigSection[]);
+      const vars: Record<string, AdminConfigEnvStatus> = {};
+      for (const [name, use] of [...uses].sort(([a], [b]) => a.localeCompare(b))) {
+        const visible =
+          readable.broad || [...use.sections].some((section) => canReadSection(readable, section));
+        if (!visible) {
+          continue;
+        }
+        const value = process.env[name];
+        vars[name] = {
+          set: isSet(value),
+          ...(value?.trim() === AuthType.USER_PROVIDED && { userProvided: true }),
+          sources: [...use.sources],
+        };
+      }
+      const body: AdminConfigEnvStatusResponse = { vars };
+      return res.status(200).json(body);
+    } catch (error) {
+      logger.error('[adminConfig] getEnvStatus error:', getSafeErrorMetadata(error));
+      return res.status(500).json({ error: 'Failed to read env status' });
+    }
+  }
+
+  return { getConfigCatalog, getEnvStatus };
 }

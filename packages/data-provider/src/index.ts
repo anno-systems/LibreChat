@@ -7,6 +7,7 @@ export * from './config';
 export * from './footer';
 export * from './queue';
 export * from './theme';
+export * from './themes';
 export * from './langchain';
 export * from './filters';
 export * from './file-config';
@@ -110,3 +111,5 @@ export * from './code/workspace';
 export * from './types/scheduleConsent';
 
 export * from './approval';
+
+export * from './codeSetup';

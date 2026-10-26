@@ -3,7 +3,8 @@ const {
   isEnabled,
   resolveEmailChangeSettings,
   checkEmailConfig,
-  isLangfuseConnectionAvailable,
+  isLangfuseSettingsAvailable,
+  getLangfuseSettingsAccess,
   isLangfuseFanoutEnabled,
   getBalanceConfig,
   getCloudFrontConfig,
@@ -24,6 +25,8 @@ const {
   resolveCodeEnvironmentTransitionVersion,
   loadConversationListLimits,
   resolvePullRequestCapabilities,
+  resolvePreLoginAppConfig,
+  withSafePolicyLinks,
   getTenantDomains,
   getAdminPanelLink,
   brandedStartupFields,
@@ -35,8 +38,13 @@ const {
   defaultSocialLogins,
   resolveMCPAppsPolicy,
 } = require('librechat-data-provider');
-const { logger, getTenantId, SystemCapabilities } = require('@librechat/data-schemas');
-const { hasCapability, hasConfigCapability } = require('~/server/middleware/roles/capabilities');
+const {
+  logger,
+  getTenantId,
+  configCapability,
+  SystemCapabilities,
+} = require('@librechat/data-schemas');
+const { hasCapability, getHeldCapabilities } = require('~/server/middleware/roles/capabilities');
 const { getLdapConfig } = require('~/server/services/Config/ldap');
 const { getRumConfig } = require('~/server/services/Config/rum');
 const { getAppConfig } = require('~/server/services/Config/app');
@@ -235,11 +243,9 @@ router.get('/', async function (req, res) {
   try {
     const preLoginPayload = buildPreLoginPayload();
     const publicSharePayload = buildPublicSharePayload();
-    const rum = getRumConfig();
 
     if (!req.user) {
-      const tenantId = getTenantId();
-      const baseConfig = await getAppConfig(tenantId ? { tenantId } : { baseOnly: true });
+      const baseConfig = await resolvePreLoginAppConfig(getAppConfig);
 
       /** @type {Partial<TStartupConfig>} */
       const payload = {
@@ -247,7 +253,7 @@ router.get('/', async function (req, res) {
         ...brandedStartupFields(baseConfig?.interfaceConfig, { signedIn: false }),
         socialLogins: baseConfig?.registration?.socialLogins ?? defaultSocialLogins,
         turnstile: baseConfig?.turnstileConfig,
-        ...(rum ? { rum } : {}),
+        rum: getRumConfig(baseConfig?.config?.telemetry),
       };
 
       const interfaceConfig = baseConfig?.interfaceConfig;
@@ -282,10 +288,12 @@ router.get('/', async function (req, res) {
     const balanceConfig = getBalanceConfig(appConfig);
     const cloudFront = buildCloudFrontStartupConfig();
     const langfuseFanoutEnabled = isLangfuseFanoutEnabled();
-    const langfuseConnectionAvailable = isLangfuseConnectionAvailable();
-    let langfuseConnectionAccess = false;
+    const langfuseSettingsAvailable = isLangfuseSettingsAvailable();
+    let canManageLangfuse = false;
+    // Running a sync also requires the prompt-management capability.
+    let langfusePromptManageAccess = false;
 
-    if (langfuseConnectionAvailable) {
+    if (langfuseSettingsAvailable) {
       try {
         const userId = req.user.id ?? req.user._id?.toString();
         if (userId) {
@@ -295,13 +303,18 @@ router.get('/', async function (req, res) {
             tenantId: req.user.tenantId,
             idOnTheSource: req.user.idOnTheSource ?? null,
           };
-          const hasAdminAccess = await hasCapability(
-            capabilityUser,
+          const held = await getHeldCapabilities(capabilityUser, [
             SystemCapabilities.ACCESS_ADMIN,
-          );
-          if (hasAdminAccess) {
-            langfuseConnectionAccess = await hasConfigCapability(capabilityUser, 'langfuse');
-          }
+            SystemCapabilities.MANAGE_CONFIGS,
+            configCapability('langfuse'),
+            SystemCapabilities.MANAGE_PROMPTS,
+          ]);
+          const hasAdminAccess = held.has(SystemCapabilities.ACCESS_ADMIN);
+          canManageLangfuse =
+            hasAdminAccess &&
+            (held.has(SystemCapabilities.MANAGE_CONFIGS) || held.has(configCapability('langfuse')));
+          langfusePromptManageAccess =
+            canManageLangfuse && held.has(SystemCapabilities.MANAGE_PROMPTS);
         }
       } catch (err) {
         logger.warn(`[config] Langfuse capability check failed: ${err.message}`);
@@ -321,7 +334,7 @@ router.get('/', async function (req, res) {
       projects: appConfig?.projects,
       /* Fork: the operator's display currency (platformPricing). */
       interface: withPricingCurrency(
-        appConfig?.interfaceConfig,
+        withSafePolicyLinks(appConfig?.interfaceConfig),
         resolvePricing(req.user?.tenantId).currency,
       ),
       titleGenerationTiming: resolveTitleTiming({
@@ -341,7 +354,8 @@ router.get('/', async function (req, res) {
         ? parseInt(process.env.CONVERSATION_IMPORT_MAX_FILE_SIZE_BYTES, 10)
         : 0,
       langfuseFanoutEnabled,
-      langfuseConnectionAccess,
+      ...getLangfuseSettingsAccess(canManageLangfuse),
+      langfusePromptManageAccess,
       insightsEnabled: isEnabled(process.env.ENABLE_INSIGHTS),
       /** Lets the client skip the pull request lookup entirely when the feature is off. */
       ...resolvePullRequestCapabilities(appConfig, process.env),
@@ -361,7 +375,7 @@ router.get('/', async function (req, res) {
       ...resolveCodeWorkspaceInheritanceCapability(process.env.CODE_ENVIRONMENT_DECISION_VERSION),
       ...(codeEnvironmentTransitionVersion != null ? { codeEnvironmentTransitionVersion } : {}),
       ...(cloudFront ? { cloudFront } : {}),
-      ...(rum ? { rum } : {}),
+      rum: getRumConfig(appConfig?.config?.telemetry),
       fileUploadSseEnabled: isEnabled(process.env.FILE_UPLOAD_SSE_ENABLED),
       endpointsDropParamsMap: endpointsDropParamsMap,
     };
@@ -400,7 +414,7 @@ router.get('/', async function (req, res) {
     return res.status(200).send(payload);
   } catch (err) {
     logger.error('Error in startup config', err);
-    return res.status(500).send({ error: err.message });
+    return res.status(500).send({ error: 'Failed to load startup config' });
   }
 });
 

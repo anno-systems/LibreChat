@@ -85,6 +85,15 @@ export const createHost = (
       setConversation: jest.fn(),
       upsertConversation: jest.fn(),
       removeConversation: jest.fn(),
+      getConversation: jest.fn(() => undefined),
+      removeConversationQueries: jest.fn(),
+      queueTitleGeneration: jest.fn(),
+      addOptimisticConversation: jest.fn((_conversationId, submission) => submission),
+    },
+    queue: {
+      clearSupersededMarkers: jest.fn(),
+      isStopped: jest.fn(() => false),
+      rememberDetachedRun: jest.fn(),
     },
     pane: {
       setIsSubmitting: jest.fn(),
@@ -101,6 +110,9 @@ export const createHost = (
       updateConversation: jest.fn(),
       resolveDetachedEnd: jest.fn(() => ({ resolvable: false, end: null })),
       setAbortScroll: jest.fn(),
+      setConversation: jest.fn(),
+      startNewConversation: jest.fn(),
+      replaceNewConversationUrl: jest.fn(),
       renewActiveRun: jest.fn(),
       runEndTarget: jest.fn((params) => ({
         conversationId: params.conversationId,
@@ -111,6 +123,9 @@ export const createHost = (
       resolve: jest.fn(() => []),
       markLiveApplied: jest.fn(),
       update: jest.fn(),
+      isRecoveryHeld: jest.fn(() => false),
+      blockRecovery: jest.fn(),
+      restoreQueued: jest.fn(),
       seed: jest.fn(),
       appliedIds: jest.fn(() => []),
       settleApplied: jest.fn(),
@@ -132,6 +147,7 @@ export const createHost = (
       flushPendingDeltas: jest.fn(),
       resetLive: jest.fn(),
       showError: jest.fn(),
+      showStartFailure: jest.fn(),
     },
     messages: {
       get: jest.fn(() => messages),
@@ -159,6 +175,7 @@ export const createHost = (
       seedLiveFromContent: jest.fn(),
     },
     stream: { send: jest.fn(), reconnectToStream: jest.fn(() => ({ closed: false })) },
+    start: jest.fn(),
   };
   return host;
 };

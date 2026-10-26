@@ -1,233 +1,90 @@
-import type { Response } from 'express';
-import type { ServerRequest } from '~/types/http';
-
 process.env.CREDS_KEY =
   process.env.CREDS_KEY ?? '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-import { createAdminConfigHandlers } from './config';
-import { getCatalogLockIssues, getCatalogLockTombstoneIssue } from './catalog';
+import { PrincipalType, EModelEndpoint } from 'librechat-data-provider';
+import type {
+  AppConfig,
+  ConfigRecord,
+  ConfigOverrideLayer,
+  AdminConfigCatalogResponse,
+  AdminConfigEnvStatusResponse,
+} from '@librechat/data-schemas';
+import type { DeepPartial, TCustomConfig, TPlugin } from 'librechat-data-provider';
+import type { Response } from 'express';
+import type { FetchModelsParams } from '~/endpoints/models';
+import type { AdminConfigCatalogDeps, CatalogScopeRequest } from './catalog';
+import type { ServerRequest } from '~/types/http';
 
-const catalog = {
-  endpoints: {
-    custom: [
-      {
-        name: 'Mistral EU',
-        apiKey: '${MISTRAL_API_KEY}',
-        baseURL: 'https://api.mistral.ai/v1',
-        models: { default: ['mistral-small-latest', 'mistral-large-latest'], fetch: false },
-      },
-      {
-        name: 'Fetched',
-        apiKey: '${OTHER_KEY}',
-        baseURL: 'https://example.com/v1',
-        models: { default: ['a'], fetch: true },
-      },
-    ],
-  },
-  mcpServers: {
-    gmail: { type: 'streamable-http', url: 'https://gmail.mcp.example/mcp' },
-    drive: { type: 'streamable-http', url: 'https://drive.mcp.example/mcp' },
-  },
-};
-
-const codes = (fields: Record<string, unknown>) =>
-  getCatalogLockIssues(fields, catalog).map(({ path, code }) => ({ path, code }));
-
-describe('getCatalogLockIssues', () => {
-  it('accepts narrowing a catalog endpoint to a subset of its models', () => {
-    expect(
-      codes({
-        'endpoints.custom': [{ name: 'Mistral EU', models: { default: ['mistral-small-latest'] } }],
-      }),
-    ).toEqual([]);
-    expect(
-      codes({ endpoints: { custom: [{ name: 'Mistral EU', models: { default: [] } }] } }),
-    ).toEqual([]);
-  });
-
-  it('accepts sections without endpoints or environment references', () => {
-    expect(codes({ 'interface.customWelcome': 'Hello', balance: { enabled: true } })).toEqual([]);
-  });
-
-  it('refuses models the catalog does not offer', () => {
-    expect(
-      codes({
-        'endpoints.custom': [
-          { name: 'Mistral EU', models: { default: ['mistral-small-latest', 'gpt-x'] } },
-        ],
-      }),
-    ).toEqual([{ path: 'endpoints.custom.0.models.default.1', code: 'catalog_unknown_model' }]);
-  });
-
-  it('refuses redirecting a catalog endpoint or changing its other fields', () => {
-    expect(
-      codes({
-        'endpoints.custom': [
-          { name: 'Mistral EU', baseURL: 'https://attacker.example', models: { fetch: true } },
-        ],
-      }),
-    ).toEqual([
-      { path: 'endpoints.custom.0.baseURL', code: 'catalog_field_locked' },
-      { path: 'endpoints.custom.0.models.fetch', code: 'catalog_field_locked' },
-    ]);
-  });
-
-  it('refuses endpoints outside the catalog and every other endpoint section', () => {
-    expect(
-      codes({
-        endpoints: {
-          custom: [
-            { name: 'Mine', baseURL: 'https://attacker.example', models: { default: ['x'] } },
-          ],
-          openAI: { titleModel: 'x' },
-        },
-      }),
-    ).toEqual([
-      { path: 'endpoints.openAI', code: 'catalog_endpoint_locked' },
-      { path: 'endpoints.custom.0.name', code: 'catalog_unknown_endpoint' },
-    ]);
-  });
-
-  it('accepts switching conversation pull requests on or off (fork)', () => {
-    expect(codes({ 'endpoints.agents.pullRequests.enabled': true })).toEqual([]);
-    expect(codes({ endpoints: { agents: { pullRequests: { enabled: false } } } })).toEqual([]);
-  });
-
-  it('refuses every other agents endpoint field, and a pull request switch that is no boolean', () => {
-    expect(
-      codes({
-        endpoints: {
-          agents: {
-            pullRequests: { enabled: 'yes', allowAllRepositories: true, token: 'ghp_x' },
-            capabilities: ['execute_code'],
-          },
-        },
-      }),
-    ).toEqual([
-      { path: 'endpoints.agents.pullRequests.enabled', code: 'catalog_field_locked' },
-      { path: 'endpoints.agents.pullRequests.allowAllRepositories', code: 'catalog_field_locked' },
-      { path: 'endpoints.agents.pullRequests.token', code: 'catalog_field_locked' },
-      { path: 'endpoints.agents.capabilities', code: 'catalog_field_locked' },
-    ]);
-    expect(codes({ 'endpoints.agents': true })).toEqual([
-      { path: 'endpoints.agents', code: 'catalog_field_locked' },
-    ]);
-  });
-
-  it('refuses narrowing an endpoint whose models are fetched at runtime', () => {
-    expect(
-      codes({ 'endpoints.custom': [{ name: 'Fetched', models: { default: ['a'] } }] }),
-    ).toEqual([{ path: 'endpoints.custom.0.models.default', code: 'catalog_models_fetched' }]);
-  });
-
-  it('refuses environment references anywhere, including inside longer strings', () => {
-    expect(
-      codes({
-        'webSearch.serperApiKey': '${JWT_SECRET}',
-        mcpServers: { x: { headers: { Authorization: 'Bearer ${MISTRAL_API_KEY}' } } },
-      }),
-    ).toEqual([
-      { path: 'webSearch.serperApiKey', code: 'catalog_env_reference' },
-      { path: 'mcpServers.x.headers.Authorization', code: 'catalog_env_reference' },
-      { path: 'mcpServers.x', code: 'catalog_unknown_mcp_server' },
-    ]);
-  });
-
-  it('accepts switching a catalog MCP server off or out of the chat menu', () => {
-    expect(codes({ 'mcpServers.gmail.enabled': false })).toEqual([]);
-    expect(codes({ 'mcpServers.gmail': { enabled: true, chatMenu: false } })).toEqual([]);
-    expect(codes({ mcpServers: { gmail: { enabled: false }, drive: { chatMenu: true } } })).toEqual(
-      [],
-    );
-    expect(codes({ mcpServers: {} })).toEqual([]);
-  });
-
-  it('refuses redirecting a catalog MCP server or changing its other fields', () => {
-    expect(
-      codes({
-        mcpServers: {
-          gmail: {
-            url: 'https://attacker.example/mcp',
-            headers: { Authorization: 'Bearer {{LIBRECHAT_OPENID_ACCESS_TOKEN}}' },
-            enabled: 'no',
-          },
-        },
-        'mcpConfig.drive.type': 'sse',
-        'mcpServers.drive.chatMenu': true,
-      }),
-    ).toEqual([
-      { path: 'mcpServers.gmail.url', code: 'catalog_field_locked' },
-      { path: 'mcpServers.gmail.headers', code: 'catalog_field_locked' },
-      { path: 'mcpServers.gmail.enabled', code: 'catalog_field_locked' },
-      { path: 'mcpConfig.drive.type', code: 'catalog_field_locked' },
-    ]);
-  });
-
-  it('refuses switching file outputs on for a catalog MCP server (fork)', () => {
-    expect(codes({ 'mcpServers.gmail.fileOutputs': true })).toEqual([
-      { path: 'mcpServers.gmail.fileOutputs', code: 'catalog_field_locked' },
-    ]);
-    expect(codes({ mcpServers: { gmail: { fileOutputs: { maxBytes: 1 } } } })).toEqual([
-      { path: 'mcpServers.gmail.fileOutputs', code: 'catalog_field_locked' },
-    ]);
-    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.fileOutputs')).toEqual(
-      expect.objectContaining({ code: 'catalog_field_locked' }),
-    );
-  });
-
-  it('refuses MCP servers outside the catalog and non-object MCP sections', () => {
-    expect(
-      codes({ 'mcpServers.mine': { type: 'streamable-http', url: 'https://x.example' } }),
-    ).toEqual([{ path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' }]);
-    expect(codes({ 'mcpServers.mine.enabled': true })).toEqual([
-      { path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' },
-    ]);
-    expect(codes({ mcpServers: ['gmail'] })).toEqual([
-      { path: 'mcpServers', code: 'catalog_field_locked' },
-    ]);
-    expect(codes({ 'mcpServers.gmail': false })).toEqual([
-      { path: 'mcpServers.gmail', code: 'catalog_field_locked' },
-    ]);
-  });
-});
-
-describe('getCatalogLockTombstoneIssue', () => {
-  it('allows tombstones of the MCP switches and of other sections', () => {
-    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.enabled')).toBeNull();
-    expect(getCatalogLockTombstoneIssue('mcpConfig.gmail.chatMenu')).toBeNull();
-    expect(getCatalogLockTombstoneIssue('interface.customWelcome')).toBeNull();
-  });
-
-  it('refuses any other tombstone under the MCP sections', () => {
-    for (const path of ['mcpServers', 'mcpServers.gmail', 'mcpServers.gmail.url']) {
-      expect(getCatalogLockTombstoneIssue(path)).toEqual(
-        expect.objectContaining({ path, code: 'catalog_field_locked' }),
-      );
-    }
-    expect(getCatalogLockTombstoneIssue('mcpServers.gmail.headers.Authorization')).toEqual(
-      expect.objectContaining({ code: 'catalog_field_locked' }),
-    );
-  });
-});
-
-function mockReq(overrides = {}) {
-  return {
-    user: { id: 'u1', role: 'ADMIN', tenantId: 'tenant-a', _id: { toString: () => 'u1' } },
-    params: { principalType: 'role', principalId: '__base__' },
-    body: {},
-    query: {},
-    ...overrides,
-  } as Partial<ServerRequest> as ServerRequest;
-}
+type DataSchemas = typeof import('@librechat/data-schemas');
 
 interface MockRes {
   statusCode: number;
-  body: undefined | Record<string, unknown>;
+  body: Record<string, unknown> | undefined;
   status: jest.Mock;
   json: jest.Mock;
 }
 
-function mockRes() {
+const ROLE = PrincipalType.ROLE;
+const GATEWAY_SECRET = 'gateway-secret-env-value';
+
+const YAML: DeepPartial<TCustomConfig> = {
+  version: '1.3.0',
+  cache: true,
+  endpoints: {
+    custom: [
+      {
+        name: 'Gateway',
+        apiKey: '${GATEWAY_KEY}',
+        baseURL: 'https://gateway.example.com/v1',
+        headers: { 'X-User': '{{LIBRECHAT_USER_EMAIL}}' },
+        models: { default: ['gpt-4o'], fetch: true },
+      },
+      {
+        name: 'BYOK',
+        apiKey: 'user_provided',
+        baseURL: 'https://byok.example.com/v1',
+        models: { default: ['byok-default'], fetch: true },
+      },
+    ],
+  },
+  mcpServers: {
+    docs: { type: 'streamable-http', url: 'https://docs.example.com/mcp', title: 'Docs' },
+    legacy: { url: 'https://legacy.example.com/sse' },
+    local: { command: 'node', args: ['server.js'] },
+  },
+  webSearch: { searxngInstanceUrl: '${SEARXNG_INSTANCE_URL}' },
+};
+
+let dataSchemas: DataSchemas;
+let createAdminConfigCatalogHandlers: typeof import('./catalog').createAdminConfigCatalogHandlers;
+let BUILT_IN_ENDPOINT_ENV: typeof import('./catalog').BUILT_IN_ENDPOINT_ENV;
+let ENDPOINT_CREDENTIAL_ENV_NAMES: readonly string[];
+let appConfig: AppConfig;
+let documents: ConfigOverrideLayer[];
+
+const ENV_KEYS = [
+  'ANTHROPIC_USE_VERTEX',
+  'ENDPOINTS',
+  'GATEWAY_KEY',
+  'OPENAI_API_KEY',
+  'OPENAI_MODELS',
+  'TENANT_ISOLATION_STRICT',
+  'PROFILE_ONLY_NAME',
+];
+const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+
+function mockReq(overrides: Record<string, unknown> = {}): ServerRequest {
+  return {
+    user: { id: 'admin-1', role: 'ADMIN', _id: { toString: () => 'admin-1' } },
+    params: {},
+    body: {},
+    query: {},
+    headers: {},
+    ...overrides,
+  } as Partial<ServerRequest> as ServerRequest;
+}
+
+function mockRes(): Response & MockRes {
   const res: MockRes = {
     statusCode: 200,
     body: undefined,
@@ -235,7 +92,7 @@ function mockRes() {
       res.statusCode = code;
       return res;
     }),
-    json: jest.fn((data: Record<string, unknown>) => {
+    json: jest.fn((data: MockRes['body']) => {
       res.body = data;
       return res;
     }),
@@ -243,229 +100,468 @@ function mockRes() {
   return res as Partial<Response> as Response & MockRes;
 }
 
-function createHandlers(catalogLock: boolean) {
-  const deps = {
-    listAllConfigs: jest.fn().mockResolvedValue([]),
-    findConfigByPrincipal: jest.fn().mockResolvedValue(null),
-    upsertConfig: jest.fn().mockResolvedValue({ _id: 'c1', overrides: {}, configVersion: 1 }),
-    patchConfigFields: jest.fn().mockResolvedValue({ _id: 'c1', overrides: {}, configVersion: 2 }),
-    tombstoneConfigField: jest.fn(),
-    unsetConfigField: jest.fn(),
-    deleteConfig: jest.fn(),
-    toggleConfigActiveTracked: jest.fn(),
-    hasConfigCapability: jest.fn().mockResolvedValue(true),
-    hasCapability: jest.fn().mockResolvedValue(true),
-    getAppConfig: jest.fn().mockResolvedValue({ config: catalog }),
-    catalogLock,
-  };
-  return { handlers: createAdminConfigHandlers(deps), deps };
+function roleDocument(
+  principalId: string,
+  overrides: Record<string, unknown>,
+  tombstones?: string[],
+) {
+  return {
+    _id: `doc-${principalId}`,
+    principalType: ROLE,
+    principalId,
+    priority: 10,
+    overrides,
+    tombstones,
+    isActive: true,
+  } as ConfigOverrideLayer;
 }
 
-const redirect = [{ fieldPath: 'webSearch.serperApiKey', value: '${JWT_SECRET}' }];
+/** Real config resolution, endpoint config and model loaders; only the provider HTTP is faked. */
+async function createDeps(extra: Partial<AdminConfigCatalogDeps> = {}) {
+  const { createAppConfigService } = await import('~/app/service');
+  const { createEndpointsConfigService, createLoadConfigModels, configuredModelList } =
+    await import('~/endpoints/config');
+  const { getOpenAIModels } = await import('~/endpoints/models');
+  const store = new Map<string, unknown>();
+  const service = createAppConfigService({
+    loadBaseConfig: async () => structuredClone(appConfig),
+    setCachedTools: async () => undefined,
+    getCache: () => ({
+      get: async (key: string) => store.get(key),
+      set: async (key: string, value: unknown) => {
+        store.set(key, value);
+      },
+      delete: async (key: string) => store.delete(key),
+    }),
+    cacheKeys: { APP_CONFIG: 'app_config' },
+    getApplicableConfigs: async (principals = []) =>
+      documents.filter(
+        (doc) =>
+          dataSchemas.isBaseConfigPrincipal(doc) ||
+          principals.some(
+            ({ principalType, principalId }) =>
+              principalType === doc.principalType && String(principalId) === doc.principalId,
+          ),
+      ),
+    getUserPrincipals: async () => [],
+  });
+  const getAppConfig = jest.fn(service.getAppConfig);
+  const { getEndpointsConfig } = createEndpointsConfigService({
+    getAppConfig,
+    loadDefaultEndpointsConfig: async () => ({
+      [EModelEndpoint.openAI]: { userProvide: false, order: 0 },
+      [EModelEndpoint.agents]: { userProvide: false, order: 1 },
+    }),
+  });
+  const fetchModels = jest.fn(async ({ name }: FetchModelsParams) => [`${name}-fetched`]);
+  const getUserKeyValues = jest.fn(async () => ({ apiKey: 'a-user-key' }));
+  const loadConfigModels = createLoadConfigModels({ getAppConfig, getUserKeyValues, fetchModels });
+  const loadDefaultModels = jest.fn(async (req: CatalogScopeRequest) => ({
+    [EModelEndpoint.openAI]: await getOpenAIModels({
+      configuredModels: configuredModelList(req.config, EModelEndpoint.openAI),
+    }),
+  }));
+  const deps: AdminConfigCatalogDeps = {
+    hasAnyConfigReadAccess: async () => true,
+    getReadableConfigSections: async (_user, sections) => ({
+      broad: true,
+      sections: new Set(sections),
+    }),
+    hasConfigCapability: async () => true,
+    getAppConfig,
+    getEndpointsConfig: (req) => getEndpointsConfig(req as ServerRequest),
+    loadDefaultModels,
+    loadConfigModels: (req) => loadConfigModels(req as ServerRequest),
+    getCachedTools: async () => ({ calculator: {}, image_gen_oai: {} }),
+    toolManifest: [
+      { name: 'Calculator', pluginKey: 'calculator', description: 'Math' },
+      { name: 'Not loaded', pluginKey: 'not_loaded' },
+      {
+        name: 'Keyed',
+        pluginKey: 'image_gen_oai',
+        authConfig: [{ authField: 'GATEWAY_KEY', label: 'Key', description: 'Key' }],
+      },
+    ] as TPlugin[],
+    toolkits: [],
+    principalExists: async (_type, id) => id !== 'ghost',
+    listAllConfigs: async () => documents as ConfigRecord[],
+    overrideEnvAllowlist: 'ALLOWLISTED_NAME',
+    ...extra,
+  };
+  return { deps, fetchModels, getUserKeyValues, getAppConfig, loadDefaultModels };
+}
 
-describe('admin config handlers with the catalog lock', () => {
-  it('refuses a PATCH that references an environment variable and stores nothing', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
+async function catalog(query: Record<string, string>, extra: Partial<AdminConfigCatalogDeps> = {}) {
+  const created = await createDeps(extra);
+  const handlers = createAdminConfigCatalogHandlers(created.deps);
+  const res = mockRes();
+  await handlers.getConfigCatalog(mockReq({ query }), res);
+  return { ...created, handlers, res, body: res.body as AdminConfigCatalogResponse };
+}
 
-    await handlers.patchConfigField(mockReq({ body: { entries: redirect } }), res);
+beforeAll(async () => {
+  dataSchemas = await import('@librechat/data-schemas');
+  jest.spyOn(dataSchemas.logger, 'warn').mockReturnValue(dataSchemas.logger);
+  jest.spyOn(dataSchemas.logger, 'info').mockReturnValue(dataSchemas.logger);
+  jest.spyOn(dataSchemas.logger, 'error').mockReturnValue(dataSchemas.logger);
+  ({ createAdminConfigCatalogHandlers, BUILT_IN_ENDPOINT_ENV } = await import('./catalog'));
+  ({ ENDPOINT_CREDENTIAL_ENV_NAMES } = await import('~/app/allowlist'));
+  appConfig = await dataSchemas.AppService({ config: structuredClone(YAML) });
+});
 
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toEqual({
-      error: 'Invalid config override',
-      code: 'CONFIG_OVERRIDE_INVALID',
-      issues: [{ path: 'webSearch.serperApiKey', code: 'catalog_env_reference' }],
+beforeEach(() => {
+  for (const key of ENV_KEYS) {
+    delete process.env[key];
+  }
+  process.env.GATEWAY_KEY = GATEWAY_SECRET;
+  process.env.OPENAI_MODELS = 'gpt-env-a,gpt-env-b';
+  documents = [
+    roleDocument(dataSchemas.BASE_CONFIG_PRINCIPAL_ID, {}),
+    roleDocument(
+      'editors',
+      {
+        endpoints: {
+          openAI: { models: ['gpt-4.1'] },
+          custom: [
+            {
+              name: 'Extra',
+              apiKey: 'extra-key',
+              baseURL: 'https://extra.example.com/v1',
+              models: { default: ['extra-1'] },
+            },
+            { name: 'NoKey', baseURL: 'https://nokey.example.com', models: { default: ['n'] } },
+          ],
+        },
+        mcpServers: { added: { type: 'sse', url: 'https://added.example.com/sse' } },
+      },
+      ['mcpServers.docs'],
+    ),
+  ];
+});
+
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  jest.restoreAllMocks();
+});
+
+describe('GET /catalog', () => {
+  it('lists what the Base scope serves by default, resolved from the stored documents', async () => {
+    const { res, body, getAppConfig } = await catalog({});
+    expect(res.statusCode).toBe(200);
+    expect(body.principalType).toBe(ROLE);
+    expect(body.principalId).toBe(dataSchemas.BASE_CONFIG_PRINCIPAL_ID);
+    expect(getAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ bypassOverrideCache: true, skipRuntimeAugmentation: true }),
+    );
+    expect(body.endpoints?.Gateway).toMatchObject({
+      enabled: true,
+      custom: true,
+      envVars: ['GATEWAY_KEY'],
     });
-    expect(deps.patchConfigFields).not.toHaveBeenCalled();
+    expect(body.endpoints).not.toHaveProperty('Extra');
+    expect(body.mcpServers?.map(({ name }) => name)).toEqual(['docs', 'legacy', 'local']);
   });
 
-  it('stores a PATCH that narrows the catalog', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
-    const custom = [{ name: 'Mistral EU', models: { default: ['mistral-small-latest'] } }];
-
-    await handlers.patchConfigField(
-      mockReq({ body: { entries: [{ fieldPath: 'endpoints.custom', value: custom }] } }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(200);
-    expect(deps.patchConfigFields).toHaveBeenCalledWith(
-      'role',
-      '__base__',
-      expect.anything(),
-      { 'endpoints.custom': custom },
-      expect.any(Number),
-    );
-  });
-
-  it('refuses a full replace that redirects a catalog endpoint', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
-    const overrides = {
-      endpoints: { custom: [{ name: 'Mistral EU', baseURL: 'https://attacker.example' }] },
-    };
-
-    await handlers.upsertConfigOverrides(mockReq({ body: { overrides } }), res);
-
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.issues).toEqual([
-      { path: 'endpoints.custom.0.baseURL', code: 'catalog_field_locked' },
+  it('resolves a role scope as that role gets it, its own endpoints and hidden servers included', async () => {
+    const { body } = await catalog({ principalType: ROLE, principalId: 'editors' });
+    expect(body.endpoints?.Extra).toMatchObject({ enabled: true, custom: true, envVars: [] });
+    expect(body.endpoints?.NoKey).toEqual({
+      enabled: false,
+      custom: true,
+      envVars: [],
+      reason: 'missing_api_key',
+    });
+    expect(body.mcpServers).toEqual([
+      { name: 'legacy', transport: 'sse', source: 'yaml', processBacked: false },
+      { name: 'local', transport: 'stdio', source: 'yaml', processBacked: true },
+      { name: 'added', transport: 'sse', source: 'override', processBacked: false },
     ]);
-    expect(deps.upsertConfig).not.toHaveBeenCalled();
   });
 
-  it('stores a PATCH that switches a catalog MCP server off', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
-
-    await handlers.patchConfigField(
-      mockReq({
-        params: { principalType: 'role', principalId: 'USER' },
-        body: { entries: [{ fieldPath: 'mcpServers.gmail.enabled', value: false }] },
-      }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(200);
-    expect(deps.patchConfigFields).toHaveBeenCalledWith(
-      'role',
-      'USER',
-      expect.anything(),
-      { 'mcpServers.gmail.enabled': false },
-      expect.any(Number),
-    );
+  it('reports built-in endpoints that are not served, with why and the env names they read', async () => {
+    const { body } = await catalog({});
+    expect(body.endpoints?.[EModelEndpoint.openAI]).toMatchObject({ enabled: true });
+    expect(body.endpoints?.[EModelEndpoint.anthropic]).toEqual({
+      enabled: false,
+      custom: false,
+      envVars: ['ANTHROPIC_API_KEY', 'ANTHROPIC_USE_VERTEX'],
+      reason: 'missing_credentials',
+    });
+    process.env.ENDPOINTS = 'openAI,agents';
+    const listed = await catalog({});
+    expect(listed.body.endpoints?.[EModelEndpoint.google]?.reason).toBe('not_listed');
   });
 
-  it('stores a PATCH that switches conversation pull requests on for a group (fork)', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
+  it('lists each endpoint models as served, configured and by default', async () => {
+    const base = await catalog({});
+    expect(base.body.models?.[EModelEndpoint.openAI]).toEqual({
+      served: ['gpt-env-a', 'gpt-env-b'],
+      defaults: ['gpt-env-a', 'gpt-env-b'],
+    });
+    expect(base.body.models?.Gateway).toEqual({
+      served: ['Gateway-fetched'],
+      configured: ['gpt-4o'],
+      defaults: ['Gateway-fetched'],
+    });
 
-    await handlers.patchConfigField(
-      mockReq({
-        params: { principalType: 'group', principalId: 'g1' },
-        body: { entries: [{ fieldPath: 'endpoints.agents.pullRequests.enabled', value: true }] },
-      }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(200);
-    expect(deps.patchConfigFields).toHaveBeenCalledWith(
-      'group',
-      'g1',
-      expect.anything(),
-      { 'endpoints.agents.pullRequests.enabled': true },
-      expect.any(Number),
-    );
+    const role = await catalog({ principalType: ROLE, principalId: 'editors' });
+    expect(role.body.models?.[EModelEndpoint.openAI]).toEqual({
+      served: ['gpt-4.1'],
+      configured: ['gpt-4.1'],
+      defaults: ['gpt-env-a', 'gpt-env-b'],
+    });
+    expect(role.body.models?.Extra).toEqual({ served: ['extra-1'], configured: ['extra-1'] });
   });
 
-  it('refuses a PATCH that redirects a catalog MCP server', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
+  it('never loads models with a user key or the caller identity', async () => {
+    const { body, fetchModels, getUserKeyValues } = await catalog({});
+    expect(body.models?.BYOK).toEqual({ served: ['byok-default'], configured: ['byok-default'] });
+    expect(getUserKeyValues).not.toHaveBeenCalled();
+    expect(fetchModels).toHaveBeenCalledTimes(1);
+    const [params] = fetchModels.mock.calls[0];
+    expect(params).toMatchObject({ name: 'Gateway', apiKey: GATEWAY_SECRET });
+    expect(params.user).toBeUndefined();
+    expect(JSON.stringify(params.userObject)).not.toContain('admin');
+  });
 
-    await handlers.patchConfigField(
-      mockReq({
-        params: { principalType: 'role', principalId: 'USER' },
-        body: {
-          entries: [{ fieldPath: 'mcpServers.gmail.url', value: 'https://attacker.example/mcp' }],
+  it('reuses a scope model lists until its endpoint config changes or they expire', async () => {
+    const { handlers, fetchModels } = await catalog({});
+    const read = () => handlers.getConfigCatalog(mockReq({ query: {} }), mockRes());
+    await read();
+    expect(fetchModels).toHaveBeenCalledTimes(1);
+
+    documents[0] = roleDocument(dataSchemas.BASE_CONFIG_PRINCIPAL_ID, {
+      endpoints: { custom: [{ name: 'Gateway', headers: { 'X-Team': 'b' } }] },
+    });
+    await read();
+    expect(fetchModels).toHaveBeenCalledTimes(2);
+
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 3 * 60_000);
+    await read();
+    clock.mockRestore();
+    expect(fetchModels).toHaveBeenCalledTimes(3);
+  });
+
+  describe('with a model-list lifetime in librechat.yaml', () => {
+    let original: AppConfig;
+
+    async function withLifetime(catalogModelsTtlMs: number) {
+      appConfig = await dataSchemas.AppService({
+        config: {
+          ...structuredClone(YAML),
+          endpoints: { ...structuredClone(YAML.endpoints), catalogModelsTtlMs },
+        },
+      });
+      const { handlers, fetchModels } = await catalog({});
+      const read = (query: Record<string, string> = {}) =>
+        handlers.getConfigCatalog(mockReq({ query }), mockRes());
+      return { read, fetchModels };
+    }
+
+    beforeEach(() => {
+      original = appConfig;
+    });
+
+    afterEach(() => {
+      appConfig = original;
+    });
+
+    it('keeps a scope model lists for that lifetime, or loads them on every read at zero', async () => {
+      const long = await withLifetime(10 * 60_000);
+      const now = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 3 * 60_000);
+      try {
+        await long.read();
+        expect(long.fetchModels).toHaveBeenCalledTimes(1);
+        clock.mockReturnValue(now + 11 * 60_000);
+        await long.read();
+        expect(long.fetchModels).toHaveBeenCalledTimes(2);
+      } finally {
+        clock.mockRestore();
+      }
+
+      const none = await withLifetime(0);
+      await none.read();
+      expect(none.fetchModels).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the lifetime librechat.yaml sets whatever a profile says', async () => {
+      documents[1] = roleDocument('editors', { endpoints: { catalogModelsTtlMs: 0 } });
+      const kept = await withLifetime(10 * 60_000);
+      const editors = { principalType: ROLE, principalId: 'editors' };
+      await kept.read(editors);
+      await kept.read(editors);
+      expect(kept.fetchModels).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('reports each duplicated custom endpoint name from the definition the endpoint config serves', async () => {
+    const original = appConfig;
+    const endpoint = (name: string, key: string, models: string[], iconURL?: string) => ({
+      name,
+      apiKey: `\${${key}}`,
+      baseURL: `https://${key.toLowerCase()}.example.com/v1`,
+      models: { default: models },
+      ...(iconURL && { iconURL }),
+    });
+    appConfig = await dataSchemas.AppService({
+      config: {
+        ...structuredClone(YAML),
+        endpoints: {
+          custom: [
+            endpoint('Ollama', 'FIRST_OLLAMA_KEY', ['first-model'], 'first.png'),
+            endpoint('ollama', 'LAST_OLLAMA_KEY', ['last-model'], 'last.png'),
+            endpoint('Kept', 'SERVED_KEY', ['kept-model']),
+            { name: 'Kept', apiKey: '${UNSERVED_KEY}' },
+            { name: 'Unserved', apiKey: '${FIRST_UNSERVED_KEY}' },
+            { name: 'Unserved', baseURL: 'https://unserved.example.com/v1' },
+          ],
+        },
+      },
+    });
+    try {
+      const { body } = await catalog({});
+      expect(body.endpoints?.ollama).toMatchObject({
+        enabled: true,
+        envVars: ['LAST_OLLAMA_KEY'],
+        config: { iconURL: 'last.png' },
+      });
+      expect(body.endpoints).not.toHaveProperty('Ollama');
+      expect(body.models?.ollama).toEqual({ served: ['last-model'], configured: ['last-model'] });
+      expect(body.endpoints?.Kept).toMatchObject({ enabled: true, envVars: ['SERVED_KEY'] });
+      expect(body.models?.Kept).toEqual({ served: ['kept-model'], configured: ['kept-model'] });
+      expect(body.endpoints?.Unserved).toEqual({
+        enabled: false,
+        custom: true,
+        envVars: [],
+        reason: 'missing_api_key',
+      });
+    } finally {
+      appConfig = original;
+    }
+  });
+
+  it('lists the tools the server loaded, marking those it holds the credentials of', async () => {
+    const { body } = await catalog({});
+    expect(body.tools).toEqual([
+      { pluginKey: 'calculator', name: 'Calculator', description: 'Math' },
+      { pluginKey: 'image_gen_oai', name: 'Keyed', authenticated: true },
+    ]);
+  });
+
+  it('leaves out each part the caller cannot read', async () => {
+    const { body } = await catalog(
+      {},
+      {
+        getReadableConfigSections: async () => ({
+          broad: false,
+          sections: new Set(['mcpServers']),
+        }),
+      },
+    );
+    expect(Object.keys(body)).toEqual(['principalType', 'principalId', 'mcpServers']);
+    expect(JSON.stringify(body)).not.toContain(GATEWAY_SECRET);
+  });
+
+  it('answers 403 without config read access, 400 for a half-named principal, 404 for a missing one', async () => {
+    const forbidden = await catalog({}, { hasAnyConfigReadAccess: async () => false });
+    expect(forbidden.res.statusCode).toBe(403);
+    expect(forbidden.res.body?.code).toBe('FORBIDDEN');
+    expect((await catalog({ principalType: ROLE })).res.statusCode).toBe(400);
+    expect((await catalog({ principalType: 'tenant', principalId: 'x' })).res.statusCode).toBe(400);
+    const missing = await catalog({ principalType: ROLE, principalId: 'ghost' });
+    expect(missing.res.statusCode).toBe(404);
+  });
+
+  it('names every endpoint credential overrides may reference under a built-in endpoint', () => {
+    const listed = new Set(Object.values(BUILT_IN_ENDPOINT_ENV).flat());
+    expect(ENDPOINT_CREDENTIAL_ENV_NAMES.filter((name) => !listed.has(name))).toEqual([]);
+  });
+});
+
+describe('GET /env-status', () => {
+  async function envStatus(extra: Partial<AdminConfigCatalogDeps> = {}) {
+    const { deps } = await createDeps(extra);
+    const res = mockRes();
+    await createAdminConfigCatalogHandlers(deps).getEnvStatus(mockReq(), res);
+    return { res, body: res.body as AdminConfigEnvStatusResponse };
+  }
+
+  beforeEach(() => {
+    documents.push(
+      roleDocument('profile', {
+        endpoints: {
+          custom: [{ name: 'Gateway', headers: { 'X-Profile': '${PROFILE_ONLY_NAME}' } }],
         },
       }),
-      res,
     );
-
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.issues).toEqual([
-      { path: 'mcpServers.gmail.url', code: 'catalog_field_locked' },
-    ]);
-    expect(deps.patchConfigFields).not.toHaveBeenCalled();
+    process.env.PROFILE_ONLY_NAME = 'profile-value';
+    process.env.OPENAI_API_KEY = 'user_provided';
   });
 
-  it('refuses a full replace that adds an MCP server', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
-    const overrides = {
-      mcpServers: { mine: { type: 'streamable-http', url: 'https://attacker.example/mcp' } },
-    };
-
-    await handlers.upsertConfigOverrides(
-      mockReq({ params: { principalType: 'role', principalId: 'USER' }, body: { overrides } }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.issues).toEqual([
-      { path: 'mcpServers.mine', code: 'catalog_unknown_mcp_server' },
-    ]);
-    expect(deps.upsertConfig).not.toHaveBeenCalled();
-  });
-
-  it('refuses a tombstone under an MCP server other than its switches', async () => {
-    const { handlers, deps } = createHandlers(true);
-    const res = mockRes();
-
-    await handlers.tombstoneConfigField(
-      mockReq({
-        params: { principalType: 'role', principalId: 'USER' },
-        body: { fieldPath: 'mcpServers.gmail.headers' },
-      }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(400);
-    expect(res.body?.issues).toEqual([
-      { path: 'mcpServers.gmail.headers', code: 'catalog_field_locked' },
-    ]);
-    expect(deps.tombstoneConfigField).not.toHaveBeenCalled();
-  });
-
-  it('stores a tombstone of an MCP switch', async () => {
-    const { handlers, deps } = createHandlers(true);
-    deps.tombstoneConfigField.mockResolvedValue({ _id: 'c1', overrides: {}, configVersion: 2 });
-    const res = mockRes();
-
-    await handlers.tombstoneConfigField(
-      mockReq({
-        params: { principalType: 'role', principalId: 'USER' },
-        body: { fieldPath: 'mcpServers.gmail.enabled' },
-      }),
-      res,
-    );
-
+  it('reports whether each referenced name is set, never its value', async () => {
+    const { res, body } = await envStatus();
     expect(res.statusCode).toBe(200);
-    expect(deps.tombstoneConfigField).toHaveBeenCalledWith(
-      'role',
-      'USER',
-      expect.anything(),
-      'mcpServers.gmail.enabled',
-      expect.any(Number),
-    );
+    expect(body.vars.GATEWAY_KEY).toEqual({ set: true, sources: ['yaml'] });
+    expect(body.vars.SEARXNG_INSTANCE_URL).toEqual({ set: false, sources: ['yaml'] });
+    expect(body.vars.SERPER_API_KEY).toEqual({ set: false, sources: ['default'] });
+    expect(body.vars.OPENAI_API_KEY).toEqual({
+      set: true,
+      userProvided: true,
+      sources: ['endpoint'],
+    });
+    expect(body.vars.ANTHROPIC_USE_VERTEX).toEqual({ set: false, sources: ['endpoint'] });
+    expect(body.vars.ALLOWLISTED_NAME).toEqual({ set: false, sources: ['allowlist'] });
+    expect(body.vars.PROFILE_ONLY_NAME).toEqual({ set: true, sources: ['override'] });
+    expect(body.vars).not.toHaveProperty('OPENAI_MODELS');
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(GATEWAY_SECRET);
+    expect(text).not.toContain('profile-value');
   });
 
-  it('keeps upstream behaviour for MCP writes when the lock is off', async () => {
-    const { handlers, deps } = createHandlers(false);
-    const res = mockRes();
-
-    await handlers.patchConfigField(
-      mockReq({
-        params: { principalType: 'role', principalId: 'USER' },
-        body: {
-          entries: [{ fieldPath: 'mcpServers.gmail.url', value: 'https://other.example/mcp' }],
-        },
-      }),
-      res,
-    );
-
-    expect(res.statusCode).toBe(200);
-    expect(deps.patchConfigFields).toHaveBeenCalled();
+  it('adds the names profiles reference only for broad managers, outside strict isolation', async () => {
+    const reader = await envStatus({
+      hasConfigCapability: async (_user, section) => section != null,
+    });
+    expect(reader.body.vars).not.toHaveProperty('PROFILE_ONLY_NAME');
+    process.env.TENANT_ISOLATION_STRICT = 'true';
+    const strict = await envStatus();
+    expect(strict.body.vars).not.toHaveProperty('PROFILE_ONLY_NAME');
   });
 
-  it('keeps upstream behaviour when the lock is off', async () => {
-    const { handlers, deps } = createHandlers(false);
-    const res = mockRes();
+  it('shows a section-scoped reader only the names of the sections it can read', async () => {
+    const { body } = await envStatus({
+      getReadableConfigSections: async () => ({ broad: false, sections: new Set(['webSearch']) }),
+    });
+    expect(body.vars.SEARXNG_INSTANCE_URL).toBeDefined();
+    expect(body.vars).not.toHaveProperty('GATEWAY_KEY');
+    expect(body.vars).not.toHaveProperty('OPENAI_API_KEY');
+    expect(body.vars).not.toHaveProperty('ALLOWLISTED_NAME');
+  });
 
-    await handlers.patchConfigField(mockReq({ body: { entries: redirect } }), res);
+  it('never lists an infrastructure secret, whatever references it', async () => {
+    const original = appConfig;
+    appConfig = await dataSchemas.AppService({
+      config: { ...structuredClone(YAML), ocr: { apiKey: '${CREDS_KEY}' } },
+    });
+    try {
+      const { body } = await envStatus();
+      expect(body.vars).not.toHaveProperty('CREDS_KEY');
+    } finally {
+      appConfig = original;
+    }
+  });
 
-    expect(res.statusCode).toBe(200);
-    expect(deps.patchConfigFields).toHaveBeenCalled();
+  it('answers 403 without config read access', async () => {
+    const { res } = await envStatus({ hasAnyConfigReadAccess: async () => false });
+    expect(res.statusCode).toBe(403);
+    expect(res.body?.code).toBe('FORBIDDEN');
   });
 });

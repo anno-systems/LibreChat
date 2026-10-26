@@ -148,6 +148,16 @@ describe('settings registry', () => {
       ).toBe(true);
     });
 
+    it('shows prompt settings without connection access', () => {
+      expect(
+        langfuseEntry?.show?.({
+          ...settingsContext,
+          langfuseConnectionAccess: false,
+          langfusePromptSyncAccess: true,
+        }),
+      ).toBe(true);
+    });
+
     it('hides the connection without Langfuse config access', () => {
       expect(
         langfuseEntry?.show?.({

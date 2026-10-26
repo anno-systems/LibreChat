@@ -12,6 +12,18 @@ describe('withTenantId', () => {
     expect(values.key).toBe('secret:{{LIBRECHAT_TENANT_ID}}');
   });
 
+  it('fills the tenant into nested options such as a scraper key, leaving arrays alone', () => {
+    const values = {
+      keenableScraperOptions: { apiKey: 'k:{{LIBRECHAT_TENANT_ID}}', timeout: 3 },
+      list: ['{{LIBRECHAT_TENANT_ID}}'],
+    };
+
+    expect(withTenantId(values, 'tenant-a')).toEqual({
+      keenableScraperOptions: { apiKey: 'k:tenant-a', timeout: 3 },
+      list: ['{{LIBRECHAT_TENANT_ID}}'],
+    });
+  });
+
   it('keeps the placeholder without a tenant or with one that is not a plain id', () => {
     const values = { key: 'secret:{{LIBRECHAT_TENANT_ID}}' };
 
