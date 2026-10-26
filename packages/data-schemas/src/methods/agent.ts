@@ -2057,6 +2057,8 @@ export function createAgentMethods(
       category: 1,
       support_contact: 1,
       is_promoted: 1,
+      /** Fork: marks a platform agent's copy, which the list shows as not editable. */
+      platformAgentId: 1,
     };
 
     if (includeSkillConfig) {

@@ -101,6 +101,10 @@ jest.mock('@librechat/api', () => ({
   createAgentManagementReadHandlers: mockCreateAgentManagementReadHandlers,
   createAgentManagementUpdateHandler: mockCreateAgentManagementUpdateHandler,
 }));
+/** Fork: the platform agent lock has its own tests (`packages/api/src/platform`). */
+jest.mock('~/server/services/platformAgents', () => ({
+  lock: { byAgentId: () => (_req, _res, next) => next() },
+}));
 jest.mock('~/server/middleware', () => ({
   checkBan: mockCheckBan,
   configMiddleware: mockConfigMiddleware,

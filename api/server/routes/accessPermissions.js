@@ -27,6 +27,7 @@ const {
   configMiddleware,
 } = require('~/server/middleware');
 const { checkPeoplePickerAccess } = require('~/server/middleware/checkPeoplePickerAccess');
+const { lock: platformAgentLock } = require('~/server/services/platformAgents');
 const db = require('~/models');
 const { findMCPServerByObjectId, getSkillById } = db;
 
@@ -204,6 +205,7 @@ router.put(
   checkShareAccessUnlessAgentAdmin,
   checkSharePublicAccess,
   rejectSharedLinkOwnerPermissionChanges,
+  platformAgentLock.bySharedResource(),
   configMiddleware,
   updateResourcePermissions,
 );

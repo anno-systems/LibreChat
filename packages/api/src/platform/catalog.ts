@@ -62,6 +62,16 @@ function endpointOf(
   } as TEndpoint;
 }
 
+/** One platform provider as a tenant's custom endpoint with the given models, key decrypted. */
+export function providerEndpoint(
+  tenantId: string,
+  provider: PlatformProvider,
+  models: string[],
+  decrypt: (value: string) => string,
+): TEndpoint {
+  return endpointOf(tenantId, { ...provider, apiKey: decrypt(provider.apiKey) }, models);
+}
+
 /**
  * The endpoints a tenant gets, keys decrypted: providers offered to all tenants with all their
  * models (an assignment of one does not narrow it), assigned providers with their assigned
@@ -80,7 +90,7 @@ export function catalogEndpoints(
   const add = (provider: PlatformProvider, models: string[]) => {
     if (models.length === 0 || added.has(provider.name)) return;
     added.add(provider.name);
-    endpoints.push(endpointOf(tenantId, { ...provider, apiKey: decrypt(provider.apiKey) }, models));
+    endpoints.push(providerEndpoint(tenantId, provider, models, decrypt));
   };
   for (const assignment of catalog?.providers ?? []) {
     const provider = byName.get(assignment.name);

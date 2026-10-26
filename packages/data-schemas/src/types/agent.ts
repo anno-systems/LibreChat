@@ -67,5 +67,8 @@ export interface IAgent extends Omit<Document, 'model'> {
   subagents?: AgentSubagentsConfig;
   /** Memory partition: 'agent' isolates memories per (user, agent); default shared pool */
   memory_scope?: MemoryScope;
+  /** Fork: set on a tenant's copy of a platform agent (`methods/platformAgent.ts`), which only
+   * the platform operator changes. */
+  platformAgentId?: string;
   tenantId?: string;
 }

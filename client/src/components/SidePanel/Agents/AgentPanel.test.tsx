@@ -179,6 +179,11 @@ jest.mock('./ModelPanel', () => ({
   },
 }));
 
+jest.mock('~/components/Agents/ResetApprovals', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 // Mock AgentFooter to provide a save button
 jest.mock('./AgentFooter', () => ({
   __esModule: true,
@@ -487,6 +492,19 @@ describe('AgentPanel - Update Agent Toast Messages', () => {
 
       await waitFor(() => expect(mockAgentConfigStatus).toBe('ready'));
       expect(mockAgentSelectAgentQueryData?.instructionsPrompt).toEqual(link);
+    });
+
+    it('keeps a platform agent read-only, also for an admin', async () => {
+      const { mockUseGetAgentByIdQuery } = setupMocks();
+      mockUserRole = 'ADMIN';
+      mockAgentQuery(mockUseGetAgentByIdQuery, { platformAgentId: 'platform_support' });
+
+      const Wrapper = createWrapper();
+      const { queryByText, queryByTestId } = render(<AgentPanel />, { wrapper: Wrapper });
+
+      await waitFor(() => expect(queryByText('com_agents_platform_locked')).toBeTruthy());
+      expect(queryByText(/Agent Config/)).toBeNull();
+      expect(queryByTestId('save-agent-button')).toBeNull();
     });
 
     it("preserves an existing agent's configured model", async () => {

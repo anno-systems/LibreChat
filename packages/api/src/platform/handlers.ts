@@ -51,6 +51,8 @@ export interface PlatformCatalogHandlerDeps {
   isAllowedTenantURL?(url: string): Promise<boolean>;
   /** Drops cached endpoints and merged configs, for one tenant or all. */
   invalidate(tenantId?: string): Promise<void>;
+  /** The platform agents that run on a provider; such a provider cannot be deleted. */
+  agentsUsingProvider?(name: string): Promise<string[]>;
   recordAuditEntry?: RecordAuditEntry;
   auditFailClosed?: boolean;
 }
@@ -164,6 +166,31 @@ export function operatorActor(req: Request): AuditActorInput {
   return { type: 'service', id: valid ?? 'platform-operator', name: valid ?? 'Platform operator' };
 }
 
+/** Records an operator API write in the audit log, as the operator the admin app names. */
+export type OperatorAudit = (
+  req: Request,
+  event: Omit<RecordAuditEntryInput, 'actor' | 'context'>,
+) => Promise<void>;
+
+export function createOperatorAudit(options: {
+  recordAuditEntry?: RecordAuditEntry;
+  auditFailClosed?: boolean;
+  logPrefix: string;
+}): OperatorAudit {
+  return async (req, event) => {
+    const input: RecordAuditEntryInput = {
+      ...event,
+      actor: operatorActor(req),
+      context: buildAuditContext(req as ServerRequest),
+    };
+    if (options.auditFailClosed && options.recordAuditEntry) {
+      await options.recordAuditEntry(input, { failClosed: true });
+      return;
+    }
+    await recordSystemAuditEntry(options.recordAuditEntry, input, options.logPrefix);
+  };
+}
+
 type OperatorHandler = (req: Request, res: Response) => Promise<Response>;
 type AdminHandler = (req: ServerRequest, res: Response) => Promise<Response>;
 
@@ -197,21 +224,11 @@ export function createPlatformCatalogHandlers(
     logPrefix: '[platformCatalog]',
   });
 
-  async function auditOperator(
-    req: Request,
-    event: Omit<RecordAuditEntryInput, 'actor' | 'context'>,
-  ): Promise<void> {
-    const input: RecordAuditEntryInput = {
-      ...event,
-      actor: operatorActor(req),
-      context: buildAuditContext(req as ServerRequest),
-    };
-    if (deps.auditFailClosed && deps.recordAuditEntry) {
-      await deps.recordAuditEntry(input, { failClosed: true });
-      return;
-    }
-    await recordSystemAuditEntry(deps.recordAuditEntry, input, '[platformCatalog]');
-  }
+  const auditOperator = createOperatorAudit({
+    recordAuditEntry: deps.recordAuditEntry,
+    auditFailClosed: deps.auditFailClosed,
+    logPrefix: '[platformCatalog]',
+  });
 
   function fail(res: Response, label: string, error: unknown): Response {
     logger.error(`[platformCatalog] ${label} failed`, getSafeErrorMetadata(error));
@@ -295,7 +312,10 @@ export function createPlatformCatalogHandlers(
     }
   }
 
-  /** DELETE /api/platform/providers/:name; refused while it is offered to all tenants or a tenant has it. */
+  /**
+   * DELETE /api/platform/providers/:name; refused while it is offered to all tenants, a tenant
+   * has it or a platform agent runs on it.
+   */
   async function deleteProvider(req: Request, res: Response) {
     try {
       const name = String((req.params as { name?: string }).name ?? '');
@@ -306,6 +326,10 @@ export function createPlatformCatalogHandlers(
       const tenants = await catalog.tenantsUsingProvider(name);
       if (tenants.length > 0) {
         return res.status(409).json({ error: 'provider_in_use', tenants });
+      }
+      const agents = (await deps.agentsUsingProvider?.(name)) ?? [];
+      if (agents.length > 0) {
+        return res.status(409).json({ error: 'provider_used_by_agents', agents });
       }
       if (!(await catalog.deletePlatformProvider(name))) {
         return res.status(404).json({ error: 'not_found' });

@@ -2,6 +2,7 @@ const express = require('express');
 const { generateCheckAccess } = require('@librechat/api');
 const { PermissionTypes, Permissions, PermissionBits } = require('librechat-data-provider');
 const { configMiddleware, canAccessAgentResource } = require('~/server/middleware');
+const { lock: platformAgentLock } = require('~/server/services/platformAgents');
 const v1 = require('~/server/controllers/agents/v1');
 const { getRoleByName } = require('~/models');
 const actions = require('./actions');
@@ -111,6 +112,7 @@ router.patch(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'id',
   }),
+  platformAgentLock.byAgentId('id'),
   configMiddleware,
   v1.updateAgent,
 );
@@ -129,6 +131,7 @@ router.post(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'id',
   }),
+  platformAgentLock.byAgentId('id'),
   configMiddleware,
   v1.duplicateAgent,
 );
@@ -146,6 +149,7 @@ router.delete(
     requiredPermission: PermissionBits.DELETE,
     resourceIdParam: 'id',
   }),
+  platformAgentLock.byAgentId('id'),
   v1.deleteAgent,
 );
 
@@ -164,6 +168,7 @@ router.post(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'id',
   }),
+  platformAgentLock.byAgentId('id'),
   configMiddleware,
   v1.revertAgentVersion,
 );
@@ -191,6 +196,7 @@ avatar.post(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'agent_id',
   }),
+  platformAgentLock.byAgentId('agent_id'),
   v1.uploadAgentAvatar,
 );
 

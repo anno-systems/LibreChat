@@ -29,6 +29,7 @@ const {
 const { findAccessibleResources } = require('~/server/services/PermissionService');
 const { attachOwnerContacts } = require('~/server/services/Agents/ownerContact');
 const { instructionsPromptAccess } = require('~/server/services/Agents/instructionsPrompt');
+const { lock: platformAgentLock } = require('~/server/services/platformAgents');
 const db = require('~/models');
 const { canAccessAgentResource } = require('~/server/middleware');
 
@@ -98,6 +99,7 @@ router.post(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'agent_id',
   }),
+  platformAgentLock.byAgentId('agent_id'),
   checkAgentCreate,
   async (req, res) => {
     try {
@@ -295,6 +297,7 @@ router.delete(
     requiredPermission: PermissionBits.EDIT,
     resourceIdParam: 'agent_id',
   }),
+  platformAgentLock.byAgentId('agent_id'),
   checkAgentCreate,
   async (req, res) => {
     try {

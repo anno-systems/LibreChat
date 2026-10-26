@@ -62,7 +62,15 @@ export {
   /* Fork: platform pricing and tenant costs. */
   isCostMonth,
   WEB_SEARCH_CONTEXT,
+  /* Fork: platform agents. */
+  createPlatformAgentMethods,
+  platformAgentCopyId,
+  PLATFORM_AGENT_AUTHOR,
 } from './methods';
+export {
+  PLATFORM_AGENT_LOCKED,
+  PlatformAgentLockedError,
+} from './models/plugins/platformAgentLock';
 export { FAVORITE_ITEM_TYPES } from './types/favorite';
 export {
   AGENT_EVENT_ACTOR_SUMMARY_VERSION,
