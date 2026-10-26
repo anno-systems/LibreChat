@@ -130,6 +130,31 @@ describe('getTenantUsage', () => {
     });
   });
 
+  it("names the tenant's agents among the models", async () => {
+    const a = userA.toString();
+    await mongoose.models.Message.collection.insertMany([
+      { ...message('tenant-c', a, daysAgo(0), false), model: 'agent_support' },
+      { ...message('tenant-c', a, daysAgo(0), false), model: 'agent_gone' },
+    ]);
+    await mongoose.models.Agent.collection.insertMany([
+      { tenantId: 'tenant-c', id: 'agent_support', name: 'Support' },
+      { tenantId: 'tenant-d', id: 'agent_gone', name: 'Another tenant' },
+    ]);
+
+    const { models } = await usage('tenant-c', 7);
+
+    expect(models).toEqual([
+      { model: 'agent_gone', replies: 1, promptTokens: 0, completionTokens: 0 },
+      {
+        model: 'agent_support',
+        agentName: 'Support',
+        replies: 1,
+        promptTokens: 0,
+        completionTokens: 0,
+      },
+    ]);
+  });
+
   it('carries no user ids or names', async () => {
     const result = JSON.stringify(await usage('tenant-a', 30));
 

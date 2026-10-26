@@ -26,7 +26,10 @@ export interface TenantUsageDay {
 }
 
 export interface TenantUsageModel {
+  /** The reply's model; for an agent's replies LibreChat stores the agent id here. */
   model: string;
+  /** Set when `model` is an agent of the tenant: its current name, for display. */
+  agentName?: string;
   replies: number;
   promptTokens: number;
   completionTokens: number;
@@ -53,6 +56,8 @@ export interface TenantUsageMethods {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** LibreChat's agent ids (`agent_<nanoid>`), which agent replies carry as their model. */
+const AGENT_ID_PREFIX = 'agent_';
 
 function zoneOf(timeZone?: string): string {
   if (!timeZone) return 'UTC';
@@ -181,6 +186,17 @@ export function createTenantUsageMethods(mongoose: typeof import('mongoose')): T
         const entry = modelEntry(row._id);
         entry.promptTokens = Math.round(row.promptTokens ?? 0);
         entry.completionTokens = Math.round(row.completionTokens ?? 0);
+      }
+      const agentIds = [...byModel.keys()].filter((id) => id.startsWith(AGENT_ID_PREFIX));
+      const agents = agentIds.length
+        ? await run<{ _id: string; name?: string }>('Agent', [
+            { $match: { id: { $in: agentIds } } },
+            { $group: { _id: '$id', name: { $first: '$name' } } },
+          ])
+        : [];
+      for (const agent of agents) {
+        const entry = byModel.get(agent._id);
+        if (entry && agent.name) entry.agentName = agent.name;
       }
       const models = [...byModel.values()].sort(
         (a, b) => b.replies - a.replies || a.model.localeCompare(b.model),
