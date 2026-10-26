@@ -183,6 +183,11 @@ const agentSchema: Schema<IAgent> = new Schema<IAgent>(
       enum: ['user', 'agent'],
       default: undefined,
     },
+    /** Fork: a tenant's copy of a platform agent; written by the platform sync only. */
+    platformAgentId: {
+      type: String,
+      default: undefined,
+    },
     tenantId: {
       type: String,
       index: true,
@@ -201,5 +206,6 @@ agentSchema.index({ tenantId: 1, updatedAt: -1, _id: 1 });
 agentSchema.index({ createdAt: -1, _id: 1 });
 agentSchema.index({ tenantId: 1, createdAt: -1, _id: 1 });
 agentSchema.index({ 'edges.to': 1 });
+agentSchema.index({ platformAgentId: 1, tenantId: 1 }, { sparse: true });
 
 export default agentSchema;

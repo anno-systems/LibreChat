@@ -300,6 +300,44 @@ Catalog endpoints must list their models (`fetch: false`); a fetched list would 
 narrowing. The lock is an environment switch rather than a `librechat.yaml` field so it is never
 writable through the API it guards.
 
+### Platform agents
+
+Some agents belong to the platform, not to a tenant: the support agent first (2026-10-26). The
+operator defines them in the admin app's operator area (`/api/platform/agents`): name,
+description, instructions, conversation starters, tools (the tools the platform's MCP servers
+registered, `/api/platform/agents/tools`, such as the `support` server's), a model of a platform
+provider, and the tenants, all (also ones created later) or
+listed ones (`packages/api/src/platform/agents.ts`, `PlatformAgent` in
+`packages/data-schemas/src/methods/platformAgent.ts`, platform-wide like providers and banners).
+
+- **A copy per tenant.** Each targeted tenant gets an ordinary agent of its own with
+  `platformAgentId` set (`agent_<platformAgentId>`, no author) and upstream's viewer grant for
+  everyone in the tenant, so the chat, the agent list, favorites, usage per agent and the
+  model selector need nothing new. Copies are written when the operator saves or deletes a
+  definition and when a tenant admin switches one; a tenant created later gets its copies the
+  first time its agents are listed (at most every 30 seconds per replica).
+- **Tenant admins switch, nothing else** (owner's decision). `/api/admin/platform-agents` lists
+  the platform agents meant for the tenant and switches one on or off (`manage:agents`); off
+  deletes the tenant's copy, on writes it again with the same id, so favorites come back.
+- **Locked for everyone else.** A LibreChat admin's `manage:agents` bypasses agent ACLs, so
+  sharing rights alone cannot protect a copy. Every route that changes an agent, its files,
+  actions, avatar, versions or sharing answers 403 `platform_agent_locked` for a copy, whoever
+  calls; behind them, data-schemas' `platformAgentLock` makes any other agent update or delete
+  match no copy and refuses to save a document claiming to be one. The chat's builder shows a
+  copy read-only. Erasing a tenant still deletes its copies.
+- **Provider without assignment, billed to the tenant.** A run of a copy adds its catalog
+  provider as a custom endpoint of that run's config, and its model to the models the run
+  validates against, without touching the tenant's endpoint and model lists
+  (`prepareRun`, called in `api/server/services/Endpoints/agents/initialize.js`). The endpoint
+  is built like the tenant catalog's, so tokens are priced at the provider's rates, and the
+  transactions are written in the tenant's context, where the platform markup applies. Only the
+  current copy of a definition that targets the tenant and runs on that provider and model gets
+  the endpoint. A provider a platform agent runs on cannot be deleted
+  (`provider_used_by_agents`).
+- **Not covered yet.** A platform agent as a handoff or subagent target of a tenant's agent, in
+  the multi-conversation view and on the OpenAI-compatible agents API still needs the tenant's
+  assignment of its provider.
+
 ## Admin app
 
 One application serves both tenant admins and the operator, so there is one codebase, one design
@@ -322,6 +360,7 @@ Built so far (2026-10-20), in the tenant area:
 | Features            | `USE` of role permissions (agents, web search, file search, MCP, skills, memory, code, prompts, bookmarks …)          |
 | Models              | Narrowing of the YAML catalog in the base document, under the catalog lock                                            |
 | Agents for everyone | Upstream's public viewer grant on an agent (`/api/permissions/agent/:id`), kept inside the tenant by isolation        |
+| Platform agents     | On or off per tenant (`/api/admin/platform-agents`); see [Platform agents](#platform-agents)                          |
 | User limits         | `balance.*` in the base document; one user's credits through the fork's `/api/admin/users/:id/balance`                |
 | Web search usage    | The search gateway's usage report, asked for the session's tenant only                                                |
 | Single sign-on      | Identity providers in the tenant's Zitadel organization (see [Single sign-on per tenant](#single-sign-on-per-tenant)) |
@@ -335,8 +374,8 @@ platform organization) the admin app creates the organization with the tenant id
 domain and branding, grants it LibreChat's project, adds the admin app's service user, adds the
 tenant's callback URLs to LibreChat's OIDC app and invites the first admin with `tenant-admin`.
 A failed step undoes the ones before it. LibreChat itself needs nothing per tenant. The operator
-area also suspends, reactivates and deletes tenants, sets their custom domains and keeps the
-platform providers of the tenant catalog. Missing: plans.
+area also suspends, reactivates and deletes tenants, sets their custom domains, keeps the
+platform providers of the tenant catalog and the platform agents. Missing: plans.
 
 The admin app keeps LibreChat's admin token on its server and refreshes it about a minute before
 `SESSION_EXPIRY` through upstream's `/api/admin/oauth/refresh`. Agents and their permissions live
@@ -911,6 +950,11 @@ Decided:
   organizations only (see [Single sign-on per tenant](#single-sign-on-per-tenant)).
 - Tenant-wide agents (2026-10-20): upstream's public viewer grant, which tenant isolation keeps
   inside the tenant; no fork change.
+- Platform agents (2026-10-26): the operator defines agents such as the support agent once, on a
+  platform provider's model, for all or listed tenants; each tenant holds a locked copy that its
+  admins can only switch on or off, and its runs are billed to the tenant (see
+  [Platform agents](#platform-agents)). The support agent the admin app used to set up per tenant
+  is replaced by it; existing tenant-made support agents stay until their admins delete them.
 - Tenant onboarding (2026-10-20): the operator creates a tenant in the admin app's operator
   area, which acts in Zitadel only; the Zitadel organizations are the tenant registry until
   plans or custom domains need a `Tenant` record. Tenant admins name their organization id at

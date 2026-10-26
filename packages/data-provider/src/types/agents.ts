@@ -1149,6 +1149,9 @@ export type Agent = {
    * so a capability holder can edit agents this flag reports as not editable.
    */
   isEditable?: boolean;
+  /** Fork: set on a tenant's copy of a platform agent, which only the platform operator
+   * changes; the builder treats it as read-only. */
+  platformAgentId?: string;
   version?: number;
   category?: string;
   support_contact?: SupportContact;

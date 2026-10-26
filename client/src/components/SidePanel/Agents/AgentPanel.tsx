@@ -492,9 +492,11 @@ export default function AgentPanel() {
   );
 
   const canEdit = hasPermission(PermissionBits.EDIT);
+  /** A platform agent is provided by the platform operator: nobody edits it here, admins neither. */
+  const isPlatformAgent = Boolean(basicAgentQuery.data?.platformAgentId);
   /** Same editor-visibility bypass `canEditAgent` grants admins below: an admin can open
    *  the editor for a linked agent even without ACL EDIT on it. */
-  const hasEditorAccess = canEdit || user?.role === SystemRoles.ADMIN;
+  const hasEditorAccess = (canEdit || user?.role === SystemRoles.ADMIN) && !isPlatformAgent;
 
   const expandedAgentQuery = useGetExpandedAgentByIdQuery(current_agent_id ?? '', {
     enabled: !isEphemeralAgent(current_agent_id) && hasEditorAccess && !permissionsLoading,
@@ -1030,7 +1032,11 @@ export default function AgentPanel() {
                 <h2 className="text-text-primary m-2 text-xl font-semibold">
                   {localize('com_agents_not_available')}
                 </h2>
-                <p className="text-text-secondary">{localize('com_agents_no_access')}</p>
+                <p className="text-text-secondary">
+                  {localize(
+                    isPlatformAgent ? 'com_agents_platform_locked' : 'com_agents_no_access',
+                  )}
+                </p>
                 {agentQuery.data?.id && <ResetApprovals agentId={agentQuery.data.id} />}
               </div>
             </div>

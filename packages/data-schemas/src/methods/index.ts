@@ -6,6 +6,12 @@ export { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createPlatformCatalogMethods } from './platformCatalog';
 export { createPlatformBannerMethods } from './platformBanner';
 export type { PlatformBanner } from './platformBanner';
+export {
+  createPlatformAgentMethods,
+  platformAgentCopyId,
+  PLATFORM_AGENT_AUTHOR,
+} from './platformAgent';
+export type { PlatformAgent, PlatformAgentCopy, PlatformAgentInput } from './platformAgent';
 export { createPlatformPricingMethods, withTokenMarkup } from './platformPricing';
 export type { PlatformPricing, PricingCurrency, ResolvedPricing } from './platformPricing';
 export { isCostMonth, WEB_SEARCH_CONTEXT } from './tenantCosts';
@@ -100,6 +106,7 @@ import { createAssistantMethods, type AssistantMethods } from './assistant';
 import { createBannerMethods, type BannerMethods } from './banner';
 import { createPlatformCatalogMethods, type PlatformCatalogMethods } from './platformCatalog';
 import { createPlatformBannerMethods, type PlatformBannerMethods } from './platformBanner';
+import { createPlatformAgentMethods, type PlatformAgentMethods } from './platformAgent';
 import {
   withTokenMarkup,
   createPlatformPricingMethods,
@@ -320,6 +327,7 @@ export type AllMethods = ToolApprovalGrantStorage &
   BannerMethods &
   PlatformCatalogMethods &
   PlatformBannerMethods &
+  PlatformAgentMethods &
   PlatformPricingMethods &
   McpToolPolicyMethods &
   TenantPurgeMethods &
@@ -581,6 +589,7 @@ export function createMethods(
     ...createBannerMethods(mongoose),
     ...createPlatformCatalogMethods(mongoose),
     ...createPlatformBannerMethods(mongoose),
+    ...createPlatformAgentMethods(mongoose),
     ...pricingMethods,
     ...createMcpToolPolicyMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
@@ -660,6 +669,7 @@ export type {
   BannerMethods,
   PlatformCatalogMethods,
   PlatformBannerMethods,
+  PlatformAgentMethods,
   PlatformPricingMethods,
   McpToolPolicyMethods,
   TenantPurgeMethods,

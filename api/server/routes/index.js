@@ -13,6 +13,7 @@ const adminSkills = require('./admin/skills');
 const adminUsers = require('./admin/users');
 const adminAuditLog = require('./admin/audit');
 const adminCatalog = require('./admin/catalog');
+const adminPlatformAgents = require('./admin/platformAgents');
 const platform = require('./platform');
 const platformMcp = require('./platformMcp');
 const adminMcpTools = require('./admin/mcpTools');
@@ -68,6 +69,7 @@ module.exports = {
   adminUsers,
   adminAuditLog,
   adminCatalog,
+  adminPlatformAgents,
   platform,
   platformMcp,
   adminMcpTools,
