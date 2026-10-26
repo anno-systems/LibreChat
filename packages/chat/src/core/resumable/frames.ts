@@ -262,6 +262,15 @@ export async function handleFrame(ctx: StreamContext, event: ChatEvent): Promise
       return;
     }
 
+    if (event.type === 'queue_status') {
+      const { data } = event;
+      host.pane.setQueueStatus?.(
+        data.conversationId ?? sub.conversationId(),
+        data.queued ? data : null,
+      );
+      return;
+    }
+
     if (event.type === 'activity_label') {
       patcher.applyActivityLabel(event.data);
       return;

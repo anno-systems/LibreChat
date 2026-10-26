@@ -126,6 +126,27 @@ describe('handleFrame', () => {
     expect(run.stream?.signal.aborted).toBe(true);
   });
 
+  it('shows the queue status while the run waits and clears it on admission and at the end', async () => {
+    const { host, emit } = attach();
+    const waiting = { queued: true, position: 2, reason: 'provider_busy', conversationId: 'c-1' };
+    await emit({ type: 'queue_status', data: waiting } as ChatEvent);
+    expect(host.pane.setQueueStatus).toHaveBeenLastCalledWith('c-1', waiting);
+
+    await emit({ type: 'queue_status', data: { queued: false } } as ChatEvent);
+    expect(host.pane.setQueueStatus).toHaveBeenLastCalledWith('c-1', null);
+
+    await emit({ type: 'queue_status', data: waiting } as ChatEvent);
+    await emit({
+      type: 'final',
+      data: {
+        final: true,
+        conversation: { conversationId: 'c-1' },
+        responseMessage: { messageId: 'r-1', conversationId: 'c-1' },
+      },
+    } as ChatEvent);
+    expect(host.pane.setQueueStatus).toHaveBeenLastCalledWith('c-1', null);
+  });
+
   it('ignores an unnegotiated lifecycle reconciliation frame', async () => {
     const { host, emit } = attach();
     await emit({ type: 'final', data: { final: true, reconcile: true } } as ChatEvent);

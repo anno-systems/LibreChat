@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { logger } from '@librechat/data-schemas';
+import { providerLimitsSchema } from 'librechat-data-provider';
 import type {
   AppConfig,
   AuditActorInput,
@@ -101,6 +102,8 @@ const providerInputSchema = z
     dropParams: dropParamsSchema,
     /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
     allTenants: z.boolean().optional(),
+    /** Fork: the provider's queue limits; omitted removes them (no queue). */
+    limits: providerLimitsSchema.optional(),
   })
   .strict();
 
@@ -253,6 +256,7 @@ export function createPlatformCatalogHandlers(
       ...(provider.country && { country: provider.country }),
       ...(provider.dropParams && { dropParams: provider.dropParams }),
       allTenants: provider.allTenants === true,
+      ...(provider.limits && { limits: provider.limits }),
       apiKeyPreview: preview(provider.apiKey, decrypt),
       ...(tenants && { tenants }),
     };
@@ -304,6 +308,7 @@ export function createPlatformCatalogHandlers(
           keyChanged: Boolean(apiKey),
           models: saved.models.length,
           allTenants: saved.allTenants === true,
+          queued: saved.limits != null,
         },
       });
       return res.status(existing ? 200 : 201).json({ provider: providerView(saved) });

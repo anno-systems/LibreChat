@@ -75,6 +75,21 @@ describe('platform providers', () => {
     expect(cleared).not.toHaveProperty('dropParams');
   });
 
+  it('stores queue limits with only the fields set and clears them on an update without', async () => {
+    const limited = await methods.upsertPlatformProvider({
+      ...mistral,
+      limits: { concurrency: 3, maxWaitSeconds: 60 },
+    });
+    expect(limited.limits).toEqual({ concurrency: 3, maxWaitSeconds: 60 });
+
+    await methods.upsertPlatformProvider({ ...mistral, limits: { tokensPerMinute: 50_000 } });
+    const [replaced] = await methods.findPlatformProviders([mistral.name]);
+    expect(replaced.limits).toEqual({ tokensPerMinute: 50_000 });
+
+    const cleared = await methods.upsertPlatformProvider(mistral);
+    expect(cleared).not.toHaveProperty('limits');
+  });
+
   it('stores the all-tenants flag and finds those providers with the named ones', async () => {
     const created = await methods.upsertPlatformProvider(mistral);
     expect(created.allTenants).toBe(false);

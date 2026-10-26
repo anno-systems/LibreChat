@@ -14,6 +14,7 @@ import type {
   TTokenUsageEvent,
   TContextUsageEvent,
   TSteerUpdatedEvent,
+  TQueueStatusEvent,
   TSteerAppliedEvent,
   TActivityLabelEvent,
   TReasoningLabelEvent,
@@ -197,6 +198,8 @@ export interface ResumablePane {
     generationProtocolVersion?: GenerationProtocolVersion,
   ) => boolean;
   setPendingAction: (conversationId: string, action: Agents.PendingAction | null) => void;
+  /** Fork: whether the run waits in its provider's queue, and where; `null` once it does not. */
+  setQueueStatus?: (conversationId: string, status: TQueueStatusEvent | null) => void;
   /** Drops the composer drafts the finished run consumed. */
   clearComposerDrafts: (
     conversationId: string | null | undefined,

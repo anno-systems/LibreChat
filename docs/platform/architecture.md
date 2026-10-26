@@ -469,6 +469,37 @@ the display currency with a fixed USD rate. Decisions:
   is derived from the current markup; record it per transaction before the first invoice run if a
   markup changes mid-period.
 
+### Provider limits and the wait queue (2026-10-26)
+
+With a few hundred users across several companies, the providers' token and request limits will
+be reached. A turn over a limit waits instead of failing (`packages/api/src/queue/`):
+
+- **Limits per provider, set by the operator.** `limits` on a platform provider (operator API and
+  the admin app's catalog form) or on a `librechat.yaml` custom endpoint: `concurrency` (turns
+  running at once), `requestsPerMinute`, `tokensPerMinute`, `maxWaitSeconds` (default 120) and
+  `pauseSeconds` (pause after a 429 without `Retry-After`, default 10). No `limits`, no queue
+  (upstream's behaviour); `limits: {}` only adds the 429 retry. Tenants cannot set them: the
+  catalog lock refuses every endpoint field but the models, and a tenant's own (BYOK) endpoints
+  never get them.
+- **One queue per provider for every tenant, strictly first come, first served.** Only the head
+  of a queue can be admitted. The unit is the turn: it holds one slot for its whole run, sub-agents
+  and tool loops included, and is charged one request plus its estimated prompt tokens at
+  admission; when it ends, the 60-second window holds what it actually used (all model calls and
+  tokens). Titles, memory and activity labels are not gated.
+- **The user sees why.** A waiting turn streams `on_queue_status` (`position`, `reason`
+  `provider_busy` or `rate_limited`), repeated every 15 seconds for a reattached client and
+  cleared on admission; the chat shows "High demand: your message is queued (position 3) and will
+  be sent automatically" under the pending reply. Stop leaves the queue.
+- **429 fallback.** If the provider still answers 429 before anything has streamed, the turn goes
+  back to the head of the queue and the provider's admissions pause for its `Retry-After` (or
+  `pauseSeconds`), within the turn's remaining wait. After content has streamed, or for an
+  exhausted quota, the turn fails as before.
+- **Timeout.** A turn that waited `maxWaitSeconds` ends with `queue_timeout` ("The model is
+  overloaded right now. Please try again in a few minutes.").
+- The queue state sits behind a store interface; today's store is in memory, so limits hold per
+  replica. Several replicas need the Redis store (see
+  [Before more than one replica can run](#before-more-than-one-replica-can-run)).
+
 Added:
 
 - **Budgets per group and tenant**, checked next to the user balance in
@@ -807,6 +838,7 @@ not optimisations:
 | Admin app | Sessions in memory (`createMemorySessionStore`)              | Sessions in Redis; otherwise every deploy signs every admin out             |
 | LibreChat | No Redis; `SCHEDULES_SINGLE_PROCESS=true` in the local stack | `USE_REDIS`: sessions, rate limits, bans, resumable streams, scheduler lock |
 | LibreChat | Uploads on a local volume, logs to a volume                  | File strategy S3 (STACKIT object storage), logs to stdout                   |
+| LibreChat | Provider wait queue in memory (`createMemoryQueueStore`)     | A Redis queue store, so provider limits hold across replicas                |
 | Caddy     | Certificates on a local volume                               | Shared certificate storage                                                  |
 
 The 30-second caches (tenant catalog, tenant router, tool policy) stay per replica; a change
@@ -973,6 +1005,10 @@ Decided:
   before Zitadel.
 - Custom domains (2026-10-20): organization metadata, resolved by the tenant router, which sends
   the origin LibreChat uses for that request; certificates on demand only for known domains.
+- Provider limits (2026-10-26): operator-set limits per provider with a fair first-come
+  first-served wait queue shared by all tenants, counted per turn, a 429 retry before any content
+  and a two-minute default wait (see [Provider limits and the wait
+  queue](#provider-limits-and-the-wait-queue-2026-10-26)).
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
   (`anno-systems/mcp-servers`, `servers/search-gateway`), which LibreChat reaches as a SearXNG
   instance and as Serper's scraper. Since 2026-10-23 one web search config in `librechat.yaml`

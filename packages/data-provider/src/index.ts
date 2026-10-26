@@ -5,6 +5,7 @@ export * from './balance';
 export * from './branding';
 export * from './config';
 export * from './footer';
+export * from './queue';
 export * from './theme';
 export * from './langchain';
 export * from './filters';

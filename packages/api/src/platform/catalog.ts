@@ -1,5 +1,5 @@
 import type { AppConfig, PlatformProvider, TenantCatalog } from '@librechat/data-schemas';
-import type { TEndpoint } from 'librechat-data-provider';
+import type { TEndpoint, TProviderLimits } from 'librechat-data-provider';
 
 /**
  * Per-tenant model catalog (fork-only). Besides `librechat.yaml`'s custom endpoints, a tenant
@@ -46,10 +46,19 @@ const DEFAULT_TTL_MS = 30_000;
 
 function endpointOf(
   tenantId: string,
-  source: { name: string; baseURL: string; apiKey: string; label?: string; dropParams?: string[] },
+  source: {
+    name: string;
+    baseURL: string;
+    apiKey: string;
+    label?: string;
+    dropParams?: string[];
+    /** Platform providers only; a tenant's own endpoint has no shared queue. */
+    limits?: TProviderLimits;
+  },
   models: string[],
 ): TEndpoint {
   return {
+    ...(source.limits && { limits: { ...source.limits } }),
     name: source.name,
     baseURL: source.baseURL,
     apiKey: source.apiKey,

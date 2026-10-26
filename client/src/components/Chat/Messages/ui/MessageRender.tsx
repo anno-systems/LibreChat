@@ -20,6 +20,7 @@ import { PrivateText } from '~/components/Chat/Messages/PrivateText';
 import HoverButtons from '~/components/Chat/Messages/HoverButtons';
 import MessageRow from '~/components/Chat/Messages/ui/MessageRow';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
+import QueueStatus from '~/components/Chat/Messages/QueueStatus';
 import Wakeup from '~/components/Chat/Messages/Content/Wakeup';
 import SubRow from '~/components/Chat/Messages/SubRow';
 import { MessageContext } from '~/Providers';
@@ -202,7 +203,12 @@ const MessageRender = memo(function MessageRender({
             isCreatedByUser: msg.isCreatedByUser,
             siblingIdx,
             siblingCount,
-          }) && <Elapsed index={index} />}
+          }) && (
+            <>
+              <Elapsed index={index} />
+              <QueueStatus conversationId={msg.conversationId ?? conversation?.conversationId} />
+            </>
+          )}
           {/* A user turn is right-aligned, so its retry navigation belongs at the
               outer edge under the bubble rather than inboard of the actions.
 

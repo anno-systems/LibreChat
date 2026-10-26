@@ -246,6 +246,19 @@ describe('Error — reader-facing provider and fallback copy', () => {
     },
   );
 
+  it('localizes a provider queue timeout and drops its older-client prose and payload', () => {
+    renderError(
+      `The model is overloaded right now. Please try again in a few minutes.\n${JSON.stringify({
+        type: ErrorTypes.QUEUE_TIMEOUT,
+      })}`,
+      providerMessage,
+    );
+
+    expect(screen.getByText(catalog.com_error_queue_timeout)).toBeInTheDocument();
+    expect(screen.getAllByText(/overloaded/)).toHaveLength(1);
+    expectReadable();
+  });
+
   it('keeps fallback prose when an older client cannot recognize the server error type', () => {
     const prose =
       'The model provider closed the connection before the response finished. Try again.';

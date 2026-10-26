@@ -181,6 +181,45 @@ describe('operator API', () => {
     ]);
   });
 
+  it('stores queue limits, shows them to the operator and removes them when left out', async () => {
+    const { handlers } = setup();
+    const limits = {
+      concurrency: 4,
+      requestsPerMinute: 60,
+      tokensPerMinute: 200_000,
+      maxWaitSeconds: 90,
+    };
+
+    const created = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, { ...provider, limits }),
+    );
+    const listed = await call(handlers.listProviders, operatorReq({}));
+    expect(created.statusCode).toBe(201);
+    expect(listed.body?.providers).toEqual([expect.objectContaining({ limits })]);
+
+    const { apiKey: _key, ...update } = provider;
+    await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, update));
+    const [stored] = await methods.findPlatformProviders(['Mistral Platform']);
+    expect(stored.limits).toBeUndefined();
+  });
+
+  it('refuses limits outside their bounds or with unknown fields', async () => {
+    const { handlers } = setup();
+    for (const limits of [
+      { concurrency: 0 },
+      { requestsPerMinute: 1.5 },
+      { maxWaitSeconds: 901 },
+      { burst: 3 },
+    ]) {
+      const res = await call(
+        handlers.putProvider,
+        operatorReq({ name: 'Mistral Platform' }, { ...provider, limits }),
+      );
+      expect(res.statusCode).toBe(400);
+    }
+  });
+
   it('refuses a new provider without key, a YAML name, bad fields and bad names', async () => {
     const { handlers } = setup();
     const { apiKey: _key, ...withoutKey } = provider;

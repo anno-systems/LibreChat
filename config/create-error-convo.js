@@ -200,6 +200,11 @@ const ERROR_CASES = [
     covers: ErrorTypes.MODEL_STREAM_STALLED,
   },
   {
+    label: 'Provider queue wait ran out (fork)',
+    text: `The model is overloaded right now. Please try again in a few minutes.\n${JSON.stringify({ type: ErrorTypes.QUEUE_TIMEOUT })}`,
+    covers: ErrorTypes.QUEUE_TIMEOUT,
+  },
+  {
     label: 'Upstream model error with status (server prefix + JSON)',
     text: `The model provider failed and the run could not recover.\n${JSON.stringify({
       type: ErrorTypes.UPSTREAM_MODEL_ERROR,

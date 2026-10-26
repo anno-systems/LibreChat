@@ -22,6 +22,7 @@ import ContentParts from './Content/ContentParts';
 import SiblingSwitch from './SiblingSwitch';
 import { AuthorContext } from '~/Providers';
 import HoverButtons from './HoverButtons';
+import QueueStatus from './QueueStatus';
 import SubRow from './SubRow';
 import store from '~/store';
 
@@ -145,7 +146,12 @@ function MessageParts(props: TMessageProps) {
                 isCreatedByUser,
                 siblingIdx,
                 siblingCount,
-              }) && <Elapsed index={index} />}
+              }) && (
+                <>
+                  <Elapsed index={index} />
+                  <QueueStatus conversationId={message.conversationId} />
+                </>
+              )}
               {/* While the answer is generating every other action is withheld, which
                   would otherwise leave this counter sitting alone under a half-written
                   response. It reveals on hover there, like the actions it sits with. */}
