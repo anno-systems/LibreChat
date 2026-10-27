@@ -17,6 +17,7 @@ const adminPlatformAgents = require('./admin/platformAgents');
 const platform = require('./platform');
 const platformMcp = require('./platformMcp');
 const adminMcpTools = require('./admin/mcpTools');
+const adminMcpSubscriptions = require('./admin/mcpSubscriptions');
 const adminUsage = require('./admin/usage');
 const endpoints = require('./endpoints');
 const staticRoute = require('./static');
@@ -73,6 +74,7 @@ module.exports = {
   platform,
   platformMcp,
   adminMcpTools,
+  adminMcpSubscriptions,
   adminUsage,
   keys,
   apiKeys,

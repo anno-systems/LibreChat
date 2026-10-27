@@ -4,6 +4,7 @@ const {
   createAdminUsageHandler,
   createAdminCostsHandler,
   createAdminPricingHandler,
+  listConfiguredMcpServers,
 } = require('@librechat/api');
 const { hasCapability, requireCapability } = require('~/server/middleware/roles/capabilities');
 const { getModelsConfig } = require('~/server/controllers/ModelController');
@@ -27,6 +28,9 @@ router.get(
     getTenantCosts: db.getTenantCosts,
     resolvePricing: db.resolvePricing,
     hasCapability,
+    listMcpSubscriptions: db.listMcpSubscriptions,
+    listMcpServers: async () =>
+      listConfiguredMcpServers((await getAppConfig({ baseOnly: true }))?.mcpConfig),
   }),
 );
 router.get(

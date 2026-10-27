@@ -86,6 +86,7 @@ const {
   recordAuditEntry,
   sweepOrphanedPreviews,
   loadPlatformPricing,
+  loadMcpPricing,
 } = require('~/models');
 const { checkMigrations } = require('./services/start/migration');
 const initializeMCPs = require('./services/initializeMCPs');
@@ -497,6 +498,8 @@ if (cluster.isMaster) {
     await runAsSystem(seedDatabase);
     /* Fork: the operator's prices, held in memory for token rates (platformPricing.ts). */
     await loadPlatformPricing();
+    /* Fork: MCP server prices and active subscriptions, held in memory (mcpPricing.ts). */
+    await loadMcpPricing();
 
     /* Mirrors `server/index.js`; `runAsSystem` for tenant-isolated File. */
     runAsSystem(sweepOrphanedPreviews).catch((err) => {

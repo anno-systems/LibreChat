@@ -19,3 +19,22 @@ export function isMCPServerDisabled(config: MCPOptions | ParsedServerConfig | un
 export function toDisabledServerMarker(rawConfig: MCPOptions): ParsedServerConfig {
   return { ...rawConfig, enabled: false } as ParsedServerConfig;
 }
+
+/**
+ * Fork (MCP pricing): tells whether a priced platform server is off for the caller's tenant
+ * because the tenant has not subscribed to it. It must answer from memory: it runs on every
+ * resolution of a request's MCP servers.
+ */
+export type MCPServerBillingGate = (serverName: string) => boolean;
+
+/**
+ * Whether a config-tier entry hides the server from its scope: an explicit `enabled: false`, or
+ * a price the tenant has not agreed to. Without a gate, only the switch counts.
+ */
+export function isMCPServerSwitchedOff(
+  serverName: string,
+  config: MCPOptions | ParsedServerConfig | undefined,
+  isUnpaid?: MCPServerBillingGate,
+): boolean {
+  return isMCPServerDisabled(config) || isUnpaid?.(serverName) === true;
+}

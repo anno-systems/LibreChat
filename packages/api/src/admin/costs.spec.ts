@@ -114,4 +114,57 @@ describe('createAdminCostsHandler', () => {
     expect(res.statusCode).toBe(500);
     expect(res.body).toEqual({ error: 'Failed to load costs' });
   });
+  it('adds the fixed monthly MCP server charges of the period, apart from the credits', async () => {
+    const { deps } = setup();
+    const at = (month: number, day: number) => new Date(Date.UTC(2026, month - 1, day));
+    const subscriptions = [
+      {
+        id: 's1',
+        tenantId: 'tenant-a',
+        server: 'jira',
+        price: 20,
+        currency: 'EUR',
+        acceptedBy: { id: 'admin-1' },
+        acceptedAt: at(9, 20),
+        periods: [{ start: at(9, 20) }],
+        active: true,
+      },
+      {
+        id: 's2',
+        tenantId: 'tenant-a',
+        server: 'personio',
+        price: 15,
+        currency: 'EUR',
+        acceptedBy: { id: 'admin-1' },
+        acceptedAt: at(8, 1),
+        periods: [{ start: at(8, 1), end: at(8, 9) }],
+        active: false,
+      },
+    ];
+    const listMcpSubscriptions = jest.fn(async () => subscriptions);
+    const handler = createAdminCostsHandler({
+      ...deps,
+      listMcpSubscriptions,
+      listMcpServers: async () => [{ name: 'jira', title: 'Jira' }, { name: 'support' }],
+      now: () => at(10, 21),
+    });
+    const res = mockRes();
+    await handler(req({ month: '2026-10' }), res);
+
+    expect(listMcpSubscriptions).toHaveBeenCalledWith('tenant-a');
+    expect(res.body).toEqual({
+      ...COSTS,
+      currency: EUR,
+      mcpServers: [
+        {
+          server: 'jira',
+          label: 'Jira',
+          price: 20,
+          currency: 'EUR',
+          months: ['2026-10'],
+          amount: 20,
+        },
+      ],
+    });
+  });
 });
