@@ -8,6 +8,7 @@ import {
 import type { TMCPAppsPolicy } from 'librechat-data-provider';
 import type { IServerConfigsRepositoryInterface } from './ServerConfigsRepositoryInterface';
 import type { ReadThroughTransforms, FillToken } from './cache/ReadThroughAllCache';
+import type { MCPServerBillingGate } from './enabled';
 import type * as t from '~/mcp/types';
 import {
   ServerConfigsCacheFactory,
@@ -19,9 +20,9 @@ import {
   MCPInspectionFailedError,
   isMCPDomainNotAllowedError,
 } from '~/mcp/errors';
+import { isMCPServerDisabled, isMCPServerSwitchedOff, toDisabledServerMarker } from './enabled';
 import { normalizeLegacyHeaderMaps, normalizeLegacyHeaderMapsIn } from './compat';
 import { canBackfillSharedServerInstructions, isUserSourced } from '~/mcp/utils';
-import { isMCPServerDisabled, toDisabledServerMarker } from './enabled';
 import { ReadThroughAllCache } from './cache/ReadThroughAllCache';
 import { isPluginSourced, MCP_PLUGIN_SOURCE } from '~/utils/env';
 import { requireApiKeyReentryForRebinding } from './reentry';
@@ -338,6 +339,8 @@ export class MCPServersRegistry {
   private yamlServerOptions: ReadonlyMap<string, t.MCPOptions> = new Map();
   /** The librechat.yaml servers each principal's config hides. */
   private readonly hiddenServers: HiddenServers;
+  /** Fork (MCP pricing): priced servers the caller's tenant has not subscribed to are off. */
+  private billingGate?: MCPServerBillingGate;
 
   constructor(
     mongoose: typeof import('mongoose'),
@@ -402,6 +405,14 @@ export class MCPServersRegistry {
       mcpApps,
     );
     return MCPServersRegistry.instance;
+  }
+
+  /**
+   * Fork (MCP pricing): sets the check that turns a priced server off for a tenant without a
+   * subscription, in `ensureConfigServers` like an `enabled: false` override.
+   */
+  public setBillingGate(gate: MCPServerBillingGate | undefined): void {
+    this.billingGate = gate;
   }
 
   /** Returns the singleton MCPServersRegistry instance */
@@ -1382,7 +1393,7 @@ export class MCPServersRegistry {
 
     const settled = await Promise.allSettled(
       Object.entries(resolvedMcpConfig).map(async ([serverName, rawConfig]) => {
-        if (isMCPServerDisabled(rawConfig)) {
+        if (isMCPServerSwitchedOff(serverName, rawConfig, this.billingGate)) {
           result[serverName] = toDisabledServerMarker(rawConfig);
           return;
         }

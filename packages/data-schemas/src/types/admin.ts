@@ -1337,6 +1337,11 @@ export const AUDIT_ACTIONS = [
   /** Fork: per-tool policy of the platform's MCP servers, written by tenant admins; target
    * `{ type: 'mcp_tool', id: '<server>/<tool>' }`. */
   'mcp_tool.policy_updated',
+  /** Fork: a tenant admin agreed to a platform MCP server's monthly price (or switched a server
+   * back on within a charged month), or ended the subscription; the operator ends them by
+   * making a server free. Target `{ type: 'mcp_server', id: name, name }`, metadata the price. */
+  'mcp_server.subscribed',
+  'mcp_server.unsubscribed',
   /** Fork: the operator deleted a tenant and all of its data; platform chain, target
    * `{ type: 'tenant', id }`, metadata the counts. */
   'tenant.purged',
@@ -1394,6 +1399,8 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'catalog.agent_deleted': 'config',
   'catalog.agent_toggled': 'config',
   'mcp_tool.policy_updated': 'mcp',
+  'mcp_server.subscribed': 'mcp',
+  'mcp_server.unsubscribed': 'mcp',
   'tenant.purged': 'user',
 };
 

@@ -469,6 +469,37 @@ the display currency with a fixed USD rate. Decisions:
   is derived from the current markup; record it per transaction before the first invoice run if a
   markup changes mid-period.
 
+### MCP server prices (2026-10-27)
+
+Tenants pay a fixed monthly price for each platform MCP server they use, for example 20 EUR per
+tenant and server. The operator sets it in the operator area's Prices page
+(`/api/platform/mcp-pricing`); no price, or 0, means free. Decisions:
+
+- **Consent to the price shown.** Switching a priced server on in the admin app's AI tools needs
+  the tenant admin's explicit consent to the price (a toggle in the server's dialog). The admin
+  app sends the price it showed; LibreChat answers 409 `price_changed` when that is no longer the
+  current price. Each consent is a subscription (`McpSubscription`, tenant-isolated): server,
+  accepted price and currency, who accepted and when, and the periods it was on. Subscribing and
+  ending a subscription are audited (`mcp_server.subscribed`, `mcp_server.unsubscribed`).
+- **Billing.** A calendar month (UTC) is charged once for each subscription that was active at
+  any time in it, at the accepted price. Switching the server off ends the period but keeps the
+  month charged; switching it back on in the same month costs nothing extra. A changed price
+  applies to new subscriptions only, including switching back on after a month without the
+  server. Making a server free ends the running subscriptions. `GET /api/admin/usage/costs`
+  lists the charges of the period as `mcpServers`, apart from the token and search credits; the
+  admin app's Costs page shows them as their own section and in the period total.
+- **Enforcement where the servers are resolved.** A priced server without an active subscription
+  for the tenant is off for it, whatever `librechat.yaml`, the tenant's or a group's document
+  says: one more condition in the per-scope `enabled` decision (`isMCPServerSwitchedOff`,
+  `packages/api/src/mcp/registry/enabled.ts`). Prices and active subscriptions are held in memory
+  and reloaded at most every minute, like the token markup, so the check adds no database read to
+  a request; another LibreChat replica can take up to a minute to see a new subscription. Group
+  documents still narrow a subscribed server as before.
+- **The support server is never priced** (`FREE_MCP_SERVERS`): the API refuses a price for it and
+  the operator's page shows it as always free.
+- **Existing tenants lose a server once it gets a price** until a tenant admin agrees to it.
+- Open: invoicing from the charges, and whether a price per tenant (a discount) is needed.
+
 ### Provider limits and the wait queue (2026-10-26)
 
 With a few hundred users across several companies, the providers' token and request limits will
@@ -1005,6 +1036,10 @@ Decided:
   before Zitadel.
 - Custom domains (2026-10-20): organization metadata, resolved by the tenant router, which sends
   the origin LibreChat uses for that request; certificates on demand only for known domains.
+- MCP server prices (2026-10-27): a monthly price per tenant and server set by the operator, the
+  tenant admin's explicit consent per subscription, a month charged once at the accepted price,
+  and a priced server off for tenants without a subscription; `support` is always free (see [MCP
+  server prices](#mcp-server-prices-2026-10-27)).
 - Provider limits (2026-10-26): operator-set limits per provider with a fair first-come
   first-served wait queue shared by all tenants, counted per turn, a 429 retry before any content
   and a two-minute default wait (see [Provider limits and the wait

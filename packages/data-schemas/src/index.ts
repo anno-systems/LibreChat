@@ -62,6 +62,11 @@ export {
   /* Fork: platform pricing and tenant costs. */
   isCostMonth,
   WEB_SEARCH_CONTEXT,
+  /* Fork: MCP server prices and subscriptions. */
+  billingMonth,
+  chargedMonths,
+  mcpChargesBetween,
+  FREE_MCP_SERVERS,
   /* Fork: platform agents. */
   createPlatformAgentMethods,
   platformAgentCopyId,

@@ -178,4 +178,57 @@ describe('MCPServersRegistry — per-scope enabled switch', () => {
       expect(Object.keys(await registry.getAllServerConfigs('b', other))).not.toContain('gmail');
     });
   });
+  describe("billing gate: a priced server needs the tenant's subscription", () => {
+    /** Stands in for the in-memory subscriptions: gmail is priced, tenant-a subscribed. */
+    let subscribed: boolean;
+    const unpaid = (name: string) => name === 'gmail' && !subscribed;
+
+    beforeEach(() => {
+      subscribed = false;
+      registry.setBillingGate(unpaid);
+    });
+
+    afterEach(() => registry.setBillingGate(undefined));
+
+    it('hides a priced server without a subscription, whatever the config documents say', async () => {
+      // The YAML entry unchanged, and a group document that switches it on.
+      for (const config of [
+        { gmail, drive },
+        { gmail: { ...gmail, enabled: true }, drive },
+      ]) {
+        const configServers = await registry.ensureConfigServers(config);
+        expect(inspectSpy).not.toHaveBeenCalled();
+        const all = await registry.getAllServerConfigs('user-1', configServers);
+        expect(Object.keys(all).sort()).toEqual(['drive']);
+        expect(await registry.getServerConfig('gmail', 'user-1', configServers)).toBeUndefined();
+      }
+    });
+
+    it('shows it once subscribed, and a document can still switch it off', async () => {
+      subscribed = true;
+      const on = await registry.ensureConfigServers({ gmail, drive });
+      expect(Object.keys(await registry.getAllServerConfigs('user-1', on)).sort()).toEqual([
+        'drive',
+        'gmail',
+      ]);
+
+      const narrowed = await registry.ensureConfigServers({ gmail: { ...gmail, enabled: false } });
+      expect(await registry.getServerConfig('gmail', 'user-1', narrowed)).toBeUndefined();
+    });
+
+    it('leaves free servers and user-created servers alone', async () => {
+      const db = (registry as unknown as { dbConfigsRepo: DbRepoMock }).dbConfigsRepo;
+      db.getAll.mockResolvedValue({ gmail: userServer });
+      db.get.mockImplementation(async (name: string) =>
+        name === 'gmail' ? userServer : undefined,
+      );
+      await registry.reset();
+      await registry.addServer('drive', drive, 'CACHE');
+
+      const configServers = await registry.ensureConfigServers({ drive, gmail });
+      const all = await registry.getAllServerConfigs('user-1', configServers);
+      expect(Object.keys(all).sort()).toEqual(['drive', 'gmail']);
+      expect(all.gmail).toEqual(userServer);
+    });
+  });
 });

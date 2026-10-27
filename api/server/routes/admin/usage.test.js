@@ -19,8 +19,17 @@ jest.mock('@librechat/api', () => ({
   createAdminCostsHandler: (deps) => async (req, res) => {
     const costs = await deps.getTenantCosts({ tenantId: req.user.tenantId });
     const people = await deps.hasCapability(req.user, 'read:users');
-    res.json({ ...costs, people, currency: deps.resolvePricing(req.user.tenantId).currency });
+    const subscriptions = await deps.listMcpSubscriptions(req.user.tenantId);
+    const servers = await deps.listMcpServers();
+    res.json({
+      ...costs,
+      people,
+      currency: deps.resolvePricing(req.user.tenantId).currency,
+      subscriptions,
+      servers,
+    });
   },
+  listConfiguredMcpServers: (mcpConfig) => Object.keys(mcpConfig ?? {}).map((name) => ({ name })),
   createAdminPricingHandler: (deps) => async (req, res) => {
     const config = await deps.getTenantAppConfig(req.user.tenantId);
     const models = await deps.getModelsConfig(req);
@@ -59,6 +68,7 @@ jest.mock('~/models', () => ({
   getCacheMultiplier: jest.fn(),
   getTenantCosts: (...args) => mockGetTenantCosts(...args),
   resolvePricing: () => ({ currency: { code: 'EUR', rate: 0.92 } }),
+  listMcpSubscriptions: async (tenantId) => [{ tenantId, server: 'jira' }],
 }));
 
 describe('admin usage route', () => {
@@ -99,6 +109,7 @@ describe('admin usage route', () => {
 
   it('serves the tenant costs with READ_USAGE and the display currency', async () => {
     mockGetTenantCosts.mockResolvedValue({ totals: { tokenCredits: 3950 } });
+    mockGetAppConfig.mockResolvedValue({ mcpConfig: { jira: { title: 'Jira' } } });
     const app = express();
     app.use('/api/admin/usage', require('./usage'));
 
@@ -109,7 +120,10 @@ describe('admin usage route', () => {
       totals: { tokenCredits: 3950 },
       people: true,
       currency: { code: 'EUR', rate: 0.92 },
+      subscriptions: [{ tenantId: 'tenant-a', server: 'jira' }],
+      servers: [{ name: 'jira' }],
     });
+    expect(mockGetAppConfig).toHaveBeenCalledWith({ baseOnly: true });
     expect(middlewareCalls).toEqual(['jwt', 'access:admin', 'read:usage']);
     expect(mockGetTenantCosts).toHaveBeenCalledWith({ tenantId: 'tenant-a' });
   });

@@ -94,7 +94,7 @@ async function initializeMCPs() {
   const mcpServers = withPluginServers(appConfig.mcpConfig);
 
   try {
-    createMCPServersRegistry(
+    const registry = createMCPServersRegistry(
       mongoose,
       appConfig?.mcpSettings?.allowedDomains,
       appConfig?.mcpSettings?.allowedAddresses,
@@ -110,6 +110,8 @@ async function initializeMCPs() {
         appConfig?.mcpAppSandbox?.operationLimits,
       ),
     );
+    /* Fork: a priced MCP server is off for tenants without a subscription (mcpPricing.ts). */
+    registry?.setBillingGate((serverName) => db.isMcpServerUnpaid(serverName));
   } catch (error) {
     logger.error('[MCP] Failed to initialize MCPServersRegistry:', error);
     throw error;

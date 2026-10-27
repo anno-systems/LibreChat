@@ -84,6 +84,7 @@ const {
   listAllConfigs,
   recordAuditEntry,
   loadPlatformPricing,
+  loadMcpPricing,
 } = require('~/models');
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
@@ -242,6 +243,8 @@ const startServer = async () => {
   await runAsSystem(seedDatabase);
   /* Fork: the operator's prices, held in memory for token rates (platformPricing.ts). */
   await loadPlatformPricing();
+  /* Fork: MCP server prices and active subscriptions, held in memory (mcpPricing.ts). */
+  await loadMcpPricing();
   /* Recover stuck `status: 'pending'` records from a crash mid-render.
    * `runAsSystem` is required — `File` is tenant-isolated and strict
    * mode rejects unscoped queries. Lazy sweep in the preview endpoint
@@ -474,6 +477,8 @@ const startServer = async () => {
   app.use('/api/admin/platform-agents', routes.adminPlatformAgents);
   /* Fork: the per-tool policy of the platform's MCP servers. */
   app.use('/api/admin/mcp-tools', routes.adminMcpTools);
+  /* Fork: the tenant's subscriptions to priced MCP servers. */
+  app.use('/api/admin/mcp-subscriptions', routes.adminMcpSubscriptions);
   /* Fork: the tenant's chat usage for the admin dashboard. */
   app.use('/api/admin/usage', routes.adminUsage);
   app.use('/api/platform/mcp', routes.platformMcp);

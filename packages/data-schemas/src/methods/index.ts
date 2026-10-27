@@ -27,6 +27,14 @@ export type { PlatformPricing, PricingCurrency, ResolvedPricing } from './platfo
 export { isCostMonth, WEB_SEARCH_CONTEXT } from './tenantCosts';
 export type { TenantCosts, TenantCostPeriod } from './tenantCosts';
 export { createMcpToolPolicyMethods } from './mcpToolPolicy';
+export { billingMonth, chargedMonths, mcpChargesBetween, FREE_MCP_SERVERS } from './mcpPricing';
+export type {
+  McpCharge,
+  McpServerPrice,
+  McpSubscription,
+  McpSubscribeResult,
+  McpPriceResult,
+} from './mcpPricing';
 export type { McpToolMode, McpToolPolicyRule, PlatformMcpTool } from './mcpToolPolicy';
 export type { ScheduleMCPConsentStorage, ScheduleConsentSnapshot } from './scheduleConsent';
 export type {
@@ -128,6 +136,7 @@ import {
 import { createTenantCostMethods, type TenantCostMethods } from './tenantCosts';
 import { getTenantId } from '~/config/tenantContext';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
+import { createMcpPricingMethods, type McpPricingMethods } from './mcpPricing';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
@@ -346,6 +355,7 @@ export type AllMethods = SubagentContentMethods &
   PlatformAgentMethods &
   PlatformPricingMethods &
   McpToolPolicyMethods &
+  McpPricingMethods &
   TenantPurgeMethods &
   TenantUsageMethods &
   TenantCostMethods &
@@ -611,6 +621,7 @@ export function createMethods(
     ...createPlatformAgentMethods(mongoose),
     ...pricingMethods,
     ...createMcpToolPolicyMethods(mongoose),
+    ...createMcpPricingMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
     ...createTenantUsageMethods(mongoose),
     ...createTenantCostMethods(mongoose),
@@ -695,6 +706,7 @@ export type {
   PlatformAgentMethods,
   PlatformPricingMethods,
   McpToolPolicyMethods,
+  McpPricingMethods,
   TenantPurgeMethods,
   TenantUsageMethods,
   TenantCostMethods,
