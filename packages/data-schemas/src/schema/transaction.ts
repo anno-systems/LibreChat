@@ -65,4 +65,7 @@ const transactionSchema: Schema<ITransaction> = new Schema(
   },
 );
 
+/** Tenant usage and costs read a tenant's transactions in a time range (fork-only). */
+transactionSchema.index({ tenantId: 1, createdAt: 1 });
+
 export default transactionSchema;
