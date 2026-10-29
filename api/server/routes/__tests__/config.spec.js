@@ -1401,8 +1401,8 @@ describe('GET /api/config', () => {
       branch: 'dev',
       buildDate: '2026-04-20T12:00:00Z',
     };
-    /** Fork: only the deployment's own version reaches clients, never commit or branch. */
-    const aboutPayload = { version: '2026-04-20' };
+    /** Fork: only the deployment's own version (build date and image tag) reaches clients. */
+    const aboutPayload = { version: '2026-04-20 (sha-abcdef1)' };
 
     it('includes buildInfo in authenticated response when interface flag is not explicitly disabled', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
