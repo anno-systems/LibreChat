@@ -300,7 +300,7 @@ const buttonVariantRecipe = cva(
         row: 'h-auto gap-3 px-3.5 py-3',
         /** A labelled entry of the sidebar rail: the icon keeps its place from the icon-only rail
          *  and the label follows it (fork: sidebar labels). */
-        rail: 'h-9 w-full justify-start gap-3 px-2',
+        rail: 'h-theme-button-sm w-full justify-start gap-3 px-2',
         /** The padding of a tile that reserves a corner for an overflow menu. */
         tile: 'h-auto gap-0 p-4 pe-12',
       },
