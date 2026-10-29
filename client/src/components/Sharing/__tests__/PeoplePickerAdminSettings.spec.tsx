@@ -51,7 +51,7 @@ describe('PeoplePickerAdminSettings', () => {
   it('uses the responsive dialog width and a native submit action', () => {
     render(<PeoplePickerAdminSettings />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'com_ui_admin_settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_manage_people_picker' }));
 
     const dialog = screen.getByRole('dialog');
     const saveButton = screen.getByRole('button', { name: 'com_ui_save' });

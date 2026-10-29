@@ -9,7 +9,6 @@ jest.mock('~/data-provider', () => ({
 }));
 
 const mockTranslations: Record<string, string> = {
-  com_ui_latest_footer: 'Every AI for Everyone.',
   com_ui_privacy_policy: 'Privacy policy',
   com_ui_terms_of_service: 'Terms of service',
 };
@@ -19,12 +18,54 @@ jest.mock('~/hooks', () => ({
 }));
 
 describe('Footer', () => {
-  test('opens the default LibreChat site link in a new tab', () => {
-    render(<Footer startupConfig={null} />);
-    const link = screen.getByRole('link', { name: /LibreChat/ });
-    expect(link).toHaveAttribute('href', 'https://librechat.ai');
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  test('shows the app title and version without naming or linking LibreChat', () => {
+    const { container } = render(
+      <Footer startupConfig={{ appTitle: 'Acme AI', buildInfo: { version: '2026-10-29' } }} />,
+    );
+    expect(screen.getByTestId('default-footer')).toHaveTextContent('Acme AI 2026-10-29');
+    expect(container.querySelector('a')).toBeNull();
+    expect(container).not.toHaveTextContent(/LibreChat/);
+  });
+
+  test('shows only the app title when the build has no version', () => {
+    render(<Footer startupConfig={{ appTitle: 'Acme AI' }} />);
+    expect(screen.getByTestId('default-footer')).toHaveTextContent(/^Acme AI$/);
+  });
+
+  test('places no bar without a title, a version or policies', () => {
+    const { container } = render(<Footer startupConfig={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test('a configured footer replaces the default one', () => {
+    render(
+      <Footer
+        startupConfig={{
+          appTitle: 'Acme AI',
+          buildInfo: { version: '2026-10-29' },
+          customFooter: 'Operator footer',
+        }}
+      />,
+    );
+    expect(screen.getByText('Operator footer')).toBeInTheDocument();
+    expect(screen.queryByTestId('default-footer')).not.toBeInTheDocument();
+  });
+
+  test('an empty configured footer shows nothing in its place', () => {
+    const { container } = render(
+      <Footer startupConfig={{ appTitle: 'Acme AI', customFooter: '' }} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test('a conversation drops the default footer', () => {
+    const { container } = render(
+      <Footer
+        configuredOnly
+        startupConfig={{ appTitle: 'Acme AI', buildInfo: { version: '1' } }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   test('opens custom footer markdown links in a new tab', () => {

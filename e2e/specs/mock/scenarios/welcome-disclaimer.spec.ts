@@ -13,7 +13,7 @@ import { deleteConversations, deleteMessagesByConversation, seedConversations } 
  * projects and skip the mobile one.
  */
 
-const DISCLAIMER = 'a[href="https://librechat.ai"]';
+const DISCLAIMER = '[data-testid="default-footer"]';
 /** WCAG AA for body text; the disclaimer renders at 12px. */
 const AA_CONTRAST = 4.5;
 

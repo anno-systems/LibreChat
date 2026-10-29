@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Constants, hasConfiguredFooter } from 'librechat-data-provider';
+import { hasConfiguredFooter } from 'librechat-data-provider';
 import type { TStartupConfig } from 'librechat-data-provider';
 import { useGetStartupConfig } from '~/data-provider';
 import { policyUrls } from '~/utils/policies';
@@ -18,7 +18,8 @@ type FooterProps = {
   configuredOnly?: boolean;
 };
 
-type FooterStartupConfig = Pick<Partial<TStartupConfig>, 'customFooter'> & {
+type FooterStartupConfig = Pick<Partial<TStartupConfig>, 'customFooter' | 'appTitle'> & {
+  buildInfo?: Pick<NonNullable<TStartupConfig['buildInfo']>, 'version'>;
   interface?: Pick<NonNullable<TStartupConfig['interface']>, 'privacyPolicy' | 'termsOfService'>;
 };
 
@@ -68,6 +69,17 @@ export function useLandingFooter(): boolean {
   return isSuccess ? config?.interface?.landingFooter !== false : shellLandingFooter;
 }
 
+/**
+ * The footer a deployment shows when it configured none (fork: neutral footer): the app title and
+ * the version from the About page, as plain text. Upstream shows "LibreChat <version>", linked to
+ * librechat.ai, and its tagline, which name upstream to every visitor.
+ */
+export function getDefaultFooterText(config?: FooterStartupConfig | null): string {
+  const title = config?.appTitle?.trim() ?? '';
+  const version = config?.buildInfo?.version?.trim() ?? '';
+  return [title, version].filter(Boolean).join(' ');
+}
+
 function Footer({ className, startupConfig, configuredOnly = false }: FooterProps) {
   const shouldFetchConfig = startupConfig === undefined;
   const { data: fetchedConfig } = useGetStartupConfig({ enabled: shouldFetchConfig });
@@ -91,15 +103,10 @@ function Footer({ className, startupConfig, configuredOnly = false }: FooterProp
   );
 
   const configuredFooter = typeof config?.customFooter === 'string' ? config.customFooter : null;
-  /** The generic disclaimer is the part a conversation drops; the operator's own footer is not. */
-  const genericFooter = configuredOnly
-    ? ''
-    : '[LibreChat ' +
-      Constants.VERSION +
-      '](https://librechat.ai) - ' +
-      localize('com_ui_latest_footer');
-  const mainContent = configuredFooter ?? genericFooter;
-  const mainContentParts = mainContent === '' ? [] : mainContent.split('|');
+  const mainContentParts = configuredFooter ? configuredFooter.split('|') : [];
+  /** The generic line is the part a conversation drops; the operator's own footer is not. */
+  const defaultFooter =
+    configuredFooter == null && !configuredOnly ? getDefaultFooterText(config) : '';
 
   const mainContentRender = mainContentParts.map((text, index) => (
     <React.Fragment key={`main-content-part-${index}`}>
@@ -127,9 +134,16 @@ function Footer({ className, startupConfig, configuredOnly = false }: FooterProp
     </React.Fragment>
   ));
 
-  const footerElements = [...mainContentRender, privacyPolicyRender, termsOfServiceRender].filter(
-    Boolean,
+  const defaultFooterRender = defaultFooter !== '' && (
+    <span data-testid="default-footer">{defaultFooter}</span>
   );
+
+  const footerElements = [
+    ...mainContentRender,
+    defaultFooterRender,
+    privacyPolicyRender,
+    termsOfServiceRender,
+  ].filter(Boolean);
 
   /** A conversation with no configured footer has nothing to place, so it does
    *  not place an empty bar over the bottom of the thread. */

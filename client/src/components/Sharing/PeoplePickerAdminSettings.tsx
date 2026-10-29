@@ -30,10 +30,10 @@ const PeoplePickerAdminSettings = () => {
       type="button"
       variant="outline"
       className="font-medium"
-      aria-label={localize('com_ui_admin_settings')}
+      aria-label={localize('com_ui_manage_people_picker')}
     >
       <ShieldEllipsis className="size-4" aria-hidden="true" />
-      {localize('com_ui_admin_settings')}
+      {localize('com_ui_manage_people_picker')}
     </Button>
   );
 
