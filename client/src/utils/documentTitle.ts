@@ -2,6 +2,10 @@ import { LocalStorageKeys } from 'librechat-data-provider';
 
 export const CHAT_TITLE_IN_TAB_KEY = 'chatTitleInTab';
 export const DEFAULT_APP_TITLE = 'LibreChat';
+
+/** The product name for visible copy (fork-only): the startup config's title, else upstream's. */
+export const toAppTitle = (appTitle?: string | null): string =>
+  appTitle?.trim() || DEFAULT_APP_TITLE;
 let documentTitleRevision = 0;
 
 export const getDocumentTitleRevision = (): number => documentTitleRevision;

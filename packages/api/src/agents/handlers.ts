@@ -162,6 +162,7 @@ import { deleteSkillWithRetry } from '~/skills/cleanup';
 import { resolveDownloadPath } from '~/storage/path';
 import { parseFrontmatter } from '../skills/import';
 import { HostEditError } from './files/matching';
+import { getProductName } from '~/utils/product';
 import { cleanCodeToolOutput } from './cleanup';
 import { primeSkillFiles } from './skillFiles';
 import { instrumentPtcToolMap } from './ptc';
@@ -4108,7 +4109,7 @@ async function handleAttachedWorkspaceEditFileCall({
   if (edits.some((edit) => edit.replace_all === true) && !editFeatures.includes('replace_all')) {
     return errorResult(
       tc,
-      'replace_all needs a newer LibreChat Code worker on this machine. Make each old_text unique instead.',
+      `replace_all needs a newer ${getProductName()} Code worker on this machine. Make each old_text unique instead.`,
     );
   }
   /** Tolerant by default, like every other edit_file variant; operators can require exact. */
@@ -4153,8 +4154,7 @@ async function handleAttachedWorkspaceEditFileCall({
       } catch (error) {
         if (signal?.aborted === true && isAbortError(error)) throw error;
         if (error instanceof WorkspaceToolHttpError && error.upstreamStatus === 400) {
-          error.message +=
-            '. This attached environment must update its LibreChat Code worker before protected files can be edited.';
+          error.message += `. This attached environment must update its ${getProductName()} Code worker before protected files can be edited.`;
         }
         throw error;
       }

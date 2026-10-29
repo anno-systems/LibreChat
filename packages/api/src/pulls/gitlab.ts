@@ -19,6 +19,7 @@ import {
   DEFAULT_MAX_CANDIDATE_PAGES,
   DEFAULT_MAX_HEAD_COMPARISONS,
   DEFAULT_MAX_CANDIDATE_PULL_REQUESTS,
+  pullRequestUserAgent,
 } from './shared';
 import { PullRequestSourceError } from './types';
 
@@ -150,10 +151,14 @@ function parseDiffStats(value: unknown): { additions: number; deletions: number 
  */
 export function createGitLabPullRequestSource({
   fetchFn,
+  productName,
 }: {
   /** The deployment's HTTP client, so proxying and instrumentation are decided by the caller. */
   fetchFn: PullRequestFetch;
+  /** Named in the User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
 }): PullRequestSource {
+  const userAgent = pullRequestUserAgent(productName);
   type Lookup = {
     token: string;
     /** `https://{host}`; every request of the lookup goes there and nowhere else. */
@@ -179,7 +184,7 @@ export function createGitLabPullRequestSource({
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${lookup.token}`,
-          'User-Agent': 'LibreChat-Pull-Requests',
+          'User-Agent': userAgent,
           ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
         },
         signal: AbortSignal.any([AbortSignal.timeout(lookup.requestTimeoutMs), lookup.deadline]),

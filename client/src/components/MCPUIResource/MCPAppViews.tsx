@@ -15,8 +15,8 @@ import { selectToolCallUIResources, getInlineResourceHtml } from '~/utils/mcpApp
 import { useIsMessagesViewReadOnly } from '~/Providers/MessagesViewContext';
 import { MCPAppApproval, useMCPAppApproval } from '~/hooks/MCP/approval';
 import { useAppBridge, useMCPAppFrame } from '~/hooks/MCP';
+import { useAppTitle, useLocalize } from '~/hooks';
 import { MCPAppFrame } from './MCPAppFrame';
-import { useLocalize } from '~/hooks';
 
 const DEFAULT_APP_VIEW_HEIGHT = 320;
 
@@ -50,6 +50,7 @@ function ActiveMCPAppView({
   ordinal: number;
 }) {
   const localize = useLocalize();
+  const appTitle = useAppTitle();
   const { policy } = useMCPAppsHost();
   // Reuse the deployment operation limit to bound requests awaiting consent in this View.
   const approval = useMCPAppApproval(policy.operationLimits?.maxActive);
@@ -63,6 +64,7 @@ function ActiveMCPAppView({
     toolArgs: frame.toolArgs,
     toolResult: frame.toolResult,
     userId,
+    hostName: appTitle,
     onRequestAction: approval.request,
     onCancelAction: approval.cancel,
     attempt: frame.attempt,

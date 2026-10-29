@@ -1,3 +1,5 @@
+import { DEFAULT_PRODUCT_NAME, getProductUserAgent } from '~/utils/product';
+
 /** Defaults for the operator bounds in `endpoints.agents.pullRequests`, shared by every provider. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 export const DEFAULT_LOOKUP_TIMEOUT_MS = 30_000;
@@ -43,4 +45,9 @@ export function retryAfterMs(response: Response, resetHeader: string): number | 
     return Math.max(0, reset * 1000 - Date.now());
   }
   return undefined;
+}
+
+/** The User-Agent of every provider request, naming the deployment's product (fork-only). */
+export function pullRequestUserAgent(productName: string = DEFAULT_PRODUCT_NAME): string {
+  return getProductUserAgent(productName, 'Pull-Requests');
 }

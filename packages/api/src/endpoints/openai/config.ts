@@ -8,6 +8,7 @@ import { getGoogleConfig, stripGeminiFlashBlockedParams } from '~/endpoints/goog
 import { getLLMConfig as getAnthropicLLMConfig } from '~/endpoints/anthropic/llm';
 import { createSSRFSafeAgents, createSSRFSafeUndiciConnect } from '~/auth';
 import { getDirectDispatcher, getProxyDispatcher } from '~/utils/proxy';
+import { getProductName, getProductUrl } from '~/utils/product';
 import { constructAzureResponsesURL } from '~/utils/azure';
 import { transformToOpenAIConfig } from './transform';
 import { createFetch } from '~/utils/generators';
@@ -241,11 +242,12 @@ export function getOpenAIConfig(
     configOptions.baseURL = baseURL;
   }
   if (useOpenRouter || isVercel) {
+    const productName = getProductName(process.env);
     configOptions.defaultHeaders = Object.assign(
       {
-        'HTTP-Referer': 'https://librechat.ai',
-        'X-Title': 'LibreChat',
-        'X-OpenRouter-Title': 'LibreChat',
+        'HTTP-Referer': getProductUrl(process.env),
+        'X-Title': productName,
+        'X-OpenRouter-Title': productName,
         'X-OpenRouter-Categories': 'general-chat,personal-agent,programming-app',
       },
       headers,

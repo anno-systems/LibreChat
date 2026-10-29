@@ -6,6 +6,7 @@
   "com_nav_about_name": "Name",
   "com_nav_compact_sidebar": "Kompakte Seitenleiste (nur Symbole)",
   "com_nav_info_compact_sidebar": "Zeigt in der Seitenleiste nur die Symbole ohne Beschriftung. Beim Darüberfahren mit der Maus erscheint weiterhin der Name.",
+  "com_ui_code_environments_description": "Verbinde einen abgeschotteten Code-Worker, der auf einer von dir kontrollierten VM läuft. Der Worker baut die Verbindung selbst nach außen auf und muss mit eigener Sandbox- und Netzwerkrichtlinie eingerichtet werden.",
   "com_ui_manage_agents": "Agenten verwalten",
   "com_ui_manage_marketplace": "Marktplatz verwalten",
   "com_ui_manage_mcp_servers": "MCP-Server verwalten",

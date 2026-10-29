@@ -4,9 +4,9 @@ import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import type { PullRequestProvider } from 'librechat-data-provider';
 import type { PullRequestOAuthConfig } from './settings';
 import type { PullRequestFetch } from './shared';
+import { getSafeErrorMetadata, getProductName } from '~/utils';
+import { isRecord, pullRequestUserAgent } from './shared';
 import { getOAuthCallbackUrl } from '~/oauth/url';
-import { getSafeErrorMetadata } from '~/utils';
-import { isRecord } from './shared';
 
 export const PULL_REQUEST_OAUTH_TYPE = 'pr_oauth';
 /** One row per user: the connection generation a disconnect replaces, which every flow binds to. */
@@ -293,6 +293,7 @@ export function createPullRequestOAuth({
   fetchFn,
   secret,
   redirectUri,
+  productName,
   encrypt = encryptV2,
   decrypt = decryptV2,
   now = Date.now,
@@ -302,12 +303,15 @@ export function createPullRequestOAuth({
   /** Signs the state and derives the PKCE verifier. */
   secret: string;
   redirectUri: string;
+  /** Named in the User-Agent of token requests; upstream's "LibreChat" when absent. */
+  productName?: string;
   encrypt?: (value: string) => Promise<string>;
   decrypt?: (value: string) => Promise<string>;
   now?: () => number;
 }): PullRequestOAuth {
   const scopeOf = (userId: string, config: PullRequestOAuthConfig) =>
     `${PULL_REQUEST_OAUTH_TYPE}:${userId}:${config.provider}:${config.host}`;
+  const userAgent = pullRequestUserAgent(productName);
   const verifierOf = (nonce: string) =>
     base64url(createHmac('sha256', secret).update(`pull-request-oauth:${nonce}`).digest());
 
@@ -468,7 +472,7 @@ export function createPullRequestOAuth({
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'LibreChat-Pull-Requests',
+      'User-Agent': userAgent,
     };
     if (endpoints.basicAuth) {
       const credentials = Buffer.from(`${config.clientId}:${config.clientSecret}`);
@@ -997,6 +1001,7 @@ export function createPullRequestOAuthFromEnv({
     fetchFn,
     secret,
     redirectUri: pullRequestOAuthCallbackUrl(env),
+    productName: getProductName(env),
   });
 }
 

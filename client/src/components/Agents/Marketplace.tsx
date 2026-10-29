@@ -3,8 +3,8 @@ import { PermissionTypes, Permissions } from 'librechat-data-provider';
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom';
 import type t from 'librechat-data-provider';
 import { useGetEndpointsQuery, useGetAgentCategoriesQuery } from '~/data-provider';
+import { useAppTitle, useDocumentTitle, useHasAccess, useLocalize } from '~/hooks';
 import SortDropdown, { SORT_OPTIONS, DEFAULT_SORT_OPTION } from './SortDropdown';
-import { useDocumentTitle, useHasAccess, useLocalize } from '~/hooks';
 import MarketplaceAdminSettings from './MarketplaceAdminSettings';
 import OpenSidebar from '~/components/Chat/Menus/OpenSidebar';
 import useDrawerViewport from '~/hooks/Nav/useDrawerViewport';
@@ -34,7 +34,8 @@ const AgentMarketplace: React.FC<AgentMarketplaceProps> = ({ className = '' }) =
   }, [searchParams]);
   const mine: 0 | 1 = searchParams.get('mine') === '1' ? 1 : 0;
 
-  useDocumentTitle(`${localize('com_agents_marketplace')} | LibreChat`);
+  const appTitle = useAppTitle();
+  useDocumentTitle(`${localize('com_agents_marketplace')} | ${appTitle}`);
   useGetEndpointsQuery();
   const categoriesQuery = useGetAgentCategoriesQuery({
     staleTime: 1000 * 60 * 15,

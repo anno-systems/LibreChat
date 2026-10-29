@@ -114,6 +114,26 @@ describe('createAgentTriggerExecutionHost fire adapter', () => {
     await expect(host.dispatch(malformed)).rejects.toThrow('requestId must be a non-empty string');
   });
 
+  it('names the deployment product in the User-Agent', async () => {
+    const fetcher = fetchMock(async () =>
+      response({
+        streamId: 'stream-1',
+        conversationId: 'conversation-1',
+        generationCreatedAt: 40,
+        status: 'started',
+      }),
+    );
+    const host = createAgentTriggerExecutionHost({
+      ...deps(fetcher),
+      productName: 'Office Chat',
+    });
+
+    await host.dispatch(createFireEnvelope());
+
+    const headers = new Headers(fetcher.mock.calls[0][1]?.headers);
+    expect(headers.get('user-agent')).toMatch(/ OfficeChat-Agent-Trigger\/1$/);
+  });
+
   it('starts a new run with stable identity, principal context, and no source coupling', async () => {
     const envelope = createFireEnvelope();
     const idempotencyKey = getAgentTriggerIdempotencyKey(envelope);

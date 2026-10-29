@@ -6,9 +6,9 @@ import { TranslationKeys, useLocalize } from '~/hooks';
 import SocialLoginRender from './SocialLoginRender';
 import { BlinkAnimation } from './BlinkAnimation';
 import LegalConsent from './LegalConsent';
+import { cn, toAppTitle } from '~/utils';
 import { Banner } from '../Banners';
 import Footer from './Footer';
-import { cn } from '~/utils';
 
 function AuthLayout({
   children,
@@ -95,7 +95,7 @@ function AuthLayout({
           <img
             src={startupConfig?.interface?.branding?.logo ?? 'assets/logo.svg'}
             className="h-full w-full object-contain"
-            alt={localize('com_ui_logo', { 0: startupConfig?.appTitle ?? 'LibreChat' })}
+            alt={localize('com_ui_logo', { 0: toAppTitle(startupConfig?.appTitle) })}
           />
         </div>
       </BlinkAnimation>

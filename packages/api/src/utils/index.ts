@@ -26,6 +26,7 @@ export * from './math';
 export * from './oidc';
 export * from './openid';
 export * from './promise';
+export * from './product';
 export * from './proxy';
 export * from './query';
 export * from './ports';

@@ -150,6 +150,7 @@ module.exports = {
     ),
     createBackgroundTaskPolicyMiddleware: jest.fn(() => (_req, _res, next) => next()),
     createPullRequestSource: jest.fn(() => ({ find: jest.fn() })),
+    getProductName: jest.fn(() => 'LibreChat'),
     createProxyAwareFetch: jest.fn(() => jest.fn()),
     createPullRequestLookup: jest.fn(() => jest.fn()),
     createPullRequestLookupStore: jest.fn(() => undefined),

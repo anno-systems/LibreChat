@@ -30,7 +30,7 @@ import {
   useIsMessagesViewReadOnly,
   useMCPAppsPolicy,
 } from '~/Providers';
-import { logger } from '~/utils';
+import { DEFAULT_APP_TITLE, logger } from '~/utils';
 
 type MessageContentBlock = { type?: string; text?: string };
 
@@ -114,6 +114,8 @@ export type UseAppBridgeParams = {
   onLoaded?: () => void;
   onTeardown?: () => void;
   onFailed?: () => void;
+  /** The product name the app sees as its host (fork-only); upstream's "LibreChat" when absent. */
+  hostName?: string;
 };
 
 /** Maps the MCP Apps standard host style tokens onto LibreChat's theme CSS variables. Apps keep
@@ -165,6 +167,7 @@ export function useAppBridge({
   onLoaded,
   onTeardown,
   onFailed,
+  hostName = DEFAULT_APP_TITLE,
 }: UseAppBridgeParams) {
   const { ask } = useOptionalMessagesOperations();
   // Read-only views (shared transcripts, /search) must not let the embedded app proxy tool calls
@@ -190,6 +193,7 @@ export function useAppBridge({
   const onLoadedRef = useRef(onLoaded);
   const onTeardownRef = useRef(onTeardown);
   const onFailedRef = useRef(onFailed);
+  const hostNameRef = useRef(hostName);
   askRef.current = ask;
   requestActionRef.current = onRequestAction;
   cancelActionRef.current = onCancelAction;
@@ -198,6 +202,7 @@ export function useAppBridge({
   onLoadedRef.current = onLoaded;
   onTeardownRef.current = onTeardown;
   onFailedRef.current = onFailed;
+  hostNameRef.current = hostName;
   useEffect(() => {
     const iframe = iframeRef.current;
     const serverName = resource.serverName;
@@ -285,7 +290,7 @@ export function useAppBridge({
     };
     const bridge = new AppBridge(
       null,
-      { name: 'LibreChat', version: '1.0.0' },
+      { name: hostNameRef.current, version: '1.0.0' },
       {
         openLinks: {},
         logging: {},

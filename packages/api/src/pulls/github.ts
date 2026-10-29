@@ -19,6 +19,7 @@ import {
   DEFAULT_MAX_CANDIDATE_PAGES,
   DEFAULT_MAX_HEAD_COMPARISONS,
   DEFAULT_MAX_CANDIDATE_PULL_REQUESTS,
+  pullRequestUserAgent,
 } from './shared';
 import { isAllowedRepository } from './repository';
 import { PullRequestSourceError } from './types';
@@ -226,10 +227,14 @@ async function isSecondaryLimit(response: Response): Promise<boolean> {
  */
 export function createGitHubPullRequestSource({
   fetchFn,
+  productName,
 }: {
   /** The deployment's HTTP client, so proxying and instrumentation are decided by the caller. */
   fetchFn: PullRequestFetch;
+  /** Named in the User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
 }): PullRequestSource {
+  const userAgent = pullRequestUserAgent(productName);
   /** One lookup's credential and deadlines, shared by every request it makes. */
   type Lookup = {
     token: string;
@@ -259,7 +264,7 @@ export function createGitHubPullRequestSource({
           Accept: 'application/vnd.github+json',
           Authorization: `Bearer ${lookup.token}`,
           'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'LibreChat-Pull-Requests',
+          'User-Agent': userAgent,
         },
         signal: AbortSignal.any([AbortSignal.timeout(lookup.requestTimeoutMs), lookup.deadline]),
       });

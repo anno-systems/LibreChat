@@ -39,6 +39,7 @@ import { createHardenedOAuthFetch } from './hardenedFetch';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { sanitizeUrlForLogging } from '~/mcp/utils';
 import { getOAuthCallbackUrl } from '~/oauth/url';
+import { getProductName } from '~/utils/product';
 import { getSafeOAuthError } from './errors';
 import { getOAuthUrlPort } from './url';
 
@@ -723,7 +724,7 @@ export class MCPOAuthHandler {
 
     /** Client metadata based on what the server supports */
     const clientMetadata = {
-      client_name: 'LibreChat MCP Client',
+      client_name: `${getProductName(process.env)} MCP Client`,
       redirect_uris: [redirectUri || this.getDefaultRedirectUri()],
       grant_types: ['authorization_code'] as string[],
       response_types: ['code'] as string[],

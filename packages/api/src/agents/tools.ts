@@ -31,6 +31,7 @@ import {
 import { toolkitExpansion } from '~/tools/toolkits/mapping';
 import { normalizeAgentToolKeys } from '~/mcp/utils';
 import { collectReachableAgents } from './traversal';
+import { getProductName } from '~/utils/product';
 
 export const CREATE_FILE_TOOL_NAME = 'create_file';
 export const EDIT_FILE_TOOL_NAME = 'edit_file';
@@ -1011,7 +1012,7 @@ function attachedFileAuthoringParameters(
       path: {
         type: 'string',
         description: includeSkillFileInstructions
-          ? 'Use "skills/{skillName}/..." for a LibreChat skill file, or "workspace/{relativePath}" for a file in the selected attached environment.'
+          ? `Use "skills/{skillName}/..." for a ${getProductName()} skill file, or "workspace/{relativePath}" for a file in the selected attached environment.`
           : 'Use "workspace/{relativePath}" for a file in the selected attached environment.',
       },
     },

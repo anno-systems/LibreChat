@@ -1,5 +1,6 @@
 import { ErrorTypes, isCodeWorkspaceSelectionErrorReason } from 'librechat-data-provider';
 import type { CodeWorkspaceSelectionErrorReason } from 'librechat-data-provider';
+import { getProductName } from '~/utils/product';
 
 function codeWorkspaceSelectionErrorMessage(reason: CodeWorkspaceSelectionErrorReason): string {
   switch (reason) {
@@ -10,7 +11,7 @@ function codeWorkspaceSelectionErrorMessage(reason: CodeWorkspaceSelectionErrorR
     case 'worker_unavailable':
       return 'The attached code environment is unavailable. Reconnect the machine and try again.';
     case 'unsupported':
-      return 'The attached code environment does not advertise selectable workspaces. Update the LibreChat Code worker and try again.';
+      return `The attached code environment does not advertise selectable workspaces. Update the ${getProductName()} Code worker and try again.`;
     case 'missing':
       return 'The selected workspace is no longer registered on this machine. Restore the previous registration or start a new conversation.';
     case 'locked':
