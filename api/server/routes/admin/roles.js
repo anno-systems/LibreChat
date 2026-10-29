@@ -1,5 +1,5 @@
 const express = require('express');
-const { createAdminRolesHandlers } = require('@librechat/api');
+const { createAdminRolesHandlers, createAdminRolesLockoutGuards } = require('@librechat/api');
 const { SystemCapabilities } = require('@librechat/data-schemas');
 const { requireCapability } = require('~/server/middleware/roles/capabilities');
 const { invalidateConfigCaches } = require('~/server/services/Config');
@@ -43,14 +43,22 @@ const handlers = createAdminRolesHandlers({
   invalidatePromptGroupAccessContext: db.invalidatePromptGroupAccessContext,
 });
 
+/** Fork: admins keep every permission of the role ADMIN (admin lockout guard). */
+const lockout = createAdminRolesLockoutGuards({ getRoleByName: db.getRoleByName });
+
 router.use(requireJwtAuth, requireAdminAccess);
 
 router.get('/', requireReadRoles, handlers.listRoles);
-router.post('/', requireManageRoles, handlers.createRole);
+router.post('/', requireManageRoles, lockout.refuseLockedAdminRole, handlers.createRole);
 router.get('/:name', requireReadRoles, handlers.getRole);
 router.patch('/:name', requireManageRoles, handlers.updateRole);
 router.delete('/:name', requireManageRoles, handlers.deleteRole);
-router.patch('/:name/permissions', requireManageRoles, handlers.updateRolePermissions);
+router.patch(
+  '/:name/permissions',
+  requireManageRoles,
+  lockout.refuseAdminPermissionRemoval,
+  handlers.updateRolePermissions,
+);
 router.get('/:name/members', requireReadRoles, handlers.getRoleMembers);
 router.post('/:name/members', requireManageRoles, handlers.addRoleMember);
 router.delete('/:name/members/:userId', requireManageRoles, handlers.removeRoleMember);
