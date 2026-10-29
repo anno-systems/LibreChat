@@ -26,12 +26,15 @@ export function routePullRequestSources(
 /** Every provider this server can look up, all through the deployment's HTTP client. */
 export function createPullRequestSource({
   fetchFn,
+  productName,
 }: {
   fetchFn: PullRequestFetch;
+  /** Named in the providers' User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
 }): PullRequestSource {
   return routePullRequestSources({
-    github: createGitHubPullRequestSource({ fetchFn }),
-    gitlab: createGitLabPullRequestSource({ fetchFn }),
-    bitbucket: createBitbucketPullRequestSource({ fetchFn }),
+    github: createGitHubPullRequestSource({ fetchFn, productName }),
+    gitlab: createGitLabPullRequestSource({ fetchFn, productName }),
+    bitbucket: createBitbucketPullRequestSource({ fetchFn, productName }),
   });
 }

@@ -49,9 +49,12 @@ const mockLocalize = jest.fn((key: string, options?: { count?: number; category?
 
 let mockHasAccess = true;
 
+const mockUseDocumentTitle = jest.fn();
+
 jest.mock('~/hooks', () => ({
   useLocalize: () => mockLocalize,
-  useDocumentTitle: jest.fn(),
+  useAppTitle: () => 'OfficeChat',
+  useDocumentTitle: (title: string) => mockUseDocumentTitle(title),
   useHasAccess: jest.fn(() => mockHasAccess),
   useAgentCategories: jest.fn(() => ({ categories: mockCategories })),
   useDebounce: (value: string) => value,
@@ -170,6 +173,12 @@ describe('Marketplace controls and agent results', () => {
       queryClient.clear();
     }
     queryClients.clear();
+  });
+
+  it('names the app title in the tab title', async () => {
+    renderMarketplace();
+    await screen.findByRole('list');
+    expect(mockUseDocumentTitle).toHaveBeenLastCalledWith('Agent Marketplace | OfficeChat');
   });
 
   it('shows the newly sorted results after changing the sort control', async () => {

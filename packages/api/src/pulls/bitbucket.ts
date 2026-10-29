@@ -18,6 +18,7 @@ import {
   DEFAULT_MAX_CANDIDATE_PAGES,
   DEFAULT_MAX_HEAD_COMPARISONS,
   DEFAULT_MAX_CANDIDATE_PULL_REQUESTS,
+  pullRequestUserAgent,
 } from './shared';
 import { PullRequestSourceError } from './types';
 
@@ -175,10 +176,14 @@ const bbqlString = (value: string): string => `"${value.replace(/[\\"]/g, '\\$&'
  */
 export function createBitbucketPullRequestSource({
   fetchFn,
+  productName,
 }: {
   /** The deployment's HTTP client, so proxying and instrumentation are decided by the caller. */
   fetchFn: PullRequestFetch;
+  /** Named in the User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
 }): PullRequestSource {
+  const userAgent = pullRequestUserAgent(productName);
   type Lookup = {
     token: string;
     requestTimeoutMs: number;
@@ -201,7 +206,7 @@ export function createBitbucketPullRequestSource({
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${lookup.token}`,
-          'User-Agent': 'LibreChat-Pull-Requests',
+          'User-Agent': userAgent,
         },
         signal: AbortSignal.any([AbortSignal.timeout(lookup.requestTimeoutMs), lookup.deadline]),
       });

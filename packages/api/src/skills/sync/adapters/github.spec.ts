@@ -72,6 +72,22 @@ describe('createGitHubRepoAdapter', () => {
       );
     });
 
+    it('names the deployment product in the User-Agent', async () => {
+      const fetchFn = jest.fn(async () =>
+        response({ sha: 'commit-sha', commit: { tree: { sha: 'tree-sha' } } }),
+      ) as unknown as typeof fetch;
+
+      await createGitHubRepoAdapter({
+        source: createSource(),
+        token: 'github_pat_secret',
+        fetchFn,
+        productName: 'Office Chat',
+      }).resolveCommit();
+      expect(fetchFn).toHaveBeenCalledWith(expect.any(String), {
+        headers: expect.objectContaining({ 'User-Agent': 'OfficeChat-Skill-Sync' }),
+      });
+    });
+
     it('encodes each ref segment without escaping its separators', async () => {
       const fetchFn = jest.fn(async () =>
         response({ sha: 'commit-sha', commit: { tree: { sha: 'tree-sha' } } }),

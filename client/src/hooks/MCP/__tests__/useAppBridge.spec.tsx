@@ -210,6 +210,7 @@ function mountBridge(
     onTeardown?: () => void;
     userId?: string;
     withoutApproval?: boolean;
+    hostName?: string;
   } = {},
 ) {
   const iframe = document.createElement('iframe');
@@ -235,6 +236,7 @@ function mountBridge(
         onLoaded: jest.fn(),
         onTeardown: callbacks.onTeardown ?? jest.fn(),
         onFailed: callbacks.onFailed ?? jest.fn(),
+        hostName: callbacks.hostName,
       }),
     { wrapper },
   );
@@ -274,6 +276,22 @@ describe('useAppBridge', () => {
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     document.body.innerHTML = '';
     document.documentElement.className = '';
+  });
+
+  describe('host identity', () => {
+    it.each([
+      [undefined, 'LibreChat'],
+      ['OfficeChat', 'OfficeChat'],
+    ])('introduces the host named %p as %p', async (hostName, expected) => {
+      mountBridge(makeResource({ text: '<p>app</p>' }), client, { hostName });
+      await flush();
+      expect(AppBridge).toHaveBeenLastCalledWith(
+        null,
+        { name: expected, version: '1.0.0' },
+        expect.any(Object),
+        expect.anything(),
+      );
+    });
   });
 
   describe('ordering', () => {

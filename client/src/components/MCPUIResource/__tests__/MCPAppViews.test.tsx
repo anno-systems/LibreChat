@@ -8,6 +8,7 @@ import { MCPAppSuppressionContext, MCPAppViews } from '../MCPAppViews';
 import { useAppBridge, useMCPAppFrame } from '~/hooks/MCP';
 
 jest.mock('~/hooks', () => ({
+  useAppTitle: () => 'OfficeChat',
   useLocalize: () => (key: string, values?: Record<number, string>) => {
     if (key === 'com_ui_mcp_app_frame_title') return `MCP App: ${values?.[0] ?? ''}`;
     if (key === 'com_ui_mcp_app_open_named' || key === 'com_ui_mcp_app_close_named') {

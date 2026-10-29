@@ -256,6 +256,8 @@ export type GitHubSkillSyncDeps = SkillUploadIntentDeps & {
     grantedBy: string | Types.ObjectId;
   }) => Promise<unknown>;
   fetchFn?: FetchFn;
+  /** Named in the User-Agent of GitHub requests; upstream's "LibreChat" when absent. */
+  productName?: string;
   /**
    * Builds the repository client a source is synced through. Defaults to the
    * GitHub adapter; overridable so the orchestration can be exercised against a
@@ -1653,7 +1655,7 @@ async function syncSource(params: {
         getMissingCredentialMessage(source, allowServerCredentials),
       );
     }
-    const adapter = createAdapter({ source, token, fetchFn });
+    const adapter = createAdapter({ source, token, fetchFn, productName: deps.productName });
     const commit = await adapter.resolveCommit();
     assertNotCancelled();
     const treeEntries = await fetchConfiguredTreeEntries({

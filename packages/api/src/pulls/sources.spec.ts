@@ -45,4 +45,21 @@ describe('createPullRequestSource', () => {
       /^https:\/\/api\.bitbucket\.org\/2\.0\/repositories\/o\/r\/pullrequests\?/,
     );
   });
+
+  it.each([
+    [undefined, 'LibreChat-Pull-Requests'],
+    ['Office Chat', 'OfficeChat-Pull-Requests'],
+  ])('names product %p in every provider User-Agent as %p', async (productName, userAgent) => {
+    const fetchFn = jest.fn(async (url: string, _init?: RequestInit) =>
+      Response.json(url.includes('bitbucket') ? { values: [] } : []),
+    );
+    const source = createPullRequestSource({ fetchFn, productName });
+    for (const provider of ['github', 'gitlab', 'bitbucket'] as const) {
+      await source.find({ ...input, provider });
+    }
+    expect(fetchFn.mock.calls.length).toBeGreaterThanOrEqual(3);
+    for (const [, init] of fetchFn.mock.calls) {
+      expect((init?.headers as Record<string, string>)['User-Agent']).toBe(userAgent);
+    }
+  });
 });

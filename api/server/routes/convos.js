@@ -23,6 +23,7 @@ const {
   createBackgroundTaskPolicyMiddleware,
   createConversationPullRequestHandler,
   createPullRequestSource,
+  getProductName,
   createProxyAwareFetch,
   createPullRequestLookup,
   createPullRequestLookupStore,
@@ -196,7 +197,10 @@ const backgroundTaskCancelHandler = createBackgroundTaskCancelHandler({
 });
 /** One lookup, so the header's single route and the sidebar's batch route share its cache. */
 const pullRequestLookup = createPullRequestLookup({
-  source: createPullRequestSource({ fetchFn: createProxyAwareFetch() }),
+  source: createPullRequestSource({
+    fetchFn: createProxyAwareFetch(),
+    productName: getProductName(process.env),
+  }),
   store: createPullRequestLookupStore({ client: keyvRedisClient, config: cacheConfig }),
 });
 const pullRequestUserToken = createPullRequestUserTokenFromEnv({

@@ -38,6 +38,7 @@ import { selfOriginFromAddress } from '../../app/origin';
 import { createAgentTriggerExecutionHost } from './host';
 import { parseAgentTriggerEnvelope } from './envelope';
 import { createIdleRecoveryLoop } from '../recovery';
+import { getProductName } from '~/utils/product';
 import { WAITING_RETRY_CAP_MS } from './backoff';
 
 /** Internal sources whose deliveries wait on a result or on their parent generation. */
@@ -383,6 +384,7 @@ export function createAgentTriggerService(deps: AgentTriggerServiceDeps = {}): A
       ((principal) => generateAgentTriggerToken(principal.userId, AGENT_TRIGGER_TOKEN_TTL)),
     ...(deps.fetch != null && { fetch: deps.fetch }),
     ...(deps.getTimezone != null && { getTimezone: deps.getTimezone }),
+    productName: getProductName(process.env),
     ...(deps.prepareContinue != null && {
       prepareContinue: deps.prepareContinue,
     }),

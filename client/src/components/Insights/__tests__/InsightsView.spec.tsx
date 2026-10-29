@@ -26,8 +26,14 @@ const mockUseInsightsQuery = jest.fn((params: TInsightsParams) => ({
   params,
 }));
 
+let mockAppTitle: string | undefined = 'OfficeChat';
+const mockUseDocumentTitle = jest.fn();
+
 jest.mock('~/data-provider', () => ({
-  useGetStartupConfig: () => ({ data: { insightsEnabled: true }, isLoading: false }),
+  useGetStartupConfig: () => ({
+    data: { insightsEnabled: true, appTitle: mockAppTitle },
+    isLoading: false,
+  }),
   useInsightsQuery: (params: TInsightsParams) => mockUseInsightsQuery(params),
 }));
 
@@ -39,7 +45,7 @@ jest.mock('~/hooks', () => ({
     return options?.name ? `${key}:${options.name}` : key;
   },
   useAuthContext: () => ({ user: { id: 'user-1' } }),
-  useDocumentTitle: () => undefined,
+  useDocumentTitle: (title: string) => mockUseDocumentTitle(title),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -71,6 +77,33 @@ async function openAgentMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByText('com_insights_all_agents:3'));
   await screen.findByRole('option', { name: 'Alpha' });
 }
+
+describe('InsightsView tab title', () => {
+  beforeEach(() => {
+    mockUseDocumentTitle.mockClear();
+    mockUseInsightsQuery.mockImplementation((params) => ({
+      data: insightsData,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      params,
+    }));
+  });
+  afterEach(() => {
+    mockAppTitle = 'OfficeChat';
+  });
+
+  it('names the app title from the startup config', () => {
+    renderView();
+    expect(mockUseDocumentTitle).toHaveBeenLastCalledWith('com_insights_title | OfficeChat');
+  });
+
+  it("falls back to upstream's name without an app title", () => {
+    mockAppTitle = undefined;
+    renderView();
+    expect(mockUseDocumentTitle).toHaveBeenLastCalledWith('com_insights_title | LibreChat');
+  });
+});
 
 describe('InsightsView agent selection', () => {
   beforeEach(() => {

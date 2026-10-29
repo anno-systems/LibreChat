@@ -7,6 +7,7 @@ import type {
   RepoTreeEntryType,
   FetchTreeEntriesParams,
 } from './types';
+import { DEFAULT_PRODUCT_NAME, getProductUserAgent } from '~/utils/product';
 import { normalizeRepoPath } from '../path';
 import { SkillSyncError } from '../errors';
 
@@ -52,14 +53,16 @@ export type GitHubRepoAdapterConfig = {
   source: SkillSyncGitHubSourceConfig;
   token: string;
   fetchFn: FetchFn;
+  /** Named in the User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
 };
 
-function buildGitHubHeaders(token: string): HeadersInit {
+function buildGitHubHeaders(token: string, userAgent: string): HeadersInit {
   return {
     Accept: 'application/vnd.github+json',
     Authorization: `Bearer ${token}`,
     'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'LibreChat-Skill-Sync',
+    'User-Agent': userAgent,
   };
 }
 
@@ -96,12 +99,13 @@ function isGitHubRateLimitResponse(params: {
 async function githubJson<T>(params: {
   fetchFn: FetchFn;
   token: string;
+  userAgent: string;
   pathname: string;
 }): Promise<T> {
   let response: Response;
   try {
     response = await params.fetchFn(buildGitHubUrl(params.pathname), {
-      headers: buildGitHubHeaders(params.token),
+      headers: buildGitHubHeaders(params.token, params.userAgent),
     });
   } catch {
     throw new SkillSyncError(
@@ -151,6 +155,7 @@ function toRepoTreeEntry(entry: GitHubTreeEntry, path: string): RepoTreeEntry {
 
 export function createGitHubRepoAdapter(config: GitHubRepoAdapterConfig): GitRepoAdapter {
   const { source, token, fetchFn } = config;
+  const userAgent = getProductUserAgent(config.productName ?? DEFAULT_PRODUCT_NAME, 'Skill-Sync');
   const owner = encodeURIComponent(source.owner);
   const repo = encodeURIComponent(source.repo);
 
@@ -158,6 +163,7 @@ export function createGitHubRepoAdapter(config: GitHubRepoAdapterConfig): GitRep
     return githubJson<GitHubTreeResponse>({
       fetchFn,
       token,
+      userAgent,
       pathname: `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(treeSha)}${
         recursive ? '?recursive=1' : ''
       }`,
@@ -198,6 +204,7 @@ export function createGitHubRepoAdapter(config: GitHubRepoAdapterConfig): GitRep
     const commit = await githubJson<GitHubCommitResponse>({
       fetchFn,
       token,
+      userAgent,
       pathname: `/repos/${owner}/${repo}/commits/${encodeGitHubPath(source.ref)}`,
     });
     return { id: commit.sha, treeId: commit.commit.tree.sha };
@@ -230,6 +237,7 @@ export function createGitHubRepoAdapter(config: GitHubRepoAdapterConfig): GitRep
     const blob = await githubJson<GitHubBlobResponse>({
       fetchFn,
       token,
+      userAgent,
       pathname: `/repos/${owner}/${repo}/git/blobs/${encodeURIComponent(entry.id)}`,
     });
     if (blob.encoding !== 'base64') {

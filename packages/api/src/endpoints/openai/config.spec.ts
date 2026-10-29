@@ -384,6 +384,30 @@ describe('getOpenAIConfig', () => {
     expect(result.provider).toBe('openrouter');
   });
 
+  it('credits the deployment in OpenRouter headers when APP_TITLE and DOMAIN_CLIENT are set', () => {
+    const saved = { APP_TITLE: process.env.APP_TITLE, DOMAIN_CLIENT: process.env.DOMAIN_CLIENT };
+    process.env.APP_TITLE = ' Office Chat ';
+    process.env.DOMAIN_CLIENT = 'https://chat.example.com';
+    try {
+      const result = getOpenAIConfig(mockApiKey, {
+        reverseProxyUrl: 'https://openrouter.ai/api/v1',
+      });
+      expect(result.configOptions?.defaultHeaders).toMatchObject({
+        'HTTP-Referer': 'https://chat.example.com',
+        'X-Title': 'Office Chat',
+        'X-OpenRouter-Title': 'Office Chat',
+      });
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
   it('should handle Azure configuration', () => {
     const azure = {
       azureOpenAIApiInstanceName: 'test-instance',

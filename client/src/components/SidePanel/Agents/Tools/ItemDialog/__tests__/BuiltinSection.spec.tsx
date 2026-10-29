@@ -19,7 +19,10 @@ jest.mock('~/hooks', () => ({
   }),
   useAgentCapabilities: () => ({ backgroundToolsEnabled: false }),
 }));
+let mockHelpAndFaqURL: string | undefined = 'https://librechat.ai';
+
 jest.mock('~/data-provider', () => ({
+  useGetStartupConfig: () => ({ data: { helpAndFaqURL: mockHelpAndFaqURL } }),
   useVerifyAgentToolAuth: () => ({ data: undefined }),
   useCodeEnvironmentStatusQueries: () => [],
 }));
@@ -134,6 +137,32 @@ describe('BuiltinSection artifacts mode docs link', () => {
       expect(docsLink()).toBeNull();
     },
   );
+
+  test.each([
+    ['/hilfe/faq/', '/hilfe/faq/#artefakte'],
+    ['https://help.example.com/faq#top', 'https://help.example.com/faq#artefakte'],
+  ])('links to the configured help %p as %p', (helpAndFaqURL, href) => {
+    mockHelpAndFaqURL = helpAndFaqURL;
+    try {
+      renderSection('artifacts', { artifacts: ArtifactModes.CUSTOM });
+      expect(docsLink()).toHaveAttribute('href', href);
+    } finally {
+      mockHelpAndFaqURL = 'https://librechat.ai';
+    }
+  });
+
+  test.each([undefined, '/'])("keeps upstream's docs link with help URL %p", (helpAndFaqURL) => {
+    mockHelpAndFaqURL = helpAndFaqURL;
+    try {
+      renderSection('artifacts', { artifacts: ArtifactModes.CUSTOM });
+      expect(docsLink()).toHaveAttribute(
+        'href',
+        'https://www.librechat.ai/docs/features/artifacts#custom-instructions',
+      );
+    } finally {
+      mockHelpAndFaqURL = 'https://librechat.ai';
+    }
+  });
 
   test('shows the link after switching to Custom', () => {
     renderSection('artifacts', { artifacts: ArtifactModes.DEFAULT });

@@ -33,6 +33,7 @@ import {
 import { codeExecutionAuthHeaders, getCodeExecutionRouteKey } from '~/agents/execution';
 import { isAttachedFileWriteDenied } from '~/agents/hitl/byom';
 import { getSafeErrorMetadata } from '~/utils/errors';
+import { getProductName } from '~/utils/product';
 import { isWorkspacePathMissing } from './paths';
 
 /** Workspace-relative folder chat attachments are copied into. */
@@ -71,8 +72,9 @@ export type WorkspaceAttachmentOutcome =
   | { status: 'unavailable'; reason: WorkspaceAttachmentUnavailableReason };
 
 const UNAVAILABLE_REASONS: Record<WorkspaceAttachmentUnavailableReason, string> = {
-  unsupported:
-    "this machine's LibreChat worker cannot receive attachments yet; updating the worker enables it",
+  get unsupported() {
+    return `this machine's ${getProductName()} worker cannot receive attachments yet; updating the worker enables it`;
+  },
   denied: 'file writes are not allowed in this workspace',
   agent_file: "it is one of the agent's own files, not one attached in this chat",
   not_owned: 'only files you uploaded yourself are copied to your machine',

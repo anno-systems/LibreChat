@@ -16,14 +16,20 @@ import {
   EVENT_ACTOR_DETACHED_COMPLETION_TYPE,
   parseAgentEventActorDetachedCompletion,
 } from './detachedAction';
+import { DEFAULT_PRODUCT_NAME, getProductUserAgent } from '~/utils/product';
 import { dispatchAgentTrigger } from './dispatch';
 
 const DEFAULT_FIRE_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BODY_BYTES = 64 * 1024;
 const GENERATION_PROTOCOL_HEADER = 'x-librechat-generation-protocol';
-const TRIGGER_USER_AGENT =
+const TRIGGER_USER_AGENT_PREFIX =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 LibreChat-Agent-Trigger/1';
+  '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+/** Names the deployment's product (fork-only): "…Safari/537.36 OfficeChat-Agent-Trigger/1". */
+function triggerUserAgent(productName: string = DEFAULT_PRODUCT_NAME): string {
+  return `${TRIGGER_USER_AGENT_PREFIX} ${getProductUserAgent(productName, 'Agent-Trigger')}/1`;
+}
 
 const PRE_CONNECT_ERROR_CODES = new Set([
   'ECONNREFUSED',
@@ -169,6 +175,8 @@ export interface AgentTriggerExecutionHostDeps {
     context: AgentTriggerDispatchContext,
   ) => MaybePromise<AgentTriggerContinuePreparation | undefined>;
   fetch?: AgentTriggerFetch;
+  /** Named in the User-Agent; upstream's "LibreChat" when absent. */
+  productName?: string;
   /** Total bound for setup, admission, and the bounded response read. */
   timeoutMs?: number;
 }
@@ -655,7 +663,7 @@ async function startRun(
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'User-Agent': TRIGGER_USER_AGENT,
+          'User-Agent': triggerUserAgent(deps.productName),
           'x-lc-agent-trigger': '1',
           'x-request-id': context.idempotencyKey,
           ...(envelope.mode === 'continue' && envelope.target.bindingId != null
@@ -985,7 +993,7 @@ async function steer(
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'User-Agent': TRIGGER_USER_AGENT,
+          'User-Agent': triggerUserAgent(deps.productName),
           'x-lc-agent-trigger': '1',
           'x-request-id': context.idempotencyKey,
           [GENERATION_PROTOCOL_HEADER]: '2',

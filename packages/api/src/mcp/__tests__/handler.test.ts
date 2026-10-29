@@ -2647,6 +2647,62 @@ describe('MCPOAuthHandler - Configurable OAuth Metadata', () => {
       expect(mockRegisterClient).toHaveBeenCalled();
     });
 
+    it.each([
+      [undefined, 'LibreChat MCP Client'],
+      ['  OfficeChat ', 'OfficeChat MCP Client'],
+    ])('registers with APP_TITLE %p as client name %p', async (appTitle, clientName) => {
+      const saved = process.env.APP_TITLE;
+      if (appTitle === undefined) {
+        delete process.env.APP_TITLE;
+      } else {
+        process.env.APP_TITLE = appTitle;
+      }
+      mockDiscoverOAuthProtectedResourceMetadata.mockRejectedValueOnce(
+        new Error('No resource metadata'),
+      );
+      mockDiscoverAuthorizationServerMetadata.mockResolvedValueOnce({
+        issuer: 'https://example.com',
+        authorization_endpoint: 'https://example.com/authorize',
+        token_endpoint: 'https://example.com/token',
+        registration_endpoint: 'https://example.com/register',
+        response_types_supported: ['code'],
+      } as AuthorizationServerMetadata);
+      mockRegisterClient.mockResolvedValueOnce({
+        client_id: 'new-client-id',
+        client_secret: 'new-client-secret',
+        redirect_uris: ['http://localhost:3080/api/mcp/test-server/oauth/callback'],
+        logo_uri: undefined,
+        tos_uri: undefined,
+      });
+      mockStartAuthorization.mockResolvedValueOnce({
+        authorizationUrl: new URL('https://example.com/authorize?client_id=new-client-id'),
+        codeVerifier: 'test-code-verifier',
+      });
+
+      try {
+        await MCPOAuthHandler.initiateOAuthFlow(
+          'test-server',
+          'https://example.com/mcp',
+          'user-123',
+          {},
+          undefined,
+        );
+      } finally {
+        if (saved === undefined) {
+          delete process.env.APP_TITLE;
+        } else {
+          process.env.APP_TITLE = saved;
+        }
+      }
+
+      expect(mockRegisterClient).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          clientMetadata: expect.objectContaining({ client_name: clientName }),
+        }),
+      );
+    });
+
     it('should fall back to registration when getClientInfoAndMetadata throws', async () => {
       mockGetClientInfoAndMetadata.mockRejectedValueOnce(new Error('DB error'));
 

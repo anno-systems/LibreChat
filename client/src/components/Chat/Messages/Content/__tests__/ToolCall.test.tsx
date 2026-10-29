@@ -12,6 +12,7 @@ import store from '~/store';
 
 // Mock dependencies
 jest.mock('~/hooks', () => ({
+  useAppTitle: () => 'LibreChat',
   useLocalize: () => (key: string, values?: any) => {
     const translations: Record<string, string> = {
       com_assistants_function_use: `Used ${values?.[0]}`,

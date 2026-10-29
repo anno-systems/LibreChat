@@ -77,6 +77,7 @@ export * from './agentModelSelection';
 export * from './runStepDuration';
 export * from './toolCallPhase';
 export * from './documentTitle';
+export * from './help';
 export * from './reasoningLabels';
 export * from './numbers';
 export { default as cn } from './cn';

@@ -4,6 +4,7 @@ const {
   createSkillBlobReserver,
   createSkillBufferWriter,
   createGitHubSkillSyncRunner,
+  getProductName,
   createSkillSyncTriggerOrchestrator,
   startGitHubSkillSyncScheduler,
 } = require('@librechat/api');
@@ -78,6 +79,7 @@ function createRunner({ getConfig, loadAppConfig, allowServerCredentials = true 
   const resolveConfig = getConfig ?? (() => getSyncConfig(resolveAppConfig));
   const createdRunner = createGitHubSkillSyncRunner({
     getConfig: resolveConfig,
+    productName: getProductName(process.env),
     getCredentialToken: db.getSkillSyncCredentialToken,
     getCredentialSummary: db.getSkillSyncCredentialSummary,
     listCredentials: db.listSkillSyncCredentials,

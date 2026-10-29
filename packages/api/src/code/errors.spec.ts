@@ -99,3 +99,28 @@ describe('subagent workspace unavailability', () => {
     );
   });
 });
+
+describe('CodeWorkspaceSelectionError product name', () => {
+  const saved = process.env.APP_TITLE;
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.APP_TITLE;
+    } else {
+      process.env.APP_TITLE = saved;
+    }
+  });
+
+  it('names the deployment product in the worker update hint', () => {
+    process.env.APP_TITLE = 'OfficeChat';
+    expect(new CodeWorkspaceSelectionError('unsupported').message).toContain(
+      'Update the OfficeChat Code worker',
+    );
+  });
+
+  it("names upstream's product without APP_TITLE", () => {
+    delete process.env.APP_TITLE;
+    expect(new CodeWorkspaceSelectionError('unsupported').message).toContain(
+      'Update the LibreChat Code worker',
+    );
+  });
+});

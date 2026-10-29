@@ -4,8 +4,8 @@ import { Tools, MemoryScope, ArtifactModes, AgentCapabilities } from 'librechat-
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import type { AgentForm, ExtendedFile } from '~/common';
 import type { BuiltinId } from '../../items/types';
+import { useGetStartupConfig, useVerifyAgentToolAuth } from '~/data-provider';
 import OrchestrationHub from '../../../Advanced/OrchestrationHub';
-import { useVerifyAgentToolAuth } from '~/data-provider';
 import CodeBackground from '../../../Code/Background';
 import CodeSettings from '../../../Code/Settings';
 import SearchAction from '../../../Search/Action';
@@ -13,6 +13,7 @@ import FileContext from '../../../FileContext';
 import FileSearch from '../../../FileSearch';
 import CodeFiles from '../../../Code/Files';
 import { useLocalize } from '~/hooks';
+import { getHelpLink } from '~/utils';
 
 interface Props {
   builtinId: BuiltinId;
@@ -25,12 +26,14 @@ interface Props {
 
 const ARTIFACTS_CUSTOM_DOCS_URL =
   'https://www.librechat.ai/docs/features/artifacts#custom-instructions';
+/** The deployment's own help section on artifacts, when it configures a help URL (fork-only). */
+const ARTIFACTS_HELP_ANCHOR = 'artefakte';
 
 const ARTIFACT_MODES: Array<{
   value: string;
   labelKey: TranslationKeys;
   infoKey?: TranslationKeys;
-  docs?: { url: string; labelKey: TranslationKeys };
+  docs?: { url: string; anchor: string; labelKey: TranslationKeys };
 }> = [
   {
     value: ArtifactModes.DEFAULT,
@@ -46,7 +49,11 @@ const ARTIFACT_MODES: Array<{
     value: ArtifactModes.CUSTOM,
     labelKey: 'com_ui_artifacts_mode_custom',
     infoKey: 'com_ui_artifacts_mode_custom_info',
-    docs: { url: ARTIFACTS_CUSTOM_DOCS_URL, labelKey: 'com_ui_artifacts_mode_custom_docs' },
+    docs: {
+      url: ARTIFACTS_CUSTOM_DOCS_URL,
+      anchor: ARTIFACTS_HELP_ANCHOR,
+      labelKey: 'com_ui_artifacts_mode_custom_docs',
+    },
   },
 ];
 
@@ -57,6 +64,7 @@ interface ArtifactsConfigProps {
 
 function ArtifactsConfig({ value, onChange }: ArtifactsConfigProps) {
   const localize = useLocalize();
+  const { data: startupConfig } = useGetStartupConfig();
   const options = ARTIFACT_MODES.map((mode) => ({
     value: mode.value,
     label: localize(mode.labelKey),
@@ -82,7 +90,11 @@ function ArtifactsConfig({ value, onChange }: ArtifactsConfigProps) {
             <>
               {' '}
               <a
-                href={active.docs.url}
+                href={getHelpLink(
+                  startupConfig?.helpAndFaqURL,
+                  active.docs.anchor,
+                  active.docs.url,
+                )}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={localize(active.docs.labelKey)}

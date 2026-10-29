@@ -22,6 +22,7 @@ import {
   isCodeSessionToolName,
 } from '~/agents/tools';
 import { isSkillFilePath } from '~/agents/skills';
+import { getProductName } from '~/utils/product';
 
 const BYOM_FILE_WRITE_TOOLS = new Set<string>([
   Constants.WRITE_FILE,
@@ -469,7 +470,7 @@ export function createAttachedCodeEnvironmentPolicyHook(
     ) {
       return {
         decision: 'ask',
-        reason: `${input.toolName} can modify a persistent LibreChat skill`,
+        reason: `${input.toolName} can modify a persistent ${getProductName()} skill`,
       };
     }
     if (input.executingAgentId == null) {

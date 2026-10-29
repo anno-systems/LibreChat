@@ -2958,7 +2958,7 @@
   "com_ui_default_stateful_workspace": "Default stateful workspace",
   "com_ui_default_stateful_workspace_description": "Applied when you create a new agent. Existing agents keep their current workspace scope.",
   "com_ui_code_environments": "Code environments",
-  "com_ui_code_environments_description": "Connect a sandboxed librechat-code worker running on a VM you control. The worker connects outbound and must be configured with its own sandbox and network policy.",
+  "com_ui_code_environments_description": "Connect a sandboxed code worker running on a VM you control. The worker connects outbound and must be configured with its own sandbox and network policy.",
   "com_ui_code_environment_name_placeholder": "My development VM",
   "com_ui_code_environment_control_plane": "Code control plane",
   "com_ui_code_environment_pair": "Connect VM",
