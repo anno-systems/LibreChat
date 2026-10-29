@@ -274,7 +274,10 @@ export function createCustomConfigLoader({
         customConfig.modelSpecs = result.data.modelSpecs;
       }
 
-      if (printConfig) {
+      /** Fork: a reload logs one line; the full (redacted) dump is printed at startup only. */
+      if (printConfig && mode === 'reload') {
+        logger.info(`Custom config file reloaded from ${configPath}`);
+      } else if (printConfig) {
         const loggableConfig = redactConfig(customConfig);
         logger.info('Custom config file loaded:');
         logger.info(JSON.stringify(loggableConfig, null, 2));

@@ -238,3 +238,37 @@ describe('createCustomConfigLoader policy links', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+describe('createCustomConfigLoader config dump', () => {
+  const originalConfigPath = process.env.CONFIG_PATH;
+  let info: jest.SpyInstance;
+
+  beforeEach(() => {
+    info = jest.spyOn(logger, 'info').mockImplementation(() => logger);
+    jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    process.env.CONFIG_PATH = fixture('valid');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (originalConfigPath === undefined) {
+      delete process.env.CONFIG_PATH;
+    } else {
+      process.env.CONFIG_PATH = originalConfigPath;
+    }
+  });
+
+  it('prints the whole config at startup', async () => {
+    await createLoader()(true, { mode: 'startup' });
+
+    expect(info).toHaveBeenCalledWith('Custom config file loaded:');
+    expect(info).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs one line on a reload', async () => {
+    await createLoader()(true, { mode: 'reload' });
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(`Custom config file reloaded from ${fixture('valid')}`);
+  });
+});
