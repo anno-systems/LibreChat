@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, startTransition } from 'react';
+import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
 import { Outlet } from 'react-router-dom';
 import { useMediaQuery } from '@librechat/client';
@@ -43,6 +44,7 @@ import AnalyticsConsent from '~/components/System/AnalyticsConsent';
 import useKeyboardShortcuts from '~/hooks/useKeyboardShortcuts';
 import useDrawerDismiss from '~/hooks/Nav/useDrawerDismiss';
 import useSidebarToggle from '~/hooks/Nav/useSidebarToggle';
+import { compactSidebarAtom } from '~/store/sidebarLabels';
 import useSidebarState from '~/hooks/Nav/useSidebarState';
 import { TermsAndConditionsModal } from '~/components/ui';
 import useDrawerSwipe from '~/hooks/Nav/useDrawerSwipe';
@@ -97,6 +99,7 @@ function RootLayout() {
    *  swipe. Opting in narrows it and gives the strip a dismiss target. */
   const drawerStrip = useRecoilValue(store.mobileDrawerStrip);
   const newChatSwitchToHistory = useRecoilValue(store.newChatSwitchToHistory);
+  const compactSidebar = useAtomValue(compactSidebarAtom);
   const paneRef = useRef<HTMLDivElement>(null);
   /** Keyed off the committed state rather than the scrim's own click, because
    *  the header button, Escape, conversation selection and the bottom bar all
@@ -204,6 +207,7 @@ function RootLayout() {
                     <UnifiedSidebar
                       isSliding={isSliding}
                       switchToHistory={newChatSwitchToHistory}
+                      labeled={!compactSidebar}
                     />
                     <div
                       ref={paneRef}

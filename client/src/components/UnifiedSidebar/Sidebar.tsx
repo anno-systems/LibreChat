@@ -17,6 +17,7 @@ function Sidebar({
   switchToHistory,
   onResizeStart,
   onResizeKeyboard,
+  labeled = false,
 }: {
   links: NavLink[];
   expanded: boolean;
@@ -29,6 +30,7 @@ function Sidebar({
   switchToHistory: boolean;
   onResizeStart: (e: React.MouseEvent<HTMLElement>) => void;
   onResizeKeyboard: (direction: 'shrink' | 'grow') => void;
+  labeled?: boolean;
 }) {
   return (
     <>
@@ -40,6 +42,7 @@ function Sidebar({
           onExpand={onExpand}
           onLeaveInsights={onLeaveInsights}
           switchToHistory={switchToHistory}
+          labeled={labeled}
         />
         <nav
           className={cn(

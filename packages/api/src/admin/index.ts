@@ -8,6 +8,7 @@ export { createAdminRolesHandlers, createRolePermissionsUpdateHandler } from './
 export { createAdminSkillsSyncAccess, createAdminSkillsSyncHandlers } from './skills';
 export { createAdminUsersHandlers } from './users';
 export { requireAdminUserDeletion } from './deletion';
+export { createAdminLockoutGuard, ADMIN_PERMISSIONS_LOCKED } from './lockout';
 export { createAdminBalanceHandlers } from './balance';
 export { createAdminUsageHandler } from './usage';
 export { createAdminCostsHandler } from './costs';

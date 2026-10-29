@@ -1,9 +1,9 @@
-import { Permissions, PermissionTypes } from 'librechat-data-provider';
 import { useToastContext } from '@librechat/client';
-import { AdminSettingsDialog } from '~/components/ui';
-import { useUpdateAgentPermissionsMutation } from '~/data-provider';
-import { useLocalize } from '~/hooks';
+import { Permissions, PermissionTypes } from 'librechat-data-provider';
 import type { PermissionConfig } from '~/components/ui';
+import { useUpdateAgentPermissionsMutation } from '~/data-provider';
+import { AdminSettingsDialog } from '~/components/ui';
+import { useLocalize } from '~/hooks';
 
 const permissions: PermissionConfig[] = [
   { permission: Permissions.USE, labelKey: 'com_ui_agents_allow_use' },
@@ -31,6 +31,7 @@ const AdminSettings = () => {
       sectionKey="com_ui_agents"
       permissions={permissions}
       menuId="agent-role-dropdown"
+      triggerLabelKey="com_ui_manage_agents"
       mutation={mutation}
     />
   );

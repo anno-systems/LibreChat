@@ -42,9 +42,13 @@ export function useRoleSelector(permissionType: PermissionTypes) {
     [resolvePermissions, selectedRole, customRoleData],
   );
 
+  /** ADMIN is not offered (fork-only): an admin who switches a feature off for ADMIN locks every
+   *  admin out of it, and the server refuses that update too. */
   const availableRoleNames = useMemo(() => {
-    const names = roleList?.roles?.map((r) => r.name);
-    return names?.length ? names : [SystemRoles.USER, SystemRoles.ADMIN];
+    const names = roleList?.roles
+      ?.map((r) => r.name)
+      .filter((name) => name.toUpperCase() !== SystemRoles.ADMIN);
+    return names?.length ? names : [SystemRoles.USER];
   }, [roleList]);
 
   const roleDropdownItems = useMemo(

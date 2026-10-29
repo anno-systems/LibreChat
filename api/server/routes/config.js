@@ -10,6 +10,7 @@ const {
   getCloudFrontConfig,
   getAppConfigOptionsFromUser,
   resolveBuildInfo,
+  resolveAboutInfo,
   resolveTitleTiming,
   getConversationTitleCapabilities,
   sanitizeModelSpecs,
@@ -191,16 +192,7 @@ function buildBuildInfoPayload(interfaceConfig) {
   if (interfaceConfig?.buildInfo === false) {
     return undefined;
   }
-  const info = resolveBuildInfo();
-  if (!info.commit && !info.branch && !info.buildDate) {
-    return undefined;
-  }
-  return {
-    commit: info.commit,
-    commitShort: info.commitShort,
-    branch: info.branch,
-    buildDate: info.buildDate,
-  };
+  return resolveAboutInfo(resolveBuildInfo());
 }
 
 function buildWebSearchConfig(appConfig) {

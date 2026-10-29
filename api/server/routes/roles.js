@@ -13,7 +13,7 @@ const {
   remoteAgentsPermissionsSchema,
   skillPermissionsSchema,
 } = require('librechat-data-provider');
-const { createRolePermissionsUpdateHandler } = require('@librechat/api');
+const { createAdminLockoutGuard, createRolePermissionsUpdateHandler } = require('@librechat/api');
 const { hasCapability, requireCapability } = require('~/server/middleware/roles/capabilities');
 const { updateRoleByName, getRoleByName, recordAuditEntry } = require('~/models');
 const { requireJwtAuth } = require('~/server/middleware');
@@ -72,9 +72,10 @@ const permissionConfigs = {
 /**
  * Generic handler for updating permissions
  * @param {string} permissionKey - The key from permissionConfigs
- * @returns {Function} Express route handler
+ * @returns {Function[]} The admin lockout guard (fork) and the update handler
  */
-const createPermissionUpdateHandler = (permissionKey) =>
+const createPermissionUpdateHandler = (permissionKey) => [
+  createAdminLockoutGuard(permissionConfigs[permissionKey].schema),
   createRolePermissionsUpdateHandler(
     {
       getRoleByName,
@@ -83,7 +84,8 @@ const createPermissionUpdateHandler = (permissionKey) =>
       auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
     },
     permissionConfigs[permissionKey],
-  );
+  ),
+];
 
 /**
  * GET /api/roles/:roleName

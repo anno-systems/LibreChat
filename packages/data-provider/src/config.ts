@@ -3750,6 +3750,8 @@ export type TStartupConfig = {
   mcpApps?: TMCPAppsPolicy;
   conversationImportMaxFileSize?: number;
   buildInfo?: {
+    /** The deployment's own version (fork: About page); this fork sends nothing else here. */
+    version?: string | null;
     commit?: string | null;
     commitShort?: string | null;
     branch?: string | null;

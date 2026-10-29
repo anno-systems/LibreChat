@@ -52,10 +52,10 @@ import { ClearChats } from '../SettingsTabs/Data/ClearChats';
 import { TokenCredits, AutoRefill } from './BillingControls';
 import SharedLinks from '../SettingsTabs/Data/SharedLinks';
 import ImageResize from '../SettingsTabs/Chat/ImageResize';
+import { compactSidebarAtom } from '~/store/sidebarLabels';
 import Passkeys from '../SettingsTabs/Account/Passkeys';
 import { showThinkingAtom } from '~/store/showThinking';
 import ProviderKeys from '../SettingsTabs/ProviderKeys';
-import { showLiaAtom } from '~/components/Lia/store';
 import { autoScrollAtom } from '~/store/autoScroll';
 import Avatar from '../SettingsTabs/Account/Avatar';
 import ConnectedAccounts from './ConnectedAccounts';
@@ -158,18 +158,16 @@ export const registry: SettingEntry[] = [
     }),
   },
   {
-    id: 'showLia',
+    id: 'compactSidebar',
     tab: GENERAL,
     section: 'layout',
-    labelKey: 'com_nav_show_lia',
-    keywords: ['mascot', 'lia', 'fun', 'animation', 'welcome'],
-    show: (ctx) => ctx.mascotAllowed,
+    labelKey: 'com_nav_compact_sidebar',
+    keywords: ['sidebar', 'icons', 'labels', 'compact', 'navigation'],
     Component: toggleControl({
-      stateAtom: showLiaAtom,
-      localizationKey: 'com_nav_show_lia',
-      switchId: 'showLia',
-      hoverCardText: 'com_nav_info_show_lia',
-      beta: true,
+      stateAtom: compactSidebarAtom,
+      localizationKey: 'com_nav_compact_sidebar',
+      hoverCardText: 'com_nav_info_compact_sidebar',
+      switchId: 'compactSidebar',
     }),
   },
   {

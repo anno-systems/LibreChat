@@ -1,5 +1,12 @@
 export const COLLAPSED_WIDTH = 52;
 export const EXPANDED_MIN = 360;
+/**
+ * The rail's width with labels beside its icons (fork: sidebar labels; `w-52` in ExpandedPanel).
+ * Stored and resized widths stay measured with the icon-only rail, and the labelled rail adds
+ * its extra width on top, so the panel beside it keeps the width the user gave it.
+ */
+export const LABELED_RAIL_WIDTH = 208;
+export const LABELED_RAIL_EXTRA = LABELED_RAIL_WIDTH - COLLAPSED_WIDTH;
 
 /**
  * How much of the viewport the mobile drawer covers.

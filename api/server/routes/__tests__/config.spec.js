@@ -1369,12 +1369,40 @@ describe('GET /api/config', () => {
   });
 
   describe('buildInfo payload', () => {
+    const previousBuildVersion = process.env.BUILD_VERSION;
+    beforeEach(() => {
+      delete process.env.BUILD_VERSION;
+    });
+    afterAll(() => {
+      if (previousBuildVersion !== undefined) {
+        process.env.BUILD_VERSION = previousBuildVersion;
+      }
+    });
+
+    it('prefers BUILD_VERSION over the build date', async () => {
+      process.env.BUILD_VERSION = 'sha-1a2b3c4';
+      mockGetAppConfig.mockResolvedValue(baseAppConfig);
+      mockResolveBuildInfo.mockReturnValue({
+        commit: 'abc',
+        commitShort: 'abc',
+        branch: 'main',
+        buildDate: '2026-04-20T12:00:00Z',
+      });
+      const app = createApp(mockUser);
+
+      const response = await request(app).get('/api/config');
+
+      expect(response.body.buildInfo).toEqual({ version: 'sha-1a2b3c4' });
+    });
+
     const populatedBuildInfo = {
       commit: 'abcdef1234567890abcdef1234567890abcdef12',
       commitShort: 'abcdef1',
       branch: 'dev',
       buildDate: '2026-04-20T12:00:00Z',
     };
+    /** Fork: only the deployment's own version reaches clients, never commit or branch. */
+    const aboutPayload = { version: '2026-04-20' };
 
     it('includes buildInfo in authenticated response when interface flag is not explicitly disabled', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
@@ -1383,7 +1411,7 @@ describe('GET /api/config', () => {
 
       const response = await request(app).get('/api/config');
 
-      expect(response.body.buildInfo).toEqual(populatedBuildInfo);
+      expect(response.body.buildInfo).toEqual(aboutPayload);
     });
 
     it('omits buildInfo when interface.buildInfo is false', async () => {
@@ -1421,7 +1449,7 @@ describe('GET /api/config', () => {
 
       const response = await request(app).get('/api/config');
 
-      expect(response.body.buildInfo).toEqual(populatedBuildInfo);
+      expect(response.body.buildInfo).toEqual(aboutPayload);
     });
 
     it('omits buildInfo in unauthenticated response when interface.buildInfo is false', async () => {

@@ -228,3 +228,63 @@ describe('PUT /api/roles/:roleName/prompts', () => {
     expect(mockUpdateRoleByName).not.toHaveBeenCalled();
   });
 });
+
+describe('PUT /api/roles/ADMIN/<type> (fork: admin lockout guard)', () => {
+  const adminUser = { id: 'u1', _id: 'u1', role: SystemRoles.ADMIN, name: 'Admin' };
+
+  it.each([
+    ['prompts', { USE: false }],
+    ['agents', { USE: true, CREATE: false }],
+    ['skills', { SHARE: false }],
+  ])('refuses to switch off a %s permission for ADMIN without writing', async (type, body) => {
+    const app = createApp(adminUser);
+
+    const res = await request(app).put(`/api/roles/ADMIN/${type}`).send(body);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('admin_permissions_locked');
+    expect(mockGetRoleByName).not.toHaveBeenCalled();
+    expect(mockUpdateRoleByName).not.toHaveBeenCalled();
+  });
+
+  it('matches the role name case-insensitively', async () => {
+    const app = createApp(adminUser);
+
+    const res = await request(app).put('/api/roles/admin/memories').send({ USE: false });
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateRoleByName).not.toHaveBeenCalled();
+  });
+
+  it('lets an update that only grants ADMIN access through', async () => {
+    mockGetRoleByName.mockResolvedValue(adminRole);
+    mockUpdateRoleByName.mockImplementation(async (name, updates) => ({ name, ...updates }));
+    mockRecordAuditEntry.mockResolvedValue(null);
+    const app = createApp(adminUser);
+
+    const res = await request(app).put('/api/roles/ADMIN/prompts').send({ USE: true });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateRoleByName).toHaveBeenCalled();
+  });
+
+  it('still lets other roles lose a permission', async () => {
+    mockGetRoleByName.mockResolvedValue(staffRole);
+    mockUpdateRoleByName.mockImplementation(async (name, updates) => ({ name, ...updates }));
+    mockRecordAuditEntry.mockResolvedValue(null);
+    const app = createApp(adminUser);
+
+    const res = await request(app).put('/api/roles/STAFF/prompts').send({ USE: false });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('leaves an invalid body to the update handler', async () => {
+    const app = createApp(adminUser);
+
+    const res = await request(app).put('/api/roles/ADMIN/prompts').send({ USE: 'no' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid prompt permissions.');
+  });
+});

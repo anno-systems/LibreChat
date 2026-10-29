@@ -8,6 +8,7 @@ import type { ChatFormValues } from '~/common';
 import {
   COLLAPSED_WIDTH,
   EXPANDED_MIN,
+  LABELED_RAIL_EXTRA,
   TRANSITION_MS,
   EASING,
   MOBILE_DRAWER_TRANSITION,
@@ -54,11 +55,15 @@ function SidebarChatProvider({ children }: { children: ReactNode }) {
 function UnifiedSidebar({
   isSliding = false,
   switchToHistory,
+  labeled = false,
 }: {
   isSliding?: boolean;
   /** The user's "new chat returns to the chat list" preference. App-global
    *  shell state the sidebar only reads, so the host passes it in. */
   switchToHistory: boolean;
+  /** The desktop rail shows labels beside its icons (fork: sidebar labels); the user's
+   *  layout preference, passed in by the host like `switchToHistory`. */
+  labeled?: boolean;
 }) {
   const localize = useLocalize();
   const location = useLocation();
@@ -75,6 +80,8 @@ function UnifiedSidebar({
   const resizeHandlers = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null);
 
   const links = useUnifiedSidebarLinks();
+  /** Widths below are measured with the icon-only rail; the labelled rail adds this on top. */
+  const railExtra = labeled ? LABELED_RAIL_EXTRA : 0;
   const isInsightsRoute = location.pathname.startsWith('/insights');
   const panelExpanded = expanded && !isInsightsRoute;
 
@@ -131,7 +138,10 @@ function UnifiedSidebar({
         }
         rafId = requestAnimationFrame(() => {
           rafId = null;
-          const next = Math.max(minWidth, Math.min(measure(e.clientX) / remScale, maxWidth));
+          const next = Math.max(
+            minWidth,
+            Math.min(measure(e.clientX) / remScale - railExtra, maxWidth),
+          );
           setSidebarWidth(next);
         });
       };
@@ -156,7 +166,7 @@ function UnifiedSidebar({
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
     },
-    [remScale],
+    [remScale, railExtra],
   );
 
   const handleResizeKeyboard = useCallback(
@@ -283,11 +293,13 @@ function UnifiedSidebar({
         <aside
           className="relative flex h-full shrink-0 overflow-hidden"
           style={{
-            width: pxToRem(panelExpanded ? sidebarWidth : COLLAPSED_WIDTH),
+            width: pxToRem((panelExpanded ? sidebarWidth : COLLAPSED_WIDTH) + railExtra),
             minWidth: panelExpanded
-              ? `min(${pxToRem(EXPANDED_MIN)}, 40%)`
-              : pxToRem(COLLAPSED_WIDTH),
-            maxWidth: panelExpanded ? '40%' : pxToRem(COLLAPSED_WIDTH),
+              ? `calc(min(${pxToRem(EXPANDED_MIN)}, 40%) + ${pxToRem(railExtra)})`
+              : pxToRem(COLLAPSED_WIDTH + railExtra),
+            maxWidth: panelExpanded
+              ? `calc(40% + ${pxToRem(railExtra)})`
+              : pxToRem(COLLAPSED_WIDTH + railExtra),
             transition: isResizing
               ? 'none'
               : `width ${TRANSITION_MS}ms ${EASING}, min-width ${TRANSITION_MS}ms ${EASING}, max-width ${TRANSITION_MS}ms ${EASING}`,
@@ -306,6 +318,7 @@ function UnifiedSidebar({
             switchToHistory={switchToHistory}
             onResizeStart={handleResizeStart}
             onResizeKeyboard={handleResizeKeyboard}
+            labeled={labeled}
           />
         </aside>
       </ActivePanelProvider>
