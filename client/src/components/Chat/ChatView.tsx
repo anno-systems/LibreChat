@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from 'react';
+import { memo, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
@@ -38,7 +38,6 @@ import MessagesView from './Messages/MessagesView';
 import Presentation from './Presentation';
 import ChatForm from './Input/ChatForm';
 import { TraceSurface } from './Trace';
-import Lia from '~/components/Lia';
 import Landing from './Landing';
 import Header from './Header';
 import { cn } from '~/utils';
@@ -89,9 +88,6 @@ function ChatView({
 
   /** Room an open composer popover needs below the composer; see the atom. */
   const composerLift = useAtomValue(composerLiftFamily(index));
-
-  /** Lia, the welcome screen mascot, stands on the composer band's top edge. */
-  const composerBandRef = useRef<HTMLDivElement>(null);
 
   const methods = useForm<ChatFormValues>({
     defaultValues: { text: '' },
@@ -247,7 +243,6 @@ function ChatView({
                         is a stacking context; keep it above positioned tool glyphs
                         so they cannot paint through the approval preview. */}
                           <div
-                            ref={composerBandRef}
                             className={cn(
                               'bg-surface-canvas relative z-10 w-full [view-transition-name:chat-form]',
                               !isLandingPage && 'scrollbar-gutter-spacer',
@@ -281,11 +276,6 @@ function ChatView({
                               with the conversation that always showed it. */}
                             {!fullFooter && configuredFooter && <Footer configuredOnly />}
                           </div>
-                          <Lia
-                            bandRef={composerBandRef}
-                            landing={isLandingPage}
-                            submission={rootSubmission}
-                          />
                         </div>
                         {fullFooter && <Footer />}
                       </>

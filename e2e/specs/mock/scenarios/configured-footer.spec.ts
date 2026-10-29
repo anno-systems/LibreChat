@@ -49,7 +49,7 @@ test.describe('configured footer', () => {
       await page.goto('/c/new', { timeout: 10000 });
       await expect(page.getByText(CUSTOM_FOOTER)).toBeVisible();
       /** The generic disclaimer is replaced by the operator's content, as before. */
-      await expect(page.locator('a[href="https://librechat.ai"]')).toHaveCount(0);
+      await expect(page.getByTestId('default-footer')).toHaveCount(0);
 
       await page.goto(`/c/${conversationId}`, { timeout: 10000 });
       await expect(page.getByRole('textbox', { name: 'Message input' })).toBeVisible();

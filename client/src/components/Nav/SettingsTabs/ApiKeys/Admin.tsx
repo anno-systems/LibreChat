@@ -27,9 +27,9 @@ export default function Admin() {
   });
 
   const trigger = (
-    <Button variant="outline" size="sm" className="gap-1.5 text-text-secondary">
+    <Button variant="outline" size="sm" className="text-text-secondary gap-1.5">
       <ShieldEllipsis className="h-4 w-4" aria-hidden="true" />
-      {localize('com_ui_admin_panel')}
+      {localize('com_ui_manage_remote_agents')}
     </Button>
   );
 

@@ -66,7 +66,7 @@ export default function ExportAndShareMenu({
           />
         }
         items={items}
-        className={isSmallScreen ? '' : 'absolute inset-e-0 top-0 mt-2'}
+        className={isSmallScreen ? '' : 'absolute inset-s-0 top-0 mt-2'}
       />
       {dialogs}
     </>

@@ -1302,6 +1302,9 @@ export const AUDIT_ACTIONS = [
   'user.role_changed',
   /** An admin set the user's credit balance (fork: admin balance API). */
   'user.balance_updated',
+  /** An admin had the user's identity provider send a password reset (fork: admin app); target
+   * `{ type: 'user', id }`, recorded by `POST /api/admin/users/:id/password-reset-events`. */
+  'user.password_reset_sent',
   /** Resource ACL (sharing) changes. */
   'acl.granted',
   'acl.revoked',
@@ -1374,6 +1377,7 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'user.deleted': 'user',
   'user.role_changed': 'user',
   'user.balance_updated': 'user',
+  'user.password_reset_sent': 'user',
   'acl.granted': 'acl',
   'acl.revoked': 'acl',
   'acl.public_changed': 'acl',

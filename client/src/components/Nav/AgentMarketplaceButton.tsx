@@ -15,9 +15,18 @@ interface AgentMarketplaceButtonProps {
    * `icon` is the rail's square, labelled by a tooltip. `row` is a full-width
    * entry carrying its own label, for the mobile drawer: an icon in a header
    * strip is the easiest thing there to miss, and the list it now heads is
-   * where someone already looks for somewhere to go.
+   * where someone already looks for somewhere to go. `label` is the labelled
+   * desktop rail's entry (fork: sidebar labels): the rail's height and inset,
+   * with the label beside the icon.
    */
-  layout?: 'icon' | 'row';
+  layout?: 'icon' | 'row' | 'label';
+}
+
+function buttonSize(layout: AgentMarketplaceButtonProps['layout']) {
+  if (layout === 'row') {
+    return 'row';
+  }
+  return layout === 'label' ? 'rail' : 'icon';
 }
 
 /** Agent Marketplace entry in the sidebar. Self-gated on marketplace
@@ -35,6 +44,7 @@ export default function AgentMarketplaceButton({
   }
 
   const isRow = layout === 'row';
+  const hasLabel = isRow || layout === 'label';
 
   /** Composed through the shared button so the focus ring, hover fill and theme
    *  timing come from the primitive rather than being restated: a hand-rolled
@@ -45,13 +55,13 @@ export default function AgentMarketplaceButton({
     <Button
       asChild
       variant="nav"
-      size={isRow ? 'row' : 'icon'}
-      className={cn('shrink-0', isRow ? 'w-full justify-start' : 'h-9 w-9')}
+      size={buttonSize(layout)}
+      className={cn('shrink-0', isRow && 'w-full justify-start', !hasLabel && 'h-9 w-9')}
     >
       <Link
         to="/agents"
         data-testid="nav-agents-marketplace-button"
-        aria-label={isRow ? undefined : localize('com_agents_marketplace')}
+        aria-label={hasLabel ? undefined : localize('com_agents_marketplace')}
         onClick={(event) => {
           if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) {
             return;
@@ -60,7 +70,7 @@ export default function AgentMarketplaceButton({
         }}
       >
         <LayoutGrid className="text-text-primary h-5 w-5 shrink-0" aria-hidden="true" />
-        {isRow && (
+        {hasLabel && (
           <span className="text-text-primary min-w-0 truncate text-sm font-medium">
             {localize('com_agents_marketplace')}
           </span>
@@ -69,7 +79,7 @@ export default function AgentMarketplaceButton({
     </Button>
   );
 
-  if (isRow) {
+  if (hasLabel) {
     return button;
   }
 

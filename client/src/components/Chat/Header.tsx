@@ -124,6 +124,23 @@ function Header({
             <AddMultiConvo />
           </div>
         )}
+        {/* The chat's "…" menu sits with the controls above, so the header has one area to act
+            in (fork: header menu). Small screens show the overflow menu in its place. */}
+        <div data-testid="header-chat-menu" className="flex shrink-0 items-center">
+          <HeaderMenu
+            startupConfig={startupConfig}
+            trace={trace}
+            readOnly={readOnly}
+            pullRequestConversationId={showPullRequest ? routeConversationId : undefined}
+            className={isSmallScreen ? undefined : 'hidden'}
+          />
+          <div className={cn('items-center', isSmallScreen ? 'hidden' : 'flex')}>
+            <ExportAndShareMenu
+              isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
+              readOnly={readOnly}
+            />
+          </div>
+        </div>
         {/* Desktop only: its details open to the right, into the room this cluster leaves free.
             Small screens reach the same card from the overflow menu. */}
         {!isSmallScreen && showPullRequest && (
@@ -141,19 +158,8 @@ function Header({
             isSubmitting={isSubmitting}
           />
         )}
-        <HeaderMenu
-          startupConfig={startupConfig}
-          trace={trace}
-          readOnly={readOnly}
-          pullRequestConversationId={showPullRequest ? routeConversationId : undefined}
-          className={isSmallScreen ? undefined : 'hidden'}
-        />
         <div className={cn('items-center gap-2', isSmallScreen ? 'hidden' : 'flex')}>
           {trace.show && <TraceButton onClick={trace.open} />}
-          <ExportAndShareMenu
-            isSharedButtonEnabled={startupConfig?.sharedLinksEnabled ?? false}
-            readOnly={readOnly}
-          />
           {showTemporaryChat && <TemporaryChat />}
         </div>
       </div>

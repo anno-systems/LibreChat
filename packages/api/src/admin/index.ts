@@ -8,7 +8,13 @@ export { createAdminRolesHandlers, createRolePermissionsUpdateHandler } from './
 export { createAdminSkillsSyncAccess, createAdminSkillsSyncHandlers } from './skills';
 export { createAdminUsersHandlers } from './users';
 export { requireAdminUserDeletion } from './deletion';
+export {
+  createAdminLockoutGuard,
+  createAdminRolesLockoutGuards,
+  ADMIN_PERMISSIONS_LOCKED,
+} from './lockout';
 export { createAdminBalanceHandlers } from './balance';
+export { createAdminPasswordResetHandler } from './password';
 export { createAdminUsageHandler } from './usage';
 export { createAdminCostsHandler } from './costs';
 export { createMcpSubscriptionHandlers } from './subscriptions';
@@ -38,6 +44,7 @@ export type {
 export type { AdminSkillSyncAccessDeps, AdminSkillSyncDeps } from './skills';
 export type { AdminUsersDeps } from './users';
 export type { AdminBalanceDeps, AdminBalanceView, BalanceRecord } from './balance';
+export type { AdminPasswordResetDeps } from './password';
 export type { AdminUsageDeps } from './usage';
 export type { AdminCostsDeps, McpServerCharge } from './costs';
 export type {

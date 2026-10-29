@@ -31,6 +31,7 @@ const AdminSettings = () => {
       sectionKey="com_ui_skills"
       permissions={permissions}
       menuId="skill-role-dropdown"
+      triggerLabelKey="com_ui_manage_skills"
       mutation={mutation}
     />
   );

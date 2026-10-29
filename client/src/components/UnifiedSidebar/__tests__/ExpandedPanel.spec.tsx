@@ -106,6 +106,7 @@ function renderPanel({
   onNavigate,
   initialPanel = DEFAULT_PANEL,
   switchToHistory = true,
+  labeled,
 }: {
   expanded?: boolean;
   links?: NavLink[];
@@ -114,6 +115,7 @@ function renderPanel({
   onNavigate?: jest.Mock;
   initialPanel?: string;
   switchToHistory?: boolean;
+  labeled?: boolean;
 } = {}) {
   getDefaultStore().set(activePanelAtom, initialPanel);
 
@@ -129,6 +131,7 @@ function renderPanel({
               onExpand={onExpand}
               onNavigate={onNavigate}
               switchToHistory={switchToHistory}
+              labeled={labeled}
             />
           </ActivePanelProvider>
         </RecoilRoot>
@@ -249,5 +252,38 @@ describe('ExpandedPanel', () => {
       expect(mockNewConversation).toHaveBeenCalledTimes(1);
       expect(getDefaultStore().get(activePanelAtom)).toBe('prompts');
     });
+  });
+});
+
+describe('ExpandedPanel labels (fork: sidebar labels)', () => {
+  it('shows a label beside each icon in the wide rail', () => {
+    renderPanel({ labeled: true });
+
+    expect(screen.getByTestId('sidebar-rail')).toHaveClass('w-52');
+    expect(screen.getByTestId('new-chat-button')).toHaveTextContent('com_ui_new_chat');
+    expect(screen.getByRole('button', { name: 'com_ui_chat_history' })).toHaveTextContent(
+      'com_ui_chat_history',
+    );
+    expect(screen.getByRole('button', { name: 'com_ui_prompts' })).toHaveTextContent(
+      'com_ui_prompts',
+    );
+  });
+
+  it('keeps the compact rail icon-only', () => {
+    renderPanel({ labeled: false });
+
+    expect(screen.getByTestId('sidebar-rail')).not.toHaveClass('w-52');
+    expect(screen.getByTestId('new-chat-button')).toHaveAttribute('aria-label', 'com_ui_new_chat');
+    expect(screen.getByTestId('new-chat-button')).not.toHaveTextContent('com_ui_new_chat');
+    expect(screen.getByRole('button', { name: 'com_ui_prompts' })).not.toHaveTextContent(
+      'com_ui_prompts',
+    );
+  });
+
+  it('keeps the labelled entries working', () => {
+    renderPanel({ labeled: true, expanded: true });
+    fireEvent.click(screen.getByRole('button', { name: 'com_ui_prompts' }));
+
+    expect(getDefaultStore().get(activePanelAtom)).toBe('prompts');
   });
 });

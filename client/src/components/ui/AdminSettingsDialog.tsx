@@ -1,8 +1,8 @@
 import { useId, useEffect, useState } from 'react';
 import * as Ariakit from '@ariakit/react';
 import { useForm, Controller } from 'react-hook-form';
+import { SystemRoles } from 'librechat-data-provider';
 import { ChevronDown, ShieldEllipsis } from 'lucide-react';
-import { Permissions, SystemRoles } from 'librechat-data-provider';
 import {
   Label,
   Button,
@@ -16,7 +16,7 @@ import {
   OGDialogTrigger,
   OGDialogDescription,
 } from '@librechat/client';
-import type { PermissionTypes } from 'librechat-data-provider';
+import type { Permissions, PermissionTypes } from 'librechat-data-provider';
 import type { Control } from 'react-hook-form';
 import type { TranslationKeys } from '~/hooks/useLocalize';
 import { useLocalize, useAuthContext, useRoleSelector } from '~/hooks';
@@ -46,20 +46,12 @@ export interface AdminSettingsDialogProps {
   };
   /** Localization key for the screen-reader description of the dialog */
   descriptionKey?: TranslationKeys;
-  /** Whether to show the admin access warning when ADMIN role and USE permission is displayed (default: true) */
-  showAdminWarning?: boolean;
+  /** Label of the default trigger, which names what it manages (e.g. 'com_ui_manage_agents') */
+  triggerLabelKey?: TranslationKeys;
   /** Custom trigger element. If not provided, uses default button with icon and text */
   trigger?: React.ReactNode;
   /** Additional className for the dialog content */
   dialogContentClassName?: string;
-  /** Custom callback when a permission change requires confirmation */
-  onPermissionConfirm?: (
-    permission: Permissions,
-    newValue: boolean,
-    onChange: (value: boolean) => void,
-  ) => void;
-  /** Permissions that require confirmation before changing (only applies when onPermissionConfirm is provided) */
-  confirmPermissions?: Permissions[];
   /** Custom content to render after the permissions form (e.g., confirmation dialogs) */
   extraContent?: React.ReactNode;
 }
@@ -69,16 +61,9 @@ type LabelControllerProps = {
   label: string;
   permission: Permissions;
   control: Control<FormValues, unknown, FormValues>;
-  onConfirm?: (newValue: boolean, onChange: (value: boolean) => void) => void;
 };
 
-const LabelController: React.FC<LabelControllerProps> = ({
-  id,
-  control,
-  permission,
-  label,
-  onConfirm,
-}) => (
+const LabelController: React.FC<LabelControllerProps> = ({ id, control, permission, label }) => (
   <div className="flex items-center justify-between gap-4 px-4 py-3.5">
     <Label
       htmlFor={id}
@@ -94,13 +79,7 @@ const LabelController: React.FC<LabelControllerProps> = ({
           {...field}
           id={id}
           checked={field.value ?? false}
-          onCheckedChange={(val) => {
-            if (val === false && onConfirm) {
-              onConfirm(val, field.onChange);
-            } else {
-              field.onChange(val);
-            }
-          }}
+          onCheckedChange={field.onChange}
           value={(field.value ?? false).toString()}
           aria-label={label}
         />
@@ -116,11 +95,9 @@ const AdminSettingsDialog: React.FC<AdminSettingsDialogProps> = ({
   menuId,
   mutation,
   descriptionKey,
-  showAdminWarning = true,
+  triggerLabelKey = 'com_ui_admin_settings',
   trigger,
   dialogContentClassName,
-  onPermissionConfirm,
-  confirmPermissions = [],
   extraContent,
 }) => {
   const localize = useLocalize();
@@ -187,10 +164,10 @@ const AdminSettingsDialog: React.FC<AdminSettingsDialogProps> = ({
       size="sm"
       variant="outline"
       className="relative h-9 w-full font-medium"
-      aria-label={localize('com_ui_admin_settings')}
+      aria-label={localize(triggerLabelKey)}
     >
       <ShieldEllipsis className="size-5 cursor-pointer" aria-hidden="true" />
-      {localize('com_ui_admin_settings')}
+      {localize(triggerLabelKey)}
     </Button>
   );
 
@@ -251,45 +228,15 @@ const AdminSettingsDialog: React.FC<AdminSettingsDialogProps> = ({
               </div>
 
               <div className="divide-border-light border-border-light bg-surface-secondary divide-y overflow-hidden rounded-xl border">
-                {permissions.map(({ permission, labelKey }) => {
-                  const label = localize(labelKey);
-                  const needsConfirm =
-                    selectedRole === SystemRoles.ADMIN &&
-                    confirmPermissions.includes(permission) &&
-                    onPermissionConfirm;
-
-                  return (
-                    <div key={permission}>
-                      <LabelController
-                        id={`${idPrefix}-${permission}`}
-                        control={control}
-                        permission={permission}
-                        label={label}
-                        onConfirm={
-                          needsConfirm
-                            ? (newValue, onChange) =>
-                                onPermissionConfirm(permission, newValue, onChange)
-                            : undefined
-                        }
-                      />
-                      {showAdminWarning &&
-                        selectedRole === SystemRoles.ADMIN &&
-                        permission === Permissions.USE && (
-                          <div className="border-border-light text-text-destructive border-t px-4 py-3 text-sm break-words whitespace-normal">
-                            <span>{localize('com_ui_admin_access_warning')}</span>{' '}
-                            <a
-                              href="https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/interface"
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-link underline"
-                            >
-                              {localize('com_ui_more_info')}
-                            </a>
-                          </div>
-                        )}
-                    </div>
-                  );
-                })}
+                {permissions.map(({ permission, labelKey }) => (
+                  <LabelController
+                    key={permission}
+                    id={`${idPrefix}-${permission}`}
+                    control={control}
+                    permission={permission}
+                    label={localize(labelKey)}
+                  />
+                ))}
               </div>
             </div>
 

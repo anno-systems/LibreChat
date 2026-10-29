@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { productNameProcessor } from './productName';
 import translationEn from './en/translation.json';
+import { withOverlay } from './overlay';
 
 export const defaultNS = 'translation';
 
@@ -66,7 +67,7 @@ const localeLoaders: Record<
   ca: () => import('./ca/translation.json'),
   cs: () => import('./cs/translation.json'),
   da: () => import('./da/translation.json'),
-  de: () => import('./de/translation.json'),
+  de: () => withOverlay(import('./de/translation.json'), import('./de/fork.json')),
   es: () => import('./es/translation.json'),
   et: () => import('./et/translation.json'),
   fa: () => import('./fa/translation.json'),

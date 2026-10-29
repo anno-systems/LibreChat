@@ -11,15 +11,23 @@ import useDirection, { inlineSide } from '~/hooks/Nav/useDirection';
 import useNewChat from '~/hooks/Conversations/useNewChat';
 import { lazyWithRecovery } from '~/lib/assets/lazy';
 import { useLocalize } from '~/hooks';
+import { cn } from '~/utils';
 
 const AccountSettings = lazyWithRecovery(() => import('~/components/Nav/AccountSettings'));
+
+/** The new chat link's look in the labelled rail, matching the Button size `rail` of the other
+ *  entries (fork: sidebar labels). */
+const LABELED_ENTRY = 'h-9 w-full justify-start gap-3 px-2';
+const ENTRY_LABEL = 'text-text-primary min-w-0 truncate text-sm font-medium';
 
 const NewChatButton = memo(function NewChatButton({
   setActive,
   switchToHistory,
+  labeled,
 }: {
   setActive: (id: string) => void;
   switchToHistory: boolean;
+  labeled: boolean;
 }) {
   const localize = useLocalize();
   const tooltipSide = inlineSide(useDirection(), 'end');
@@ -34,24 +42,28 @@ const NewChatButton = memo(function NewChatButton({
 
   const { handleNewChatClick } = useNewChat({ onNewChat: handlePanelSwitch });
 
-  return (
-    <TooltipAnchor
-      side={tooltipSide}
-      description={tooltipDescription}
-      render={
-        <a
-          href="/c/new"
-          data-testid="new-chat-button"
-          aria-label={localize('com_ui_new_chat')}
-          aria-keyshortcuts={ariaKey}
-          className="hover:bg-surface-nav-hover flex h-9 w-9 items-center justify-center rounded-lg transition-colors"
-          onClick={handleNewChatClick}
-        >
-          <SquarePen className="text-text-primary h-5 w-5" />
-        </a>
-      }
-    />
+  const link = (
+    <a
+      href="/c/new"
+      data-testid="new-chat-button"
+      aria-label={labeled ? undefined : localize('com_ui_new_chat')}
+      aria-keyshortcuts={ariaKey}
+      className={cn(
+        'hover:bg-surface-nav-hover flex items-center rounded-lg transition-colors',
+        labeled ? LABELED_ENTRY : 'h-9 w-9 justify-center',
+      )}
+      onClick={handleNewChatClick}
+    >
+      <SquarePen className="text-text-primary h-5 w-5 shrink-0" aria-hidden="true" />
+      {labeled && <span className={ENTRY_LABEL}>{localize('com_ui_new_chat')}</span>}
+    </a>
   );
+
+  if (labeled) {
+    return link;
+  }
+
+  return <TooltipAnchor side={tooltipSide} description={tooltipDescription} render={link} />;
 });
 
 const NavIconButton = memo(function NavIconButton({
@@ -63,10 +75,12 @@ const NavIconButton = memo(function NavIconButton({
   onCollapse,
   onNavigate,
   onLeaveInsights,
+  labeled,
 }: {
   link: NavLink;
   isActive: boolean;
   expanded: boolean;
+  labeled: boolean;
   setActive: (id: string) => void;
   onExpand?: () => void;
   onCollapse?: () => void;
@@ -99,26 +113,27 @@ const NavIconButton = memo(function NavIconButton({
     [link, isActive, setActive, expanded, onExpand, onCollapse, onNavigate, onLeaveInsights],
   );
 
-  return (
-    <TooltipAnchor
-      description={localize(link.title)}
-      side={tooltipSide}
-      render={
-        <Button
-          size="icon"
-          variant="nav"
-          aria-label={localize(link.title)}
-          aria-pressed={isActive}
-          disabled={link.disabled}
-          data-testid={`nav-panel-${link.id}`}
-          className="h-9 w-9 rounded-lg"
-          onClick={handleClick}
-        >
-          <link.icon className="h-5 w-5" aria-hidden="true" />
-        </Button>
-      }
-    />
+  const button = (
+    <Button
+      size={labeled ? 'rail' : 'icon'}
+      variant="nav"
+      aria-label={labeled ? undefined : localize(link.title)}
+      aria-pressed={isActive}
+      disabled={link.disabled}
+      data-testid={`nav-panel-${link.id}`}
+      className={labeled ? undefined : 'h-9 w-9 rounded-lg'}
+      onClick={handleClick}
+    >
+      <link.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+      {labeled && <span className={ENTRY_LABEL}>{localize(link.title)}</span>}
+    </Button>
   );
+
+  if (labeled) {
+    return button;
+  }
+
+  return <TooltipAnchor description={localize(link.title)} side={tooltipSide} render={button} />;
 });
 
 function ExpandedPanel({
@@ -129,6 +144,7 @@ function ExpandedPanel({
   onNavigate,
   onLeaveInsights,
   switchToHistory,
+  labeled = false,
 }: {
   links: NavLink[];
   expanded?: boolean;
@@ -137,6 +153,9 @@ function ExpandedPanel({
   onNavigate?: () => void;
   onLeaveInsights?: () => void;
   switchToHistory: boolean;
+  /** Shows each entry's label beside its icon, in a wider rail (fork: sidebar labels). The
+   *  host passes the user's layout preference; icon-only entries carry tooltips instead. */
+  labeled?: boolean;
 }) {
   const localize = useLocalize();
   const tooltipSide = inlineSide(useDirection(), 'end');
@@ -151,7 +170,13 @@ function ExpandedPanel({
   const toggleSidebarAriaKey = useShortcutAriaKey('toggleSidebar');
 
   return (
-    <div className="border-border-inset bg-surface-sidebar flex h-full shrink-0 flex-col gap-2 border-e px-2 py-2">
+    <div
+      data-testid="sidebar-rail"
+      className={cn(
+        'border-border-inset bg-surface-sidebar flex h-full shrink-0 flex-col gap-2 border-e px-2 py-2',
+        labeled && 'w-52',
+      )}
+    >
       <TooltipAnchor
         side={tooltipSide}
         description={toggleSidebarHint}
@@ -171,8 +196,8 @@ function ExpandedPanel({
           </Button>
         }
       />
-      <NewChatButton setActive={setActive} switchToHistory={switchToHistory} />
-      <AgentMarketplaceButton />
+      <NewChatButton setActive={setActive} switchToHistory={switchToHistory} labeled={labeled} />
+      <AgentMarketplaceButton layout={labeled ? 'label' : 'icon'} />
       <div className="border-border-inset mx-2 border-b" />
       <div className="flex flex-col gap-1 overflow-y-auto">
         {links.map((link) => (
@@ -185,6 +210,7 @@ function ExpandedPanel({
                 : !isInsightsRoute && link.id === effectiveActive
             }
             expanded={expanded ?? true}
+            labeled={labeled}
             setActive={setActive}
             onExpand={onExpand}
             onCollapse={onCollapse}
@@ -196,7 +222,7 @@ function ExpandedPanel({
 
       <div className="mt-auto">
         <Suspense fallback={<Skeleton className="h-9 w-9 rounded-lg" />}>
-          <AccountSettings collapsed />
+          <AccountSettings collapsed={!labeled} />
         </Suspense>
       </div>
     </div>

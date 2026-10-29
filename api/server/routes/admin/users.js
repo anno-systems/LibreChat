@@ -7,6 +7,7 @@ const {
   createErasureResolver,
   createAdminUsersHandlers,
   createAdminBalanceHandlers,
+  createAdminPasswordResetHandler,
   requireAdminUserDeletion,
   revokeUserCodeEnvironmentWorkers,
 } = require('@librechat/api');
@@ -98,6 +99,12 @@ const balanceHandlers = createAdminBalanceHandlers({
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
 });
 
+/** Fork: the admin app records a password reset it had the identity provider send. */
+const recordPasswordResetSent = createAdminPasswordResetHandler({
+  getUserById: db.getUserById,
+  recordAuditEntry: db.recordAuditEntry,
+});
+
 router.use(requireJwtAuth, requireAdminAccess);
 
 router.get('/', requireReadUsers, handlers.listUsers);
@@ -107,5 +114,6 @@ router.delete('/:id', requireAdminUserDeletion, requireManageUsers, handlers.del
 router.get('/:id/balance', requireReadUsers, balanceHandlers.getUserBalance);
 router.put('/:id/balance', requireManageUsers, balanceHandlers.setUserBalance);
 router.post('/:id/balance/credits', requireManageUsers, balanceHandlers.addUserCredits);
+router.post('/:id/password-reset-events', requireManageUsers, recordPasswordResetSent);
 
 module.exports = router;

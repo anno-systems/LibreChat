@@ -30,7 +30,7 @@ const MarketplaceAdminSettings = () => {
       size="icon-sm"
       variant="outline"
       className="size-9 shrink-0 transition-none"
-      aria-label={localize('com_ui_admin_settings')}
+      aria-label={localize('com_ui_manage_marketplace')}
     >
       <ShieldEllipsis className="size-4" aria-hidden="true" />
     </Button>
@@ -44,7 +44,6 @@ const MarketplaceAdminSettings = () => {
       menuId="marketplace-role-dropdown"
       mutation={mutation}
       trigger={trigger}
-      showAdminWarning={false}
     />
   );
 };
