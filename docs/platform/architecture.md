@@ -127,8 +127,9 @@ Verified in the code at `9008c47`:
   after the operator types its id. Deletion first purges LibreChat (`DELETE
 /api/platform/tenants/:id`: every user is erased through upstream's erasure path, then every
   document with that `tenantId` except the append-only audit log, which records `tenant.purged`),
-  then deletes the Zitadel organization. A failed purge stops before Zitadel, so it can be
-  retried.
+  then deletes the tenant's MCP data in the shared MCP database in one transaction (connected
+  accounts, settings, search keys; audit logs, scope grants and search usage stay), then deletes
+  the Zitadel organization. A failed purge stops before Zitadel, so it can be retried.
 - **Claim to tenant.** At OIDC login, LibreChat takes the tenant from a claim in the broker's token
   and checks it against the header. A mismatch fails the login. This closes the gap where a user of
   tenant A logs in on tenant B's domain.
@@ -1261,8 +1262,11 @@ Decided:
 - Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
   equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
   because `openid-client` accepts only HTTPS issuers.
-- MCP servers in TypeScript on `@anno/mcp-core` (2026-10-19), each with its own Postgres
-  database for scope grants and audit. The audit log is append-only with one hash chain per
+- MCP servers in TypeScript on `@anno/mcp-core` (2026-10-19), sharing one Postgres database
+  `mcp` with one schema per server (`mcp_<server>`, the search gateway `mcp_search`) for scope
+  grants, connections, settings and audit (2026-10-30). Each schema has `purge_tenant(tenant_id)`,
+  which the admin app calls for all schemas in one transaction when a tenant is deleted, so a
+  stopped server no longer blocks the deletion. The audit log is append-only with one hash chain per
   tenant, so a changed or deleted entry is detectable.
 - Platform token for now: the user's Zitadel access token, forwarded by LibreChat
   (`OPENID_REUSE_TOKENS`) (2026-10-19). The audience-bound exchanged token stays the target.
