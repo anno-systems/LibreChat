@@ -128,7 +128,7 @@ Verified in the code at `9008c47`:
 /api/platform/tenants/:id`: every user is erased through upstream's erasure path, then every
   document with that `tenantId` except the append-only audit log, which records `tenant.purged`),
   then deletes the tenant's MCP data in the shared MCP database in one transaction (connected
-  accounts, settings, search keys; audit logs, scope grants and search usage stay), then deletes
+  accounts, settings, scope grants, search keys; audit logs and search usage stay), then deletes
   the Zitadel organization. A failed purge stops before Zitadel, so it can be retried.
 - **Claim to tenant.** At OIDC login, LibreChat takes the tenant from a claim in the broker's token
   and checks it against the header. A mismatch fails the login. This closes the gap where a user of
