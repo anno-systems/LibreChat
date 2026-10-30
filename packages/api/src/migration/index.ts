@@ -40,3 +40,15 @@ export type { ModelRemovalGuard, ModelRemovalGuardDeps, RemovalCheck, Successor 
 export { createModelMigrationNoticeHandlers, noticeView } from './notice';
 export type { ModelMigrationNoticeHandlers, ModelMigrationNoticeView } from './notice';
 export { createAssignedProviderCheck, createModelLabelLookup } from './labels';
+export {
+  createUsableModelCheck,
+  createAdminOrphanHandler,
+  createOrphanedModelFinder,
+  createOperatorOrphanHandler,
+} from './orphans';
+export type {
+  OrphanScope,
+  OrphanedModel,
+  OrphanedModelFinder,
+  OrphanedModelFinderDeps,
+} from './orphans';

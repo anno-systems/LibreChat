@@ -111,6 +111,23 @@ export interface ModelUsage extends ModelRef {
   conversations: number;
 }
 
+/**
+ * A model that stored documents of a tenant name: agents by (`provider`, `model`), active
+ * conversations by (`endpoint`, `model`). `endpoint` is the stored value (an agent's provider).
+ */
+export interface UsedModel {
+  tenantId: string;
+  endpoint: string;
+  model: string;
+  agents: number;
+  conversations: number;
+}
+
+export interface UsedModelsOptions {
+  /** Conversation endpoints left out (the agents endpoint, whose model is the agent's). */
+  exceptConversationEndpoints?: string[];
+}
+
 export interface MigrateModelInput {
   migrationId: string;
   from: ModelRef;
@@ -165,6 +182,12 @@ export interface ModelMigrationMethods {
     agentProviders: string[],
     audience: MigrationAudience,
   ): Promise<MigrationCounts>;
+  /**
+   * Every (endpoint, model) the audience's agents and active conversations name, per tenant,
+   * counted by aggregation. Documents without a tenant and platform agents' copies (which
+   * follow their definition) are left out, as migrations leave them.
+   */
+  listUsedModels(audience: MigrationAudience, options?: UsedModelsOptions): Promise<UsedModel[]>;
   /** Rewrites the stored documents in batches; running it again changes nothing. */
   migrateModelUsage(input: MigrateModelInput): Promise<MigrateModelResult>;
   /**
@@ -885,6 +908,72 @@ export function createModelMigrationMethods(
           modelSpecs,
           favorites,
         };
+      });
+    },
+
+    async listUsedModels(audience, options = {}) {
+      return inAudience(audience, async () => {
+        const tenant = { tenantId: { $exists: true, $nin: [null, ''] } };
+        const named = { $type: 'string', $ne: '' };
+        const group = (field: string) => [
+          {
+            $group: {
+              _id: { tenantId: '$tenantId', endpoint: `$${field}`, model: '$model' },
+              count: { $sum: 1 },
+            },
+          },
+        ];
+        const Agent = model('Agent');
+        const Conversation = model('Conversation');
+        const except = options.exceptConversationEndpoints ?? [];
+        type Grouped = {
+          _id: { tenantId: string; endpoint: string; model: string };
+          count: number;
+        };
+        const [agents, conversations] = await Promise.all([
+          Agent
+            ? Agent.aggregate<Grouped>([
+                {
+                  $match: {
+                    ...audienceFilter(audience),
+                    ...exceptOwners(audience, 'author'),
+                    ...('all' in audience && tenant),
+                    provider: named,
+                    model: named,
+                    platformAgentId: { $exists: false },
+                  },
+                },
+                ...group('provider'),
+              ])
+            : [],
+          Conversation
+            ? Conversation.aggregate<Grouped>([
+                {
+                  $match: {
+                    ...audienceFilter(audience),
+                    ...exceptOwners(audience, 'user'),
+                    ...('all' in audience && tenant),
+                    endpoint: { ...named, ...(except.length > 0 && { $nin: except }) },
+                    model: named,
+                    ...active,
+                  },
+                },
+                ...group('endpoint'),
+              ])
+            : [],
+        ]);
+        const used = new Map<string, UsedModel>();
+        const add = (rows: Grouped[], kind: 'agents' | 'conversations') => {
+          for (const { _id, count: n } of rows) {
+            const key = `${_id.tenantId}\u0000${_id.endpoint}\u0000${_id.model}`;
+            const entry = used.get(key) ?? { ..._id, agents: 0, conversations: 0 };
+            entry[kind] += n;
+            used.set(key, entry);
+          }
+        };
+        add(agents, 'agents');
+        add(conversations, 'conversations');
+        return [...used.values()];
       });
     },
 

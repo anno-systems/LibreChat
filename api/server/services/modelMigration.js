@@ -9,12 +9,16 @@ const {
   createServedTargetCheck,
   createAssignedProviderCheck,
   invalidateCachedAuthUserDoc,
+  createAdminOrphanHandler,
+  createOrphanedModelFinder,
   createModelMigrationService,
+  createOperatorOrphanHandler,
   createAdminMigrationHandlers,
   createOperatorMigrationHandlers,
 } = require('@librechat/api');
 const { getModelsConfig } = require('~/server/controllers/ModelController');
 const { getAppConfig, invalidateConfigCaches } = require('./Config/app');
+const loadDefaultEndpointsConfig = require('./Config/loadDefaultEConfig');
 const getLogStores = require('~/cache/getLogStores');
 const db = require('~/models');
 
@@ -22,14 +26,16 @@ const db = require('~/models');
 const auditFailClosed = process.env.AUDIT_LOG_FAIL_CLOSED === 'true';
 const authUserDocCacheStore = getLogStores(CacheKeys.AUTH_USER_DOC);
 
+const labelOf = createModelLabelLookup({
+  getConfig: (tenantId) => getAppConfig(tenantId ? { tenantId } : { baseOnly: true }),
+  findPlatformProviders: db.findPlatformProviders,
+});
+
 const service = createModelMigrationService({
   store: db,
   invalidateConfig: invalidateConfigCaches,
   invalidateUser: (userId) => invalidateCachedAuthUserDoc(authUserDocCacheStore, { userId }),
-  labelOf: createModelLabelLookup({
-    getConfig: (tenantId) => getAppConfig(tenantId ? { tenantId } : { baseOnly: true }),
-    findPlatformProviders: db.findPlatformProviders,
-  }),
+  labelOf,
   isAssignedProvider: createAssignedProviderCheck({
     findPlatformProviders: db.findPlatformProviders,
   }),
@@ -44,6 +50,16 @@ const operatorId = (req) => operatorActor(req).id;
 
 /** Fork: a model of a platform provider without a key is no migration target. */
 const isServedTarget = createServedTargetCheck({ findPlatformProviders: db.findPlatformProviders });
+
+/** Fork: models a tenant's documents name that the tenant cannot use (`migration/orphans.ts`). */
+const orphans = createOrphanedModelFinder({
+  listUsedModels: db.listUsedModels,
+  getModelRedirects: db.getModelRedirects,
+  getTenantAppConfig: (tenantId) => getAppConfig({ tenantId }),
+  builtinEndpoints: async () =>
+    Object.keys(await loadDefaultEndpointsConfig(await getAppConfig({ baseOnly: true }))),
+  labelOf,
+});
 
 const guard = createModelRemovalGuard({
   service,
@@ -60,6 +76,7 @@ const operator = createOperatorMigrationHandlers({
     findPlatformProviders: db.findPlatformProviders,
   }),
   isServedTarget,
+  unusableTargetTenants: orphans.unusableTargetTenants,
   audit: operatorAudit,
   operatorId,
 });
@@ -81,4 +98,8 @@ module.exports = {
   guard,
   admin,
   operator,
+  orphans: {
+    operator: createOperatorOrphanHandler(orphans),
+    admin: createAdminOrphanHandler(orphans),
+  },
 };
