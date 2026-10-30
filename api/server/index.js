@@ -86,6 +86,7 @@ const {
   loadPlatformPricing,
   loadMcpPricing,
   loadModelRedirects,
+  migratePlatformCatalog,
 } = require('~/models');
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
@@ -248,6 +249,10 @@ const startServer = async () => {
   await loadMcpPricing();
   /* Fork: model redirects, held in memory for every chat request (modelMigration.ts). */
   await loadModelRedirects();
+  /* Fork: catalog documents of the old shape, read as new until rewritten (platformCatalog.ts). */
+  migratePlatformCatalog().catch((err) => {
+    logger.error('[migratePlatformCatalog] Catalog migration failed:', err);
+  });
   /* Recover stuck `status: 'pending'` records from a crash mid-render.
    * `runAsSystem` is required — `File` is tenant-isolated and strict
    * mode rejects unscoped queries. Lazy sweep in the preview endpoint

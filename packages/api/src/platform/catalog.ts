@@ -1,5 +1,11 @@
-import type { AppConfig, PlatformProvider, TenantCatalog } from '@librechat/data-schemas';
-import type { TEndpoint, TProviderLimits } from 'librechat-data-provider';
+import type {
+  AppConfig,
+  OwnModel,
+  CatalogModel,
+  TenantCatalog,
+  PlatformProvider,
+} from '@librechat/data-schemas';
+import type { TEndpoint, TProviderLimits, TQueueSettings } from 'librechat-data-provider';
 
 /**
  * Per-tenant model catalog (fork-only). Besides `librechat.yaml`'s custom endpoints, a tenant
@@ -9,7 +15,9 @@ import type { TEndpoint, TProviderLimits } from 'librechat-data-provider';
  * further through their config (`endpoints.custom[].models.default`). They join the tenant's
  * base config as tenant-scoped custom endpoints (`tenantId`, the same scoping upstream applies
  * to YAML endpoints), so model lists, the catalog lock and chat requests treat them like YAML
- * endpoints. No other tenant ever sees them.
+ * endpoints. No other tenant ever sees them. Model display names become the endpoint's
+ * `modelLabels` (the model selector shows them), and each model with limits gets its own queue
+ * through `modelLimits`, with the provider's queue settings.
  *
  * The admin config API must run with `ADMIN_CONFIG_CATALOG_LOCK`: without it a tenant admin
  * could override an assigned endpoint's `baseURL` and receive the operator's key.
@@ -44,6 +52,26 @@ export const DEFAULT_DROP_PARAMS: readonly string[] = ['user'];
 /** Shorter than the merged config cache, so a catalog change is visible within a minute. */
 const DEFAULT_TTL_MS = 30_000;
 
+/**
+ * Each limited model's queue limits with the provider's queue settings; models without limits
+ * get no entry and so no queue.
+ */
+function modelLimitsOf(
+  models: Array<CatalogModel | OwnModel>,
+  queue: TQueueSettings | undefined,
+): Record<string, TProviderLimits> | undefined {
+  const entries = models.flatMap((model) => {
+    const limits = 'limits' in model ? model.limits : undefined;
+    return limits && Object.keys(limits).length > 0 ? [[model.id, { ...queue, ...limits }]] : [];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function modelLabelsOf(models: OwnModel[]): Record<string, string> | undefined {
+  const entries = models.filter((model) => model.label).map((model) => [model.id, model.label!]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function endpointOf(
   tenantId: string,
   source: {
@@ -53,16 +81,20 @@ function endpointOf(
     label?: string;
     dropParams?: string[];
     /** Platform providers only; a tenant's own endpoint has no shared queue. */
-    limits?: TProviderLimits;
+    queue?: TQueueSettings;
   },
-  models: string[],
+  /** A tenant's own endpoints pass models without limits, so they never get a queue. */
+  models: Array<CatalogModel | OwnModel>,
 ): TEndpoint {
+  const modelLimits = modelLimitsOf(models, source.queue);
+  const modelLabels = modelLabelsOf(models);
   return {
-    ...(source.limits && { limits: { ...source.limits } }),
+    ...(modelLimits && { modelLimits }),
+    ...(modelLabels && { modelLabels }),
     name: source.name,
     baseURL: source.baseURL,
     apiKey: source.apiKey,
-    models: { default: models, fetch: false },
+    models: { default: models.map((model) => model.id), fetch: false },
     dropParams: [...(source.dropParams ?? DEFAULT_DROP_PARAMS)],
     modelDisplayLabel: source.label ?? source.name,
     titleConvo: true,
@@ -78,7 +110,12 @@ export function providerEndpoint(
   models: string[],
   decrypt: (value: string) => string,
 ): TEndpoint {
-  return endpointOf(tenantId, { ...provider, apiKey: decrypt(provider.apiKey) }, models);
+  const listed = new Set(models);
+  return endpointOf(
+    tenantId,
+    { ...provider, apiKey: decrypt(provider.apiKey) },
+    provider.models.filter((model) => listed.has(model.id)),
+  );
 }
 
 /**
@@ -97,22 +134,20 @@ export function catalogEndpoints(
   const endpoints: TEndpoint[] = [];
   const added = new Set<string>();
   const add = (provider: PlatformProvider, models: string[]) => {
-    if (models.length === 0 || added.has(provider.name)) return;
+    if (added.has(provider.name)) return;
+    const endpoint = providerEndpoint(tenantId, provider, models, decrypt);
+    if (endpoint.models?.default.length === 0) return;
     added.add(provider.name);
-    endpoints.push(providerEndpoint(tenantId, provider, models, decrypt));
+    endpoints.push(endpoint);
   };
+  const ids = (provider: PlatformProvider) => provider.models.map((model) => model.id);
   for (const assignment of catalog?.providers ?? []) {
     const provider = byName.get(assignment.name);
     if (!provider) continue;
-    add(
-      provider,
-      provider.allTenants
-        ? provider.models
-        : assignment.models.filter((model) => provider.models.includes(model)),
-    );
+    add(provider, provider.allTenants ? ids(provider) : assignment.models);
   }
   for (const provider of providers) {
-    if (provider.allTenants) add(provider, provider.models);
+    if (provider.allTenants) add(provider, ids(provider));
   }
   if (catalog?.byok) {
     for (const own of catalog.own) {

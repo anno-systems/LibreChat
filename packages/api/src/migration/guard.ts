@@ -127,6 +127,6 @@ export function createCatalogModelCheck(deps: {
     );
     if (yaml) return listedModels(yaml.models).includes(ref.model);
     const [provider] = await deps.findPlatformProviders([ref.endpoint]);
-    return provider?.models.includes(ref.model) ?? false;
+    return provider?.models.some((model) => model.id === ref.model) ?? false;
   };
 }

@@ -21,6 +21,7 @@ export function filterItems<
     value?: string;
     hasModels?: boolean;
     models?: Array<{ name: string; isGlobal?: boolean }>;
+    modelNames?: Record<string, string>;
     searchAliases?: string[];
     showMarketplace?: boolean;
   },
@@ -59,6 +60,10 @@ export function filterItems<
     if (item.models && item.models.length > 0) {
       return item.models.some((modelId) => {
         if (modelId.name.toLowerCase().includes(searchTermLower)) {
+          return true;
+        }
+
+        if (item.modelNames?.[modelId.name]?.toLowerCase().includes(searchTermLower)) {
           return true;
         }
 
@@ -116,6 +121,11 @@ export function filterModels(
       const assistant = assistantsMap[endpoint.value][modelId];
       modelName =
         typeof assistant.name === 'string' && assistant.name ? (assistant.name as string) : modelId;
+    } else if (endpoint.modelNames?.[modelId]) {
+      return (
+        endpoint.modelNames[modelId].toLowerCase().includes(searchTermLower) ||
+        modelId.toLowerCase().includes(searchTermLower)
+      );
     }
 
     return modelName.toLowerCase().includes(searchTermLower);
@@ -237,7 +247,7 @@ export const getDisplayValue = ({
       return endpoint.assistantNames[selectedValues.model];
     }
 
-    return selectedValues.model;
+    return endpoint.modelNames?.[selectedValues.model] ?? selectedValues.model;
   }
 
   if (selectedValues.endpoint) {

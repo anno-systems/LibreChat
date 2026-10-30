@@ -9,6 +9,8 @@ export interface Endpoint {
   icon: React.ReactNode;
   agentNames?: Record<string, string>;
   assistantNames?: Record<string, string>;
+  /** Fork: display names of a custom endpoint's models (`modelLabels`), by model id. */
+  modelNames?: Record<string, string>;
   modelIcons?: Record<string, string | undefined>;
   showMarketplace?: boolean;
   searchAliases?: string[];

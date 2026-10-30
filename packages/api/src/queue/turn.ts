@@ -19,10 +19,12 @@ export interface TurnUsageRow {
 export interface ProviderQueuedTurnOptions<T> {
   /** Absent: the deployment has no gate and the turn runs as upstream's. */
   gate?: ProviderGate;
-  /** The turn's merged config, whose custom endpoint carries the provider's `limits`. */
+  /** The turn's merged config, whose custom endpoint carries the limits (`resolveModelLimits`). */
   appConfig?: AppConfig;
   /** The endpoint name the turn's agent runs on (`agent.endpoint`). */
   endpoint?: string;
+  /** The model the turn's agent runs on; each model of an endpoint has its own queue. */
+  model?: string;
   signal: AbortSignal;
   /** The turn's model, run again after a 429 that came before any content. */
   run: () => Promise<T>;
@@ -41,10 +43,14 @@ export interface ProviderQueuedTurnOptions<T> {
   onEmitError?: (error: unknown) => void;
 }
 
-/** The provider's limits from the turn's config, or `undefined` when it has no queue. */
-export function resolveProviderLimits(
+/**
+ * The limits of a model's queue from the turn's config, or `undefined` when the model has no
+ * queue: the endpoint's `modelLimits` entry for the model over the endpoint's `limits`.
+ */
+export function resolveModelLimits(
   appConfig: AppConfig | undefined,
   endpoint: string | undefined,
+  model: string | undefined,
 ): TProviderLimits | undefined {
   if (!endpoint) {
     return undefined;
@@ -52,8 +58,18 @@ export function resolveProviderLimits(
   const name = normalizeEndpointName(endpoint);
   const config = appConfig?.endpoints?.custom?.find(
     (candidate) => normalizeEndpointName(candidate?.name ?? '') === name,
-  );
-  return (config as { limits?: TProviderLimits } | undefined)?.limits ?? undefined;
+  ) as { limits?: TProviderLimits; modelLimits?: Record<string, TProviderLimits> } | undefined;
+  const own = model ? config?.modelLimits?.[model] : undefined;
+  const shared = config?.limits ?? undefined;
+  if (own == null && shared == null) {
+    return undefined;
+  }
+  return { ...shared, ...own };
+}
+
+/** The queue a turn waits in: one per endpoint and model. */
+export function queueKey(endpoint: string, model: string | undefined): string {
+  return `${normalizeEndpointName(endpoint)}\u0000${model ?? ''}`;
 }
 
 /** Sum of a token count map's values (`indexTokenCountMap`): the prompt the turn sends. */
@@ -94,24 +110,25 @@ export function hasStreamedContent(parts: readonly unknown[] | undefined): boole
 }
 
 /**
- * Runs one turn behind its provider's queue (fork-only). The unit is the turn: it takes one slot
- * for its whole run, sub-agents and tool loops included, is charged one request and its estimated
- * prompt at admission, and on release the window holds what the turn used (all model calls and
- * tokens). A provider without `limits` runs the turn directly, as upstream does.
+ * Runs one turn behind its model's queue (fork-only), keyed by endpoint and model. The unit is
+ * the turn: it takes one slot for its whole run, sub-agents and tool loops included, is charged
+ * one request and its estimated prompt at admission, and on release the window holds what the
+ * turn used (all model calls and tokens). A model without limits runs the turn directly, as
+ * upstream does.
  *
  * A rate limit (429) before any content puts the turn back at the head of the queue and pauses
- * the provider (its `Retry-After`, else `pauseSeconds`), within the turn's remaining wait. After
- * content, or once the wait is used up, it fails as before; a wait past `maxWaitSeconds` fails
- * with `ProviderQueueTimeoutError`. A Stop while waiting leaves the queue and rejects with the
- * signal's reason, which the caller already treats as a cancellation.
+ * the model's queue (its `Retry-After`, else `pauseSeconds`), within the turn's remaining wait.
+ * After content, or once the wait is used up, it fails as before; a wait past `maxWaitSeconds`
+ * fails with `ProviderQueueTimeoutError`. A Stop while waiting leaves the queue and rejects with
+ * the signal's reason, which the caller already treats as a cancellation.
  */
 export async function runProviderQueuedTurn<T>(options: ProviderQueuedTurnOptions<T>): Promise<T> {
-  const { gate, endpoint, signal, run } = options;
-  const limits = resolveProviderLimits(options.appConfig, endpoint);
+  const { gate, endpoint, model, signal, run } = options;
+  const limits = resolveModelLimits(options.appConfig, endpoint, model);
   if (gate == null || limits == null || !endpoint) {
     return run();
   }
-  const provider = normalizeEndpointName(endpoint);
+  const provider = queueKey(endpoint, model);
   const now = options.now ?? Date.now;
   const startedAt = now();
   const deadline = startedAt + (limits.maxWaitSeconds ?? DEFAULT_QUEUE_MAX_WAIT_SECONDS) * 1000;

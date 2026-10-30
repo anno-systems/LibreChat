@@ -49,7 +49,7 @@ beforeEach(async () => {
     label: 'Mistral',
     baseURL: 'https://api.mistral.ai/v1',
     apiKey: `enc:${KEY}`,
-    models: ['mistral-small-latest', 'mistral-large-latest'],
+    models: [{ id: 'mistral-small-latest' }, { id: 'mistral-large-latest' }],
   });
 });
 

@@ -27,6 +27,7 @@ const service = createModelMigrationService({
   invalidateUser: (userId) => invalidateCachedAuthUserDoc(authUserDocCacheStore, { userId }),
   labelOf: createModelLabelLookup({
     getConfig: (tenantId) => getAppConfig(tenantId ? { tenantId } : { baseOnly: true }),
+    findPlatformProviders: db.findPlatformProviders,
   }),
   isAssignedProvider: createAssignedProviderCheck({
     findPlatformProviders: db.findPlatformProviders,

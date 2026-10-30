@@ -46,7 +46,11 @@ export type {
   PlatformProvider,
   TenantCatalog,
   OwnEndpoint,
+  OwnModel,
+  CatalogModel,
+  CatalogLocation,
   CatalogAssignment,
+  CreateProviderResult,
 } from './platformCatalog';
 export type { TenantUserTarget } from './tenantPurge';
 export {

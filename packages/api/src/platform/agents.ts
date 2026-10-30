@@ -9,6 +9,7 @@ import type {
 import type { TEndpoint, TModelsConfig } from 'librechat-data-provider';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { providerEndpoint } from './catalog';
+import { hasModel } from './models';
 
 /**
  * Platform agents (fork-only): agents the platform operator defines once for every tenant or for
@@ -232,7 +233,7 @@ export function createPlatformAgentService(deps: PlatformAgentServiceDeps): Plat
       return unchanged;
     }
     const provider = await providerOf(definition.provider);
-    if (!provider || !provider.models.includes(definition.model)) return unchanged;
+    if (!provider || !hasModel(provider, definition.model)) return unchanged;
     const endpoint = providerEndpoint(tenantId, provider, [definition.model], decrypt);
     const validated = modelsConfig?.[definition.provider] ?? [];
     return {

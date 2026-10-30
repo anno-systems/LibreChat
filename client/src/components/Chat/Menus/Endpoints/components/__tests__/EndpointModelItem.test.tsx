@@ -142,4 +142,20 @@ describe('EndpointModelItem', () => {
       expect(screen.queryByRole('img', { name: 'OpenAI', hidden: true })).not.toBeInTheDocument();
     });
   });
+
+  it("shows a custom endpoint model's display name from the endpoint's model labels", () => {
+    mockSelectedValues = { endpoint: '', model: '', modelSpec: '' };
+    renderItem({
+      modelId: 'mistral-large-2411',
+      endpoint: {
+        ...baseEndpoint,
+        value: 'mistral',
+        models: [{ name: 'mistral-large-2411' }],
+        modelNames: { 'mistral-large-2411': 'Mistral Large' },
+      },
+    });
+
+    expect(screen.getByText('Mistral Large')).toBeInTheDocument();
+    expect(screen.queryByText('mistral-large-2411')).not.toBeInTheDocument();
+  });
 });

@@ -167,6 +167,8 @@ export function loadCustomEndpointsConfig(
     for (const [name, endpoint] of resolveServedCustomEndpoints(customEndpoints)) {
       const { baseURL, apiKey, iconURL, modelDisplayLabel, customParams, provider, dropParams } =
         endpoint;
+      /** Fork: display names of the endpoint's models for the model selector. */
+      const { modelLabels } = endpoint;
 
       const resolvedApiKey = extractEnvVariable(apiKey);
       const resolvedBaseURL = extractEnvVariable(baseURL);
@@ -189,6 +191,7 @@ export function loadCustomEndpointsConfig(
         userProvideURL,
         customParams: resolvedCustomParams,
         modelDisplayLabel,
+        ...(modelLabels && { modelLabels }),
         iconURL,
         providerId: resolveEndpointProviderId({
           name,

@@ -16,6 +16,7 @@ import { createAdminAuditEmitter } from '~/admin/audit';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { isActiveFor, targetsTenant } from './agents';
 import { createOperatorAudit } from './handlers';
+import { hasModel } from './models';
 
 /**
  * HTTP handlers of platform agents (fork-only, see `agents.ts`).
@@ -219,7 +220,7 @@ export function createPlatformAgentHandlers(deps: PlatformAgentHandlerDeps): Pla
       }
       const input: PlatformAgentInput = { platformAgentId, ...parsed.data };
       const [provider] = await deps.findPlatformProviders([input.provider]);
-      if (!provider || !provider.models.includes(input.model)) {
+      if (!provider || !hasModel(provider, input.model)) {
         return res.status(400).json({ error: 'unknown_provider_or_model' });
       }
       const existing = await store.getPlatformAgent(platformAgentId);

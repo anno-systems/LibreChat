@@ -688,6 +688,8 @@ export type TConfig = {
   providerId?: ProviderId;
   version?: string;
   modelDisplayLabel?: string;
+  /** Fork: display names of a custom endpoint's models, by model id. */
+  modelLabels?: Record<string, string>;
   userProvide?: boolean | null;
   userProvideURL?: boolean | null;
   userProvideAccessKeyId?: boolean;

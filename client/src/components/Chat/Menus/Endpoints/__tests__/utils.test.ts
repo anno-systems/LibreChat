@@ -1,6 +1,6 @@
 import type { useLocalize } from '~/hooks';
 import type { Endpoint } from '~/common';
-import { filterItems } from '../utils';
+import { filterItems, filterModels, getDisplayValue } from '../utils';
 
 const agentsEndpoint: Endpoint = {
   value: 'agents',
@@ -42,5 +42,36 @@ describe('model selector utilities', () => {
   it('does not match agents when there are no selectable agent options', () => {
     const results = filterItems([disabledAgentsEndpoint], 'my agents', undefined, undefined);
     expect(results).toEqual([]);
+  });
+
+  it('finds and shows a custom endpoint model by its display name', () => {
+    const mistral: Endpoint = {
+      value: 'mistral',
+      label: 'Mistral',
+      hasModels: true,
+      icon: null,
+      models: [{ name: 'mistral-large-2411' }, { name: 'mistral-small' }],
+      modelNames: { 'mistral-large-2411': 'Mistral Large' },
+    };
+
+    expect(filterItems([mistral], 'large', undefined, undefined)).toEqual([mistral]);
+    expect(filterItems([mistral], 'mistral l', undefined, undefined)).toEqual([mistral]);
+    expect(
+      filterModels(
+        mistral,
+        ['mistral-large-2411', 'mistral-small'],
+        'mistral l',
+        undefined,
+        undefined,
+      ),
+    ).toEqual(['mistral-large-2411']);
+    expect(
+      getDisplayValue({
+        localize: ((key: string) => key) as ReturnType<typeof useLocalize>,
+        selectedValues: { endpoint: 'mistral', model: 'mistral-large-2411', modelSpec: '' },
+        mappedEndpoints: [mistral],
+        modelSpecs: [],
+      }),
+    ).toBe('Mistral Large');
   });
 });

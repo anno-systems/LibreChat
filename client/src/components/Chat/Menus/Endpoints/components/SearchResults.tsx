@@ -74,6 +74,12 @@ function prepareSearchResults(
             endpoint.assistantNames[model.name]
           ) {
             modelName = endpoint.assistantNames[model.name];
+          } else if (endpoint.modelNames?.[model.name]) {
+            /** Fork: a labelled model is found by its label and by its id. */
+            return (
+              endpoint.modelNames[model.name].toLowerCase().includes(lowerQuery) ||
+              model.name.toLowerCase().includes(lowerQuery)
+            );
           }
           return modelName.toLowerCase().includes(lowerQuery);
         });
