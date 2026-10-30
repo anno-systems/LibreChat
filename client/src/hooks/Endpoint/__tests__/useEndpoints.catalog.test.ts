@@ -67,6 +67,7 @@ describe('useEndpoints with catalog endpoints (fork)', () => {
     expect(openAI).toMatchObject({
       label: 'OpenAI',
       modelVendors: { 'gpt-4o': 'openai', 'o4-mini': 'openai' },
+      modelNames: { 'gpt-4o': 'GPT-4o', 'o4-mini': 'o4-mini' },
       hosting: { label: 'OpenAI direct' },
     });
     expect(anthropic).not.toHaveProperty('modelVendors');

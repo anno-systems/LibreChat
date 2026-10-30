@@ -271,7 +271,7 @@ describe('ModelPanel', () => {
     fireEvent.click(getByTestId('com_ui_provider-vendor:openai'));
     expect(formRef.current?.getValues(['provider', 'model'])).toEqual([azure, 'gpt-6.1-terra']);
     expect(getByTestId(`com_ui_model-${EModelEndpoint.openAI}:gpt-4o`)).toHaveTextContent(
-      'gpt-4ocom_ui_model_hosting_direct',
+      'GPT-4ocom_ui_model_hosting_direct',
     );
 
     fireEvent.click(getByTestId(`com_ui_model-${EModelEndpoint.openAI}:gpt-4o`));

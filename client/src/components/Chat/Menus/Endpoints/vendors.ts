@@ -1,4 +1,9 @@
-import { vendors, getVendor, builtinEndpointVendors } from 'librechat-data-provider';
+import {
+  vendors,
+  getVendor,
+  suggestModelLabel,
+  builtinEndpointVendors,
+} from 'librechat-data-provider';
 import type { TConfig, TLocation, VendorId } from 'librechat-data-provider';
 import type { Endpoint } from '~/common';
 
@@ -37,7 +42,10 @@ export function isVendorGrouped(endpoint: Pick<Endpoint, 'modelVendors' | 'hosti
 }
 
 /** What an endpoint shows when its models are grouped by vendor; null when they are not. */
-export type VendorFields = Pick<Endpoint, 'modelVendors' | 'hosting' | 'modelLocations'> & {
+export type VendorFields = Pick<
+  Endpoint,
+  'modelVendors' | 'hosting' | 'modelLocations' | 'modelNames'
+> & {
   /** A catalog endpoint's provider label, over its internal name. */
   label?: string;
 };
@@ -45,8 +53,9 @@ export type VendorFields = Pick<Endpoint, 'modelVendors' | 'hosting' | 'modelLoc
 /**
  * The vendor fields of an endpoint: a catalog endpoint's from `/api/endpoints`, or for a built-in
  * endpoint that calls one vendor directly that vendor for every model and the hosting line
- * `directLabel(vendor name)` ("OpenAI direct"). A built-in endpoint that needs the user's own key
- * keeps its row, where the key is set.
+ * `directLabel(vendor name)` ("OpenAI direct"), with each model's label (one the deployment set,
+ * else one derived from the id, "GPT-4o"). A built-in endpoint that needs the user's own key keeps
+ * its row, where the key is set.
  */
 export function vendorFieldsOf(
   name: string,
@@ -68,8 +77,24 @@ export function vendorFieldsOf(
   }
   return {
     modelVendors: Object.fromEntries(models.map((model) => [model, vendor])),
+    modelNames: Object.fromEntries(
+      models.map((model) => [model, config?.modelLabels?.[model] ?? suggestModelLabel(model)]),
+    ),
     hosting: { label: directLabel(getVendor(vendor).name) },
   };
+}
+
+/**
+ * A model's name as the selector shows it: a catalog endpoint's label, a built-in vendor
+ * endpoint's derived one, else the id.
+ */
+export function modelLabelFor(
+  endpoint: string,
+  model: string,
+  config: TConfig | null | undefined,
+): string {
+  const fields = vendorFieldsOf(endpoint, config, [model], (name) => name);
+  return fields?.modelNames?.[model] ?? config?.modelLabels?.[model] ?? model;
 }
 
 /** The vendor a catalog model is shown under; `other` when the endpoint names none. */

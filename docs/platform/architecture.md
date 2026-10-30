@@ -360,7 +360,8 @@ Mistral, OpenAI and Anthropic models, so grouping the selector by provider showe
   `claude-3-5-sonnet-20241022` → "Claude 3.5 Sonnet"): vendors' spellings (GPT, Claude, Gemini,
   Llama, DeepSeek), the o-series lower case ("o4-mini"), two short numbers in a row as one
   version anywhere, a trailing snapshot date (`YYYYMMDD`) dropped, ISO dates (`2024-08-06`)
-  kept. Built-in endpoints keep showing model ids. An explicit `label` always
+  kept. The grouped built-in endpoints' models get derived names too ("GPT-4o"), unless the
+  deployment set a label; the agent editor's summary button shows the same name. An explicit `label` always
   wins. The name is the endpoint's `modelLabels` entry (so the selector and migration notices
   use it) and is shown read-only as `suggestedLabel` in the operator and tenant admin APIs, for
   the admin app's placeholder.

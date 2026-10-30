@@ -129,6 +129,7 @@ const openAI: Endpoint = {
   hasModels: true,
   icon: null,
   models: [{ name: 'gpt-4o' }],
+  modelNames: { 'gpt-4o': 'GPT-4o' },
   modelVendors: { 'gpt-4o': 'openai' },
   hosting: { label: 'OpenAI direct' },
 };
@@ -227,7 +228,7 @@ describe('built-in endpoints in vendor groups', () => {
     expect(screen.queryByTestId('endpoint-openAI-menu')).not.toBeInTheDocument();
     const rows = within(groupNamed('vendor:openai')).getAllByRole('menuitem');
     expect(rows.map((row) => row.textContent)).toEqual([
-      'gpt-4oOpenAI direct',
+      'GPT-4oOpenAI direct',
       'GPT-6.1 TerraAzure · Global',
     ]);
     /** The groups stand where the first grouped endpoint stood, before Ollama. */
