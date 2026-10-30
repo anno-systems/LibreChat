@@ -4,6 +4,7 @@ import {
   tConversationSchema,
   applyModelAwareDefaults,
   getEndpointField,
+  getDefaultParamsEndpoint,
   getSettingsKeys,
   normalizeEndpointName,
   resolveDropParamsUIKeys,
@@ -65,7 +66,8 @@ export function resolveAgentParameterSettings({
   const endpointType = getEndpointField(resolvedEndpointsConfig, provider, 'type');
   const customParams = resolvedEndpointsConfig[provider]?.customParams;
   const [combinedKey, endpointKey] = getSettingsKeys(endpointType ?? provider, model);
-  const overriddenEndpointKey = customParams?.defaultParamsEndpoint ?? endpointKey;
+  const overriddenEndpointKey =
+    getDefaultParamsEndpoint(resolvedEndpointsConfig, provider, model) ?? endpointKey;
   const dropParamsMap = startupConfig?.endpointsDropParamsMap;
   const dropParamsEntry =
     dropParamsMap?.[provider] ?? dropParamsMap?.[normalizeEndpointName(provider)];

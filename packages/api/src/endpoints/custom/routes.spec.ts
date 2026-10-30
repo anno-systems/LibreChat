@@ -1,8 +1,9 @@
 import { EModelEndpoint, endpointSchema } from 'librechat-data-provider';
 import type { TEndpoint } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
+import { withModelRoute, withoutForeignParams } from './routes';
 import { getCustomEndpointConfig } from '~/app/config';
-import { withModelRoute } from './routes';
+import { loadCustomEndpointsConfig } from './config';
 
 const endpoint = {
   name: 'foundry',
@@ -50,5 +51,76 @@ describe('withModelRoute', () => {
     expect(endpointSchema.safeParse(endpoint).success).toBe(true);
     const extra = { ...endpoint, modelRoutes: { claude: { apiKey: 'other' } } };
     expect(endpointSchema.safeParse(extra).success).toBe(false);
+  });
+});
+
+describe('withoutForeignParams', () => {
+  const kept = {
+    model: 'm',
+    user: 'u',
+    temperature: 0.2,
+    stop: ['x'],
+    frequency_penalty: 1,
+    presence_penalty: 1,
+    logit_bias: { 1: 1 },
+    n: 2,
+    max_tokens: 10,
+    reasoning_effort: 'high',
+    topK: 5,
+    topP: 0.5,
+    maxOutputTokens: 10,
+    thinking: true,
+    thinkingBudget: 100,
+    promptCache: true,
+  };
+
+  it('gives the Anthropic API no OpenAI-only field', () => {
+    expect(
+      Object.keys(withoutForeignParams({ ...endpoint, provider: EModelEndpoint.anthropic }, kept)),
+    ).toEqual([
+      'model',
+      'user',
+      'temperature',
+      'stop',
+      'topK',
+      'topP',
+      'maxOutputTokens',
+      'thinking',
+      'thinkingBudget',
+      'promptCache',
+    ]);
+  });
+
+  it("gives OpenAI's APIs no Anthropic-only field, and OpenRouter its prompt caching", () => {
+    expect(Object.keys(withoutForeignParams(endpoint, kept))).toEqual([
+      'model',
+      'user',
+      'temperature',
+      'stop',
+      'frequency_penalty',
+      'presence_penalty',
+      'logit_bias',
+      'n',
+      'max_tokens',
+      'reasoning_effort',
+    ]);
+    const openRouter = {
+      ...endpoint,
+      customParams: { defaultParamsEndpoint: 'openrouter' },
+    } as TEndpoint;
+    expect(withoutForeignParams(openRouter, kept)).toHaveProperty('promptCache', true);
+  });
+
+  it('leaves an endpoint without routes as upstream builds it', () => {
+    const { modelRoutes: _routes, ...plain } = endpoint;
+    expect(withoutForeignParams({ ...plain, provider: EModelEndpoint.anthropic }, kept)).toBe(kept);
+  });
+});
+
+describe('modelParamsEndpoints in /api/endpoints', () => {
+  it('names the parameter set of each model routed to another API, and no URL or key', () => {
+    const config = loadCustomEndpointsConfig([endpoint]);
+    expect(config?.foundry?.modelParamsEndpoints).toEqual({ claude: EModelEndpoint.anthropic });
+    expect(JSON.stringify(config)).not.toContain('x.example');
   });
 });

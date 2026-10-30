@@ -344,8 +344,17 @@ through the Responses API, Claude through the Anthropic Messages API). Owner's d
   summarization). `responses` is upstream's `useResponsesApi` on the OpenAI client; `anthropic`
   is upstream's `provider: anthropic` for custom endpoints (native client, key as `x-api-key`,
   which Azure AI Foundry accepts; the OpenAI APIs take it as a bearer token, which Azure's v1 API
-  accepts too). The model selector's parameter panel follows the endpoint: it shows Anthropic's
-  parameters only when every model of the provider is `anthropic`.
+  accepts too).
+- **Parameters follow the model's API.** `/api/endpoints` names the parameter set of each model
+  routed through another API than its endpoint (`modelParamsEndpoints`, no URLs or keys), and the
+  client's parameter panels, the agent builder and settings parsing take it
+  (`getDefaultParamsEndpoint` with the model), so Claude shows Anthropic's parameters next to
+  Mistral's OpenAI ones in one provider. Before a request leaves, a routed model's settings lose
+  the fields its API does not take (`withoutForeignParams`, from the OpenAI and Anthropic
+  conversation schemas plus raw OpenAI fields): the Anthropic API never gets
+  `frequency_penalty`, `presence_penalty`, `logit_bias`, `n` or other OpenAI-only fields, and the
+  OpenAI APIs never get `topK`, `topP` (Anthropic's spelling), thinking settings or prompt
+  caching. A conversation moved between the provider's models therefore keeps working.
 - **Rejected request fields are built-in rules** per API and model family (`params.ts`), not an
   operator list: `user` is never sent on the OpenAI APIs (Mistral and other Foundry models reject
   it), reasoning models (`o1`…`o9`, `gpt-5`, `gpt-6` and later, not `-chat`) get no sampling
@@ -354,12 +363,16 @@ through the Responses API, Claude through the Anthropic Messages API). Owner's d
   OpenAI client does it for `o`-series models. A model may override the rules with its own
   `dropParams` (an advanced field; the operator API shows the rules as `defaultDropParams`). A
   provider that still has the operator's `dropParams` from before keeps it until the operator
-  sends `dropParams: null`.
+  sends `dropParams: null`, which the admin app does on every save, so providers move to the
+  rules.
 - **A provider without a key.** A seed creates providers and the owner adds keys in the admin
   app, so `POST /api/platform/providers` may leave out `apiKey`. Such a provider is listed to the
   operator with `keyMissing: true`, can be assigned, and is served to no tenant (no endpoint,
   not in `/api/admin/catalog`, no platform agent run) until a key is set. An update without
-  `apiKey` keeps the stored key, as before.
+  `apiKey` keeps the stored key, as before. Its models are no migration target: a successor in
+  `successors`, an operator migration or a tenant migration that names one is refused with 400
+  `target_not_served` (a successor on the provider being saved is allowed when that save sets
+  the key).
 - **Migration.** None needed: a stored model without `api` is `chat`, without `baseURL` it uses
   the provider's, and old documents keep their provider-wide `dropParams`.
 

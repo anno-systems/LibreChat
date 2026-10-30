@@ -98,7 +98,11 @@ async function send(appConfig: AppConfig, model: string, parameters: Record<stri
   };
   await expect(consume()).rejects.toThrow();
   expect(captured).toHaveLength(1);
-  return { provider, request: captured[0] };
+  return {
+    provider,
+    request: captured[0],
+    llmConfig: options.llmConfig as Record<string, unknown>,
+  };
 }
 
 describe('platform models per API (owner decision)', () => {
@@ -152,6 +156,56 @@ describe('platform models per API (owner decision)', () => {
     expect(request.body).toMatchObject({ model: 'claude-sonnet-5-5' });
     expect(request.body).not.toHaveProperty('metadata');
     expect(request.body).not.toHaveProperty('user');
+  });
+
+  it('sends the Anthropic API none of the OpenAI-only settings a conversation kept', async () => {
+    const { request, llmConfig } = await send(appConfig, 'claude-sonnet-5-5', {
+      frequency_penalty: 0.5,
+      presence_penalty: 0.5,
+      logit_bias: { 50256: -100 },
+      n: 2,
+      top_p: 0.8,
+      max_tokens: 300,
+      reasoning_effort: 'high',
+      temperature: 0.4,
+    });
+
+    for (const field of [
+      'frequency_penalty',
+      'presence_penalty',
+      'logit_bias',
+      'n',
+      'top_p',
+      'reasoning_effort',
+    ]) {
+      expect(request.body).not.toHaveProperty(field);
+      expect(llmConfig).not.toHaveProperty(field);
+      expect(llmConfig.invocationKwargs).not.toHaveProperty(field);
+    }
+    expect(request.body).toMatchObject({ model: 'claude-sonnet-5-5' });
+  });
+
+  it('sends the OpenAI APIs none of the Anthropic-only settings a conversation kept', async () => {
+    const anthropicOnly = {
+      topK: 40,
+      topP: 0.8,
+      maxOutputTokens: 900,
+      thinking: true,
+      thinkingBudget: 2000,
+      effort: 'high',
+      promptCache: true,
+    };
+    for (const model of ['mistral-medium-3-5', 'gpt-6.1-terra']) {
+      captured = [];
+      const { request, llmConfig } = await send(appConfig, model, anthropicOnly);
+      /** Anthropic's `topP` would otherwise reach the OpenAI client as `top_p`. */
+      for (const field of ['top_p', 'top_k', 'thinking', 'max_tokens', 'effort', 'promptCache']) {
+        expect(request.body).not.toHaveProperty(field);
+      }
+      for (const field of Object.keys(anthropicOnly)) {
+        expect(llmConfig).not.toHaveProperty(field);
+      }
+    }
   });
 
   it('keeps one endpoint, so the selector shows one provider and queues stay per model', () => {

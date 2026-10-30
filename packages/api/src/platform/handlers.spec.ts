@@ -970,3 +970,79 @@ describe('per-model URLs and APIs, providers without a key (owner decisions)', (
     ]);
   });
 });
+
+describe('successors on a provider without a key', () => {
+  const guarded = () => {
+    const { deps } = setup();
+    const migrate = jest.fn(async () => true);
+    const check = jest.fn(async () => ({ ok: true as const }));
+    return {
+      migrate,
+      handlers: createPlatformCatalogHandlers({ ...deps, modelGuard: { check, migrate } }),
+    };
+  };
+  const { apiKey: _key, ...keyless } = provider;
+  const successor = (endpoint: string, model: string) => ({
+    from: { endpoint: 'Mistral Platform', model: 'small' },
+    to: { endpoint, model },
+  });
+
+  it('refuses a successor on another provider until that one has a key', async () => {
+    const { handlers, migrate } = guarded();
+    await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));
+    await call(handlers.putProvider, operatorReq({ name: 'Foundry' }, keyless));
+    const update = {
+      ...keyless,
+      models: [provider.models[1]],
+      successors: [successor('Foundry', 'large')],
+    };
+
+    const refused = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, update),
+    );
+    expect(refused.statusCode).toBe(400);
+    expect(refused.body).toEqual({ error: 'target_not_served' });
+    expect(migrate).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ to: update.successors[0].to })]),
+    );
+    expect((await methods.findPlatformProviders(['Mistral Platform']))[0].models).toHaveLength(2);
+
+    await call(handlers.putProvider, operatorReq({ name: 'Foundry' }, provider));
+    const allowed = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, update),
+    );
+    expect(allowed.statusCode).toBe(200);
+  });
+
+  it('refuses a successor on the provider itself while it stays without a key', async () => {
+    const { handlers } = guarded();
+    await methods.upsertPlatformProvider({
+      name: 'Mistral Platform',
+      label: 'Mistral',
+      baseURL: provider.baseURL,
+      location: { type: 'eu' },
+      models: [{ id: 'small' }, { id: 'large' }],
+    });
+    const update = {
+      ...keyless,
+      models: [provider.models[1]],
+      successors: [successor('Mistral Platform', 'large')],
+    };
+
+    const refused = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, update),
+    );
+    const keyed = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, { ...update, apiKey: KEY }),
+    );
+
+    expect(refused.body).toEqual({ error: 'target_not_served' });
+    expect(keyed.statusCode).toBe(200);
+  });
+});

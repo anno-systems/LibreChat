@@ -6,6 +6,7 @@ const {
   createCatalogModelCheck,
   createModelRemovalGuard,
   createModelLabelLookup,
+  createServedTargetCheck,
   createAssignedProviderCheck,
   invalidateCachedAuthUserDoc,
   createModelMigrationService,
@@ -41,6 +42,9 @@ const operatorAudit = createOperatorAudit({
 });
 const operatorId = (req) => operatorActor(req).id;
 
+/** Fork: a model of a platform provider without a key is no migration target. */
+const isServedTarget = createServedTargetCheck({ findPlatformProviders: db.findPlatformProviders });
+
 const guard = createModelRemovalGuard({
   service,
   listPlatformAgents: db.listPlatformAgents,
@@ -55,6 +59,7 @@ const operator = createOperatorMigrationHandlers({
     getBaseConfig: () => getAppConfig({ baseOnly: true }),
     findPlatformProviders: db.findPlatformProviders,
   }),
+  isServedTarget,
   audit: operatorAudit,
   operatorId,
 });
@@ -64,6 +69,7 @@ const admin = createAdminMigrationHandlers({
   store: db,
   getTenantAppConfig: (tenantId) => getAppConfig({ tenantId }),
   getModelsConfig,
+  isServedTarget,
   audit: createAdminAuditEmitter({
     recordAuditEntry: db.recordAuditEntry,
     failClosed: auditFailClosed,

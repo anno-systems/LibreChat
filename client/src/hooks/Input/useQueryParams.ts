@@ -288,7 +288,11 @@ export default function useQueryParams({
           endpoint: convo.endpoint,
           endpointType: convo.endpointType,
           conversation: validSettingsRef.current,
-          defaultParamsEndpoint: getDefaultParamsEndpoint(endpointsConfig, convo.endpoint),
+          defaultParamsEndpoint: getDefaultParamsEndpoint(
+            endpointsConfig,
+            convo.endpoint,
+            convo.model,
+          ),
         })
       : validSettingsRef.current;
 

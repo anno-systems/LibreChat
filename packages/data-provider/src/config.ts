@@ -6105,9 +6105,16 @@ export function resolveEndpointType(
 export function getDefaultParamsEndpoint(
   endpointsConfig: TEndpointsConfig | undefined | null,
   endpoint: string | null | undefined,
+  /** Fork: a model that runs through another API than its endpoint takes that API's set. */
+  model?: string | null,
 ): string | undefined {
   if (!endpointsConfig || !endpoint) {
     return undefined;
   }
-  return endpointsConfig[endpoint]?.customParams?.defaultParamsEndpoint;
+  const config = endpointsConfig[endpoint];
+  const modelParams = model ? config?.modelParamsEndpoints?.[model] : undefined;
+  if (modelParams) {
+    return modelParams === EModelEndpoint.custom ? undefined : modelParams;
+  }
+  return config?.customParams?.defaultParamsEndpoint;
 }

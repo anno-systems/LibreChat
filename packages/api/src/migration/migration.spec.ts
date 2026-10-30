@@ -10,8 +10,8 @@ import type { AppConfig, RecordAuditEntryInput } from '@librechat/data-schemas';
 import type { TModelsConfig } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
 import type { ServerRequest } from '~/types/http';
+import { createCatalogModelCheck, createModelRemovalGuard, createServedTargetCheck } from './guard';
 import { createAdminMigrationHandlers, createOperatorMigrationHandlers } from './handlers';
-import { createCatalogModelCheck, createModelRemovalGuard } from './guard';
 import { createPlatformCatalogHandlers } from '~/platform/handlers';
 import { createModelMigrationNoticeHandlers } from './notice';
 import { createModelMigrationService } from './service';
@@ -144,6 +144,9 @@ function setup(
       config: { endpoints: { custom: [{ name: 'Azure', models: { default: ['gpt-5'] } }] } },
     }) as unknown as AppConfig;
   const operatorId = () => 'olga';
+  const isServedTarget = createServedTargetCheck({
+    findPlatformProviders: catalog.findPlatformProviders,
+  });
   const guard = createModelRemovalGuard({
     service,
     listPlatformAgents: async () => platformAgents,
@@ -157,6 +160,7 @@ function setup(
       getBaseConfig,
       findPlatformProviders: catalog.findPlatformProviders,
     }),
+    isServedTarget,
     audit,
     operatorId,
   });
@@ -169,6 +173,7 @@ function setup(
     getTenantAppConfig: async (tenantId) => ({ tenantId }) as unknown as AppConfig,
     getModelsConfig: async (req) =>
       tenantModels[(req.config as unknown as { tenantId: string }).tenantId] ?? {},
+    isServedTarget,
     audit,
   });
   const platform = createPlatformCatalogHandlers({
@@ -497,6 +502,41 @@ describe('notice handlers', () => {
       params: { id: 'agent_acme' },
     } as unknown as ServerRequest);
     expect(anonymous.statusCode).toBe(401);
+  });
+});
+
+describe('migration targets without a key', () => {
+  it('refuses a model of a keyless provider for operators and tenant admins', async () => {
+    await catalog.upsertPlatformProvider({
+      name: 'Mistral',
+      ...provider,
+      models: ids(provider.models),
+      apiKey: 'enc:x',
+    });
+    await catalog.upsertPlatformProvider({
+      name: 'Foundry',
+      label: 'Foundry',
+      baseURL: 'https://x.example/openai/v1',
+      location: { type: 'global' },
+      models: [{ id: 'claude' }],
+    });
+    await seedChat('acme');
+    const { operator, admin } = setup();
+    const CLAUDE = { endpoint: 'Foundry', model: 'claude' };
+
+    const byOperator = await call(operator.migrate, operatorReq({ from: LARGE, to: CLAUDE }));
+    const byAdmin = await call(admin.migrate, adminReq({ from: LARGE, to: CLAUDE }));
+    expect(byOperator.statusCode).toBe(400);
+    expect(byOperator.body).toEqual({ error: 'target_not_served' });
+    expect(byAdmin.statusCode).toBe(400);
+    expect(byAdmin.body).toEqual({ error: 'target_not_served' });
+    expect(await agentModel('acme')).toBe('large');
+
+    const [foundry] = await catalog.findPlatformProviders(['Foundry']);
+    await catalog.upsertPlatformProvider({ ...foundry, apiKey: 'enc:y' });
+    const served = await call(operator.migrate, operatorReq({ from: LARGE, to: CLAUDE }));
+    expect(served.statusCode).toBe(200);
+    expect(await agentModel('acme')).toBe('claude');
   });
 });
 

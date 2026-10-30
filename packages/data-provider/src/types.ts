@@ -690,6 +690,11 @@ export type TConfig = {
   modelDisplayLabel?: string;
   /** Fork: display names of a custom endpoint's models, by model id. */
   modelLabels?: Record<string, string>;
+  /**
+   * Fork: the parameter set (`defaultParamsEndpoint`) of models that run through another API
+   * than the endpoint's (`modelRoutes`), by model id; see `getDefaultParamsEndpoint`.
+   */
+  modelParamsEndpoints?: Record<string, string>;
   userProvide?: boolean | null;
   userProvideURL?: boolean | null;
   userProvideAccessKeyId?: boolean;

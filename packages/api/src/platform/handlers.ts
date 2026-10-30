@@ -297,11 +297,17 @@ export function createPlatformCatalogHandlers(
     res: Response,
     params: Omit<Parameters<ModelRemovalGuard['check']>[0], 'successors'> & {
       successors: Successor[];
+      /** The provider being written and whether it has a key once saved. */
+      writing?: { name: string; keyed: boolean };
     },
   ): Promise<boolean> {
     if (!deps.modelGuard) {
       if (params.successors.length === 0) return true;
       res.status(400).json({ error: 'invalid_successor' });
+      return false;
+    }
+    if (!(await successorsServed(params.successors, params.writing))) {
+      res.status(400).json({ error: 'target_not_served' });
       return false;
     }
     const check = await deps.modelGuard.check(params);
@@ -314,6 +320,25 @@ export function createPlatformCatalogHandlers(
       return false;
     }
     return true;
+  }
+
+  /**
+   * Fork: whether every successor runs on a provider that is served, i.e. has a key. A model of
+   * a provider without a key (`keyMissing`) cannot take over what still uses another model.
+   */
+  async function successorsServed(
+    successors: Successor[],
+    writing?: { name: string; keyed: boolean },
+  ): Promise<boolean> {
+    const names = [...new Set(successors.map((s) => s.to.endpoint))].filter(
+      (name) => name !== writing?.name,
+    );
+    if (writing && !writing.keyed && successors.some((s) => s.to.endpoint === writing.name)) {
+      return false;
+    }
+    if (names.length === 0) return true;
+    const providers = await catalog.findPlatformProviders(names);
+    return providers.every((provider) => Boolean(provider.apiKey));
   }
 
   const emitAdminAudit = createAdminAuditEmitter({
@@ -423,6 +448,7 @@ export function createPlatformCatalogHandlers(
         .map((model) => ({ endpoint: name, model: model.id })),
       scope: { platform: true },
       successors: labelledSuccessors(name, successors, existing?.models ?? [], fields.models),
+      writing: { name, keyed: Boolean(apiKey || existing?.apiKey) },
       isTarget: async (ref) => (ref.endpoint === name ? kept.has(ref.model) : isCatalogModel(ref)),
     });
     if (!allowed) return res;

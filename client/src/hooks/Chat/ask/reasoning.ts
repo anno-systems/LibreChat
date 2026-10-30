@@ -2,6 +2,7 @@ import {
   QueryKeys,
   ReasoningEffort,
   getEndpointField,
+  getDefaultParamsEndpoint,
   resolveModelReasoning,
   isAgentsEndpoint,
   isReasoningOverrideSupported,
@@ -93,7 +94,11 @@ export function resolveSubmittedReasoning({
           endpoint: effectiveEndpointType ?? effectiveEndpoint,
           model: effectiveModel,
           isAgent,
-          defaultParamsEndpoint: customParams?.defaultParamsEndpoint,
+          defaultParamsEndpoint: getDefaultParamsEndpoint(
+            endpointsConfig,
+            effectiveEndpoint,
+            effectiveModel,
+          ),
           reasoningFormat: customParams?.reasoningFormat,
           paramDefinitions: customParams?.paramDefinitions,
           modelReasoning:

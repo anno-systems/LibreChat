@@ -30,7 +30,12 @@ export type {
   OperatorMigrationHandlers,
   OperatorMigrationHandlerDeps,
 } from './handlers';
-export { createCatalogModelCheck, createModelRemovalGuard, successorsSchema } from './guard';
+export {
+  successorsSchema,
+  createCatalogModelCheck,
+  createModelRemovalGuard,
+  createServedTargetCheck,
+} from './guard';
 export type { ModelRemovalGuard, ModelRemovalGuardDeps, RemovalCheck, Successor } from './guard';
 export { createModelMigrationNoticeHandlers, noticeView } from './notice';
 export type { ModelMigrationNoticeHandlers, ModelMigrationNoticeView } from './notice';

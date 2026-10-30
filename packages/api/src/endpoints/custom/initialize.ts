@@ -25,6 +25,7 @@ import { resolveCustomEndpointParameters } from './config';
 import { getCustomEndpointConfig } from '~/app/config';
 import { resolveEndpointRuntime } from '~/types';
 import { fetchModels } from '~/endpoints/models';
+import { withoutForeignParams } from './routes';
 import { validateEndpointURL } from '~/auth';
 import { tokenConfigCache } from '~/cache';
 
@@ -270,7 +271,11 @@ export async function initializeCustom(
   /** The stored effort is checked against the provider's catalog, an independent read: it starts
    *  here and is awaited where the model options are built, so it overlaps token discovery below
    *  instead of following it. The no-op catch keeps an early failure from going unhandled. */
-  const requestedOptions = { ...(model_parameters ?? {}), user: userId };
+  /** Fork: a routed model's request carries only fields its API takes (`routes.ts`). */
+  const requestedOptions = withoutForeignParams(endpointConfig, {
+    ...(model_parameters ?? {}),
+    user: userId,
+  });
   const effortCheck =
     params.reasoningCapabilityDeps == null
       ? undefined

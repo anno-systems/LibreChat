@@ -96,6 +96,8 @@ export interface OperatorMigrationHandlerDeps {
   store: Store;
   /** Whether `ref` is a model of the platform catalog (a platform provider or librechat.yaml). */
   isCatalogModel(ref: ModelRef): Promise<boolean>;
+  /** Fork: false for a model of a platform provider without a key (`createServedTargetCheck`). */
+  isServedTarget?(ref: ModelRef): Promise<boolean>;
   /** Records an operator event, as the operator the admin app names. */
   audit(req: Request, event: MigrationAuditEvent): Promise<void>;
   /** The operator the admin app names, recorded on the redirect. */
@@ -186,6 +188,9 @@ export function createOperatorMigrationHandlers(
         if (!(await deps.isCatalogModel(to))) {
           return res.status(400).json({ error: 'unknown_target' });
         }
+        if (deps.isServedTarget && !(await deps.isServedTarget(to))) {
+          return res.status(400).json({ error: 'target_not_served' });
+        }
         const outcome = await service.run({
           scope: scopeOf(tenantIds),
           from,
@@ -228,6 +233,8 @@ export interface AdminMigrationHandlerDeps {
   getModelsConfig(req: ServerRequest): Promise<TModelsConfig>;
   /** Records an event in the caller's tenant, as the caller. */
   audit(req: ServerRequest, event: MigrationAuditEvent): Promise<void>;
+  /** Fork: false for a model of a platform provider without a key (`createServedTargetCheck`). */
+  isServedTarget?(ref: ModelRef): Promise<boolean>;
 }
 
 export interface AdminMigrationHandlers {
@@ -346,6 +353,9 @@ export function createAdminMigrationHandlers(
         const parsed = adminMigrationSchema.safeParse(req.body);
         if (!parsed.success) return res.status(400).json({ error: 'invalid_migration' });
         const { from, to, exceptGroups } = parsed.data;
+        if (deps.isServedTarget && !(await deps.isServedTarget(to))) {
+          return res.status(400).json({ error: 'target_not_served' });
+        }
         if (!(await isEnabled(req, tenantId, to))) {
           return res.status(400).json({ error: 'target_not_enabled' });
         }
