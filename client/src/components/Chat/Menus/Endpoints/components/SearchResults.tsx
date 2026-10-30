@@ -4,9 +4,12 @@ import { VisuallyHidden } from '@ariakit/react';
 import { isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
 import type { TModelSpec } from 'librechat-data-provider';
 import type { Endpoint, LocalizeFunction } from '~/common';
+import type { VendorEntry, VendorGroup } from '../vendors';
+import { catalogModelMatches, groupEntries, isCatalogEndpoint } from '../vendors';
 import { EndpointModelItem, VIRTUALIZE_THRESHOLD } from './EndpointModelItem';
 import MarketplaceItem, { marketplaceSearchMatches } from './Marketplace';
 import { useModelSelectorContext } from '../ModelSelectorContext';
+import { VendorGroupIcon, VendorModelRows } from './VendorGroup';
 import { CustomMenuItem as MenuItem } from '../CustomMenu';
 import VirtualizedModelList from './VirtualizedModelList';
 import { shouldRenderEndpointOption } from '../utils';
@@ -25,7 +28,11 @@ type SearchResult =
       filteredModels: SearchModel[];
       showMarketplace: boolean;
     }
-  | { kind: 'endpoint'; endpoint: Endpoint };
+  | { kind: 'endpoint'; endpoint: Endpoint }
+  | { kind: 'vendor'; group: VendorGroup };
+
+/** Where the vendor groups of the catalog endpoints' matches go, once they are known. */
+type PendingResult = SearchResult | { kind: 'catalog' };
 
 /**
  * Resolves the same selectable search entries that are rendered below and
@@ -38,8 +45,9 @@ function prepareSearchResults(
   searchValue: string,
 ): SearchResult[] {
   const lowerQuery = searchValue.toLowerCase();
+  const catalogEntries: VendorEntry[] = [];
 
-  return results.flatMap<SearchResult>((item): SearchResult[] => {
+  const pending = results.flatMap<PendingResult>((item): PendingResult[] => {
     if ('name' in item && 'label' in item) {
       return [{ kind: 'spec', spec: item as TModelSpec }];
     }
@@ -47,6 +55,17 @@ function prepareSearchResults(
     const endpoint = item as Endpoint;
     if (!shouldRenderEndpointOption(endpoint)) {
       return [];
+    }
+
+    /** Fork: catalog models are found by label, id, vendor or provider and shown by vendor. */
+    if (isCatalogEndpoint(endpoint)) {
+      const providerMatches = endpoint.label.toLowerCase().includes(lowerQuery);
+      for (const { name } of endpoint.models ?? []) {
+        if (providerMatches || catalogModelMatches(endpoint, name, lowerQuery)) {
+          catalogEntries.push({ endpoint, model: name });
+        }
+      }
+      return [{ kind: 'catalog' }];
     }
 
     if (!endpoint.hasModels) {
@@ -90,11 +109,27 @@ function prepareSearchResults(
 
     return [{ kind: 'models', endpoint, filteredModels, showMarketplace }];
   });
+
+  const groups = groupEntries(catalogEntries);
+  let placed = false;
+  return pending.flatMap<SearchResult>((result) => {
+    if (result.kind !== 'catalog') {
+      return [result];
+    }
+    if (placed) {
+      return [];
+    }
+    placed = true;
+    return groups.map((group) => ({ kind: 'vendor', group }));
+  });
 }
 
 function searchResultOptionCount(result: SearchResult): number {
   if (result.kind === 'spec' || result.kind === 'endpoint') {
     return 1;
+  }
+  if (result.kind === 'vendor') {
+    return result.group.entries.length;
   }
   return result.filteredModels.length + (result.showMarketplace ? 1 : 0);
 }
@@ -268,6 +303,28 @@ export function SearchResults({ results, localize, searchValue }: SearchResultsP
                 </>
               )}
             </MenuItem>
+          );
+        }
+
+        if (result.kind === 'vendor') {
+          const { group } = result;
+          return (
+            <Fragment key={`${group.key}-search`}>
+              <div className="flex items-center gap-2 px-3 py-1 text-sm font-medium">
+                <div
+                  className="flex items-center justify-center overflow-hidden rounded-full p-1"
+                  aria-hidden="true"
+                >
+                  <VendorGroupIcon group={group} />
+                </div>
+                {group.label}
+              </div>
+              <VendorModelRows
+                entries={group.entries}
+                precedingOptionCount={resultOffset}
+                setSize={listboxSetSize}
+              />
+            </Fragment>
           );
         }
 

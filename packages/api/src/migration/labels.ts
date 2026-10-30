@@ -1,10 +1,11 @@
+import { modelLabelOf } from 'librechat-data-provider';
 import type { AppConfig, ModelRef, PlatformProvider } from '@librechat/data-schemas';
 
 /**
  * The display name of a model at migration time (fork-only): the label of a model spec that
  * runs it, else the endpoint's model label (`modelLabels`, which catalog models fill), from the
  * tenant's config for a tenant migration and the base config otherwise, else the platform
- * provider's model label. Stored on the redirect and on each notice, so a notice still names a
+ * provider's model label or the name derived from its id. Stored on the redirect and on each notice, so a notice still names a
  * model that has left the catalog and no client has to resolve it.
  */
 export function createModelLabelLookup(deps: {
@@ -23,7 +24,8 @@ export function createModelLabelLookup(deps: {
     const label = endpoint?.modelLabels?.[ref.model];
     if (label) return label;
     const [provider] = (await deps.findPlatformProviders?.([ref.endpoint])) ?? [];
-    return provider?.models.find((model) => model.id === ref.model)?.label;
+    const model = provider?.models.find((m) => m.id === ref.model);
+    return model ? modelLabelOf(model) : undefined;
   };
 }
 

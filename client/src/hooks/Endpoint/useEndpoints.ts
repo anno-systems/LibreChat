@@ -217,6 +217,16 @@ export const useEndpoints = ({
         if (modelNames) {
           result.modelNames = modelNames;
         }
+        /** Fork: a catalog endpoint is named by its provider's label, not its internal name. */
+        const { modelVendors, hosting, modelLocations } = endpointsConfig?.[ep] ?? {};
+        if (modelVendors && hosting) {
+          result.label = hosting.label;
+          result.modelVendors = modelVendors;
+          result.hosting = hosting;
+          if (modelLocations) {
+            result.modelLocations = modelLocations;
+          }
+        }
       }
 
       acc.push(result);

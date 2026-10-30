@@ -13,6 +13,7 @@ import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcut
 import { ModelSelectorChatProvider } from './ModelSelectorChatContext';
 import { getSelectedIcon, getDisplayValue } from './utils';
 import { CustomMenu as Menu } from './CustomMenu';
+import { isCatalogEndpoint } from './vendors';
 import DialogManager from './DialogManager';
 import { useLocalize } from '~/hooks';
 
@@ -115,7 +116,10 @@ function ModelSelectorContent() {
             {/* Render endpoints (will include grouped specs matching endpoint names) */}
             {renderEndpoints(mappedEndpoints ?? [])}
             {/* Render custom groups (specs with group field not matching any endpoint) */}
-            {renderCustomGroups(modelSpecs || [], mappedEndpoints ?? [])}
+            {renderCustomGroups(
+              modelSpecs || [],
+              (mappedEndpoints ?? []).filter((endpoint) => !isCatalogEndpoint(endpoint)),
+            )}
           </>
         )}
       </Menu>

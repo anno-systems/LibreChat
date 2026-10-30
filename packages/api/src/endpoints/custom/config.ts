@@ -168,8 +168,11 @@ export function loadCustomEndpointsConfig(
     for (const [name, endpoint] of resolveServedCustomEndpoints(customEndpoints)) {
       const { baseURL, apiKey, iconURL, modelDisplayLabel, customParams, provider, dropParams } =
         endpoint;
-      /** Fork: display names of the endpoint's models for the model selector. */
-      const { modelLabels } = endpoint;
+      /**
+       * Fork: display names of the endpoint's models for the model selector, and for catalog
+       * endpoints each model's vendor and the provider's label and location (no URLs or keys).
+       */
+      const { modelLabels, modelVendors, hosting, modelLocations } = endpoint;
       /** Fork: the parameter set of models routed through another API (`routes.ts`). */
       const modelParamsEndpoints = modelParamsEndpointsOf(
         endpoint,
@@ -200,6 +203,9 @@ export function loadCustomEndpointsConfig(
         customParams: resolvedCustomParams,
         modelDisplayLabel,
         ...(modelLabels && { modelLabels }),
+        ...(modelVendors && { modelVendors }),
+        ...(hosting && { hosting }),
+        ...(modelLocations && { modelLocations }),
         ...(modelParamsEndpoints && { modelParamsEndpoints }),
         iconURL,
         providerId: resolveEndpointProviderId({

@@ -1,9 +1,11 @@
 import { Schema } from 'mongoose';
+import { VENDOR_IDS, isVendorId } from 'librechat-data-provider';
 import type {
   TLocation,
   TModelLimits,
   TQueueSettings,
   TProviderLimits,
+  VendorId,
 } from 'librechat-data-provider';
 import type { Model } from 'mongoose';
 import { applyTenantIsolation } from '~/models/plugins/tenantIsolation';
@@ -39,8 +41,10 @@ export const CATALOG_APIS: readonly CatalogApi[] = ['chat', 'responses', 'anthro
 export interface CatalogModel {
   /** The model's name in the provider's API. */
   id: string;
-  /** Display name; absent shows the id. */
+  /** Display name; absent shows one derived from the id (`suggestModelLabel`). */
   label?: string;
+  /** Who makes the model, set by the operator; absent means detected from the id. */
+  vendor?: VendorId;
   /** Where the model processes data; absent means the provider's `location`. */
   location?: CatalogLocation;
   /** Limits of the model's queue (`packages/api/src/queue`); absent means no queue. */
@@ -148,6 +152,7 @@ export interface PlatformCatalogMethods {
 interface StoredModel {
   id?: unknown;
   label?: unknown;
+  vendor?: unknown;
   location?: unknown;
   limits?: unknown;
   api?: unknown;
@@ -209,6 +214,7 @@ const catalogModelSchema = new Schema<CatalogModel>(
   {
     id: { type: String, required: true },
     label: { type: String },
+    vendor: { type: String, enum: VENDOR_IDS },
     location: { type: locationSchema, default: undefined },
     limits: { type: modelLimitsSchema, default: undefined },
     api: { type: String, enum: CATALOG_APIS },
@@ -222,6 +228,7 @@ const ownModelSchema = new Schema<OwnModel>(
   {
     id: { type: String, required: true },
     label: { type: String },
+    vendor: { type: String, enum: VENDOR_IDS },
     location: { type: locationSchema, default: undefined },
   },
   { _id: false },
@@ -341,6 +348,7 @@ function modelOf(raw: string | StoredModel, legacyLimits?: TModelLimits): Catalo
   return {
     id: raw.id,
     ...(typeof raw.label === 'string' && raw.label && { label: raw.label }),
+    ...(isVendorId(raw.vendor) && { vendor: raw.vendor }),
     ...(location && { location }),
     ...(limits && { limits }),
     ...(api && { api }),
@@ -355,6 +363,7 @@ function ownModelOf(raw: string | StoredModel): OwnModel | null {
   return {
     id: model.id,
     ...(model.label && { label: model.label }),
+    ...(model.vendor && { vendor: model.vendor }),
     ...(model.location && { location: model.location }),
   };
 }

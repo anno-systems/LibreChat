@@ -29,7 +29,9 @@ import type { SettingDefinition } from './generate';
 import type { TMinimalFeedback } from './feedback';
 import type { ContentTypes } from './types/runs';
 import type { ProviderId } from './providers';
+import type { TLocation } from './location';
 import type { Agent } from './types/agents';
+import type { VendorId } from './vendors';
 
 export * from './schemas';
 export * from './types/subagents';
@@ -690,6 +692,15 @@ export type TConfig = {
   modelDisplayLabel?: string;
   /** Fork: display names of a custom endpoint's models, by model id. */
   modelLabels?: Record<string, string>;
+  /**
+   * Fork: the vendor of each model of a catalog endpoint, by model id; present only on catalog
+   * endpoints, whose models the selector groups by vendor.
+   */
+  modelVendors?: Record<string, VendorId>;
+  /** Fork: a catalog endpoint's provider label and default location, shown under each model. */
+  hosting?: { label: string; location?: TLocation };
+  /** Fork: models whose location differs from `hosting.location`, by model id. */
+  modelLocations?: Record<string, TLocation>;
   /**
    * Fork: the parameter set (`defaultParamsEndpoint`) of models that run through another API
    * than the endpoint's (`modelRoutes`), by model id; see `getDefaultParamsEndpoint`.

@@ -16,6 +16,8 @@
   "com_ui_manage_remote_agents": "Remote-Agenten verwalten",
   "com_ui_manage_skills": "Skills verwalten",
   "com_ui_mcp_file_output": "MCP-Tool-Ausgabe",
+  "com_ui_model_location_eu": "EU",
+  "com_ui_model_location_global": "Global",
   "com_ui_model_migrated": "Läuft jetzt mit {{to}} statt {{from}}",
   "com_ui_provider_queue_busy": "Hohe Auslastung: Deine Nachricht steht in der Warteschlange (Position {{0}}) und wird automatisch gesendet.",
   "com_ui_provider_queue_rate_limited": "Der Modellanbieter hat uns gebeten, langsamer zu machen: Deine Nachricht steht in der Warteschlange (Position {{0}}) und wird automatisch gesendet."

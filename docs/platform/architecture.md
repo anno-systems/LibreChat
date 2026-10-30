@@ -275,7 +275,8 @@ active with `ADMIN_CONFIG_CATALOG_LOCK=true` (2026-10-20):
 - LibreChat adds the tenant's endpoints to the base config before the tenant's documents are
   applied, reloading them at most every 30 seconds, so the existing narrowing and the per-group
   documents work on them unchanged. Keys never leave the server: `/api/endpoints`,
-  `/api/models` and `/api/config` show names, models and model labels only.
+  `/api/models` and `/api/config` show names, models, model labels, model vendors and the
+  provider's label and location only.
 
 ### Catalog models (2026-10-30)
 
@@ -314,6 +315,50 @@ Owner's decisions on the shape of a platform provider (`packages/data-schemas/sr
   every tenant into writes. A write only applies to the document as read, so an operator's save
   in between wins. During a rolling deploy an older replica still running reads the rewritten
   providers without their models until it stops.
+
+### Vendor groups in the model selector (2026-10-30)
+
+A catalog provider is an account (key, limits, location), and one Azure AI Foundry account serves
+Mistral, OpenAI and Anthropic models, so grouping the selector by provider showed one group
+"azure-anno-systems-westeurope" (the internal name) with every maker's models. Owner's decisions
+(`packages/data-provider/src/vendors.ts`, `packages/api/src/platform/catalog.ts`,
+`client/src/components/Chat/Menus/Endpoints/vendors.ts`):
+
+- **Grouped by vendor.** The chat model selector shows the models of catalog endpoints (platform
+  providers and tenant BYOK endpoints) under their vendor: Mistral, OpenAI, Anthropic, Google,
+  Meta, DeepSeek, xAI, Cohere, Qwen, in that order, whichever account a model runs through.
+  Models of no known vendor (`other`) stay in a group named by the provider's label. Built-in
+  endpoints, YAML custom endpoints without catalog info and "My Agents" keep their rows, and the
+  vendor groups stand where the first catalog endpoint stood. Selecting a model still stores its
+  real endpoint and model, so conversations, agents, migrations, queues and prices are untouched.
+  Search matches the vendor's name, the model's label and id and the provider's label, and shows
+  matches by vendor. The agent builder's model picker (provider, then model) does not share the
+  selector's components and is unchanged.
+- **Vendor per model.** Catalog models have an optional `vendor` (one of the registry's ids,
+  including `other`) that the operator may set; without one it is detected from the id,
+  case-insensitively and without a `vendor/` prefix (`mistral*`, `mixtral*`, `codestral*`,
+  `devstral*`, `magistral*`, `pixtral*`, `ministral*`, `voxtral*`, `mathstral*` → Mistral;
+  `gpt*`, `o<digit>*`, `chatgpt*` → OpenAI; `claude*` → Anthropic; `gemini*`, `gemma*` → Google;
+  `llama*`, `meta-llama*` → Meta; `deepseek*`; `grok*` → xAI; `command*` → Cohere; `qwen*`).
+  Only the operator's choice is stored, so stored documents need no migration and later rules
+  reach them. Operator and tenant admin responses always carry `vendor`. The registry (id, name,
+  icon) lives in `packages/data-provider` for client and server; icons are the client's provider
+  icons.
+- **Hosting under each model.** Each catalog model row has a second line with the provider's
+  label and the model's effective location: "Azure · Global", "Mistral (Paris) · 🇫🇷 France"
+  (flag and the country's name in the user's language), "… · EU".
+- **Names from ids.** A model without a `label` is shown with a name derived from its id
+  (`suggestModelLabel`: `mistral-medium-3-5` → "Mistral Medium 3.5", `gpt-6.1-terra` → "GPT-6.1
+  Terra", `claude-sonnet-5-5` → "Claude Sonnet 5.5", `Mistral-Large-3` → "Mistral Large 3"):
+  vendors' spellings (GPT, Claude, Gemini, Llama, DeepSeek), the o-series lower case
+  ("o4-mini"), two short trailing numbers as one version, dates kept. An explicit `label` always
+  wins. The name is the endpoint's `modelLabels` entry (so the selector and migration notices
+  use it) and is shown read-only as `suggestedLabel` in the operator and tenant admin APIs, for
+  the admin app's placeholder.
+- **No extra request.** `/api/endpoints` carries, per catalog endpoint, `modelVendors` (model →
+  vendor), `hosting` (`{ label, location? }`) and `modelLocations` (models whose location differs
+  from the provider's), next to `modelLabels`; no URLs or keys. `modelVendors` marks the endpoint
+  as a catalog endpoint, and the selector names such an endpoint by `hosting.label`.
 
 ### Model URLs, APIs and keys (2026-10-30)
 

@@ -1,4 +1,4 @@
-import { EModelEndpoint } from 'librechat-data-provider';
+import { vendorOf, modelLabelOf, EModelEndpoint } from 'librechat-data-provider';
 import type {
   AppConfig,
   OwnModel,
@@ -7,7 +7,13 @@ import type {
   TenantCatalog,
   PlatformProvider,
 } from '@librechat/data-schemas';
-import type { TEndpoint, TProviderLimits, TQueueSettings } from 'librechat-data-provider';
+import type {
+  TEndpoint,
+  TLocation,
+  VendorId,
+  TProviderLimits,
+  TQueueSettings,
+} from 'librechat-data-provider';
 import { effectiveDropParams } from './params';
 
 /**
@@ -18,9 +24,11 @@ import { effectiveDropParams } from './params';
  * further through their config (`endpoints.custom[].models.default`). They join the tenant's
  * base config as tenant-scoped custom endpoints (`tenantId`, the same scoping upstream applies
  * to YAML endpoints), so model lists, the catalog lock and chat requests treat them like YAML
- * endpoints. No other tenant ever sees them. Model display names become the endpoint's
- * `modelLabels` (the model selector shows them), and each model with limits gets its own queue
- * through `modelLimits`, with the provider's queue settings.
+ * endpoints. No other tenant ever sees them. Model display names (the label, else one derived
+ * from the id) become the endpoint's `modelLabels`, each model's vendor `modelVendors`, and the
+ * provider's label and location `hosting` (models elsewhere in `modelLocations`), which the model
+ * selector groups and labels models by; each model with limits gets its own queue through
+ * `modelLimits`, with the provider's queue settings.
  *
  * A platform provider is one account (key, location, queue) whose models may live at different
  * base URLs and speak different APIs. It stays one endpoint, so the selector, assignments, model
@@ -106,8 +114,28 @@ function modelLimitsOf(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-function modelLabelsOf(models: OwnModel[]): Record<string, string> | undefined {
-  const entries = models.filter((model) => model.label).map((model) => [model.id, model.label!]);
+/** Every model's display name: its label, else one derived from its id. */
+function modelLabelsOf(models: OwnModel[]): Record<string, string> {
+  return Object.fromEntries(models.map((model) => [model.id, modelLabelOf(model)]));
+}
+
+function modelVendorsOf(models: OwnModel[]): Record<string, VendorId> {
+  return Object.fromEntries(models.map((model) => [model.id, vendorOf(model)]));
+}
+
+function sameLocation(a: TLocation | undefined, b: TLocation | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.type === b.type && (a.type !== 'country' || a.code === (b as typeof a).code);
+}
+
+/** Models whose own location differs from the endpoint's. */
+function modelLocationsOf(
+  models: OwnModel[],
+  location: TLocation | undefined,
+): Record<string, TLocation> | undefined {
+  const entries = models.flatMap((model) =>
+    model.location && !sameLocation(model.location, location) ? [[model.id, model.location]] : [],
+  );
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
@@ -119,6 +147,7 @@ function endpointOf(
     apiKey: string;
     label?: string;
     dropParams?: string[];
+    location?: TLocation;
     /** Platform providers only; a tenant's own endpoint has no shared queue. */
     queue?: TQueueSettings;
   },
@@ -126,16 +155,20 @@ function endpointOf(
   models: Array<CatalogModel | OwnModel>,
 ): TEndpoint {
   const modelLimits = modelLimitsOf(models, source.queue);
-  const modelLabels = modelLabelsOf(models);
+  const modelLocations = modelLocationsOf(models, source.location);
+  const label = source.label ?? source.name;
   return {
     ...(modelLimits && { modelLimits }),
-    ...(modelLabels && { modelLabels }),
+    modelLabels: modelLabelsOf(models),
+    modelVendors: modelVendorsOf(models),
+    hosting: { label, ...(source.location && { location: source.location }) },
+    ...(modelLocations && { modelLocations }),
     name: source.name,
     baseURL: source.baseURL,
     apiKey: source.apiKey,
     models: { default: models.map((model) => model.id), fetch: false },
     dropParams: [...(source.dropParams ?? DEFAULT_DROP_PARAMS)],
-    modelDisplayLabel: source.label ?? source.name,
+    modelDisplayLabel: label,
     titleConvo: true,
     titleModel: 'current_model',
     tenantId,

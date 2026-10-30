@@ -41,6 +41,8 @@ import {
 } from './types/scheduleConsent';
 import { providerLimitsSchema } from './queue';
 import { brandingSchema } from './branding';
+import { locationSchema } from './location';
+import { vendorIdSchema } from './vendors';
 
 export const AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_DEFAULT = 24 * 1024;
 export const AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_HARD_MAX = 64 * 1024;
@@ -2348,6 +2350,19 @@ export const endpointSchema = baseEndpointSchema.merge(
     modelLimits: z.record(providerLimitsSchema).optional(),
     /** Fork: display names of models in the model selector, by model id. */
     modelLabels: z.record(z.string().min(1).max(128)).optional(),
+    /**
+     * Fork: the vendor of each model of a catalog endpoint (a platform provider or a tenant's own
+     * endpoint), by model id. Its presence marks the endpoint as a catalog endpoint, whose models
+     * the selector groups by vendor.
+     */
+    modelVendors: z.record(vendorIdSchema).optional(),
+    /** Fork: a catalog endpoint's provider as the selector names it under each model. */
+    hosting: z
+      .object({ label: z.string().min(1).max(128), location: locationSchema.optional() })
+      .strict()
+      .optional(),
+    /** Fork: models whose location differs from `hosting.location`, by model id. */
+    modelLocations: z.record(locationSchema).optional(),
     /**
      * Fork: how single models are reached, by model id, over the endpoint's own fields: another
      * base URL, the native Anthropic client (`provider: anthropic`), the OpenAI Responses API

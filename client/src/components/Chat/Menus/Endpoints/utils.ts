@@ -8,9 +8,11 @@ import type {
   TEndpointsConfig,
 } from 'librechat-data-provider';
 import type { useLocalize } from '~/hooks';
+import VendorIcon from '~/components/Chat/Menus/Endpoints/components/VendorIcon';
 import SpecIcon from '~/components/Chat/Menus/Endpoints/components/SpecIcon';
 import { resolveProviderIcon } from '~/hooks/Endpoint/useProviderIcon';
 import { createEndpointIcon } from '~/hooks/Endpoint/useEndpoints';
+import { catalogModelMatches, vendorOfEntry } from './vendors';
 import { Endpoint, SelectedValues } from '~/common';
 import { getSpecAgentAvatarURL } from '~/utils';
 
@@ -22,6 +24,8 @@ export function filterItems<
     hasModels?: boolean;
     models?: Array<{ name: string; isGlobal?: boolean }>;
     modelNames?: Record<string, string>;
+    modelVendors?: Endpoint['modelVendors'];
+    hosting?: Endpoint['hosting'];
     searchAliases?: string[];
     showMarketplace?: boolean;
   },
@@ -60,6 +64,11 @@ export function filterItems<
     if (item.models && item.models.length > 0) {
       return item.models.some((modelId) => {
         if (modelId.name.toLowerCase().includes(searchTermLower)) {
+          return true;
+        }
+
+        /** Fork: a catalog model is also found by its vendor's name. */
+        if (item.modelVendors && catalogModelMatches(item, modelId.name, searchTermLower)) {
           return true;
         }
 
@@ -180,6 +189,12 @@ export function getSelectedIcon({
           className: 'h-full w-full object-cover',
         }),
       );
+    }
+
+    /** Fork: a catalog model shows its vendor's mark, which the operator may have set. */
+    const vendor = selectedEndpoint.hosting ? vendorOfEntry(selectedEndpoint, model) : 'other';
+    if (vendor !== 'other') {
+      return React.createElement(VendorIcon, { vendor });
     }
 
     if (selectedEndpoint.icon) {
