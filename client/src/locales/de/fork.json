@@ -16,6 +16,7 @@
   "com_ui_manage_remote_agents": "Remote-Agenten verwalten",
   "com_ui_manage_skills": "Skills verwalten",
   "com_ui_mcp_file_output": "MCP-Tool-Ausgabe",
+  "com_ui_model_hosting_direct": "{{0}} direkt",
   "com_ui_model_location_eu": "EU",
   "com_ui_model_location_global": "Global",
   "com_ui_model_migrated": "Läuft jetzt mit {{to}} statt {{from}}",

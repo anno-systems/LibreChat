@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { Endpoint, SelectedValues } from '~/common';
 import { filterItems, getDisplayValue } from '../../utils';
+import { renderCustomGroups } from '../CustomGroup';
 import { renderEndpoints } from '../EndpointItem';
 import { SearchResults } from '../SearchResults';
 
@@ -17,7 +18,10 @@ jest.mock('~/hooks', () => ({
     toggleFavoriteModel: mockToggleFavoriteModel,
     isFavoriteAgent: () => false,
     toggleFavoriteAgent: jest.fn(),
+    isFavoriteSpec: () => false,
+    toggleFavoriteSpec: jest.fn(),
   }),
+  useIsActiveItem: () => ({ ref: { current: null }, isActive: false }),
 }));
 
 jest.mock('~/components/Chat/Menus/Endpoints/ModelSelectorContext', () => ({
@@ -118,6 +122,17 @@ const yaml: Endpoint = {
   models: [{ name: 'llama3' }],
 };
 
+/** The built-in OpenAI endpoint, as `useEndpoints` maps it. */
+const openAI: Endpoint = {
+  value: 'openAI',
+  label: 'OpenAI',
+  hasModels: true,
+  icon: null,
+  models: [{ name: 'gpt-4o' }],
+  modelVendors: { 'gpt-4o': 'openai' },
+  hosting: { label: 'OpenAI direct' },
+};
+
 const groupNamed = (key: string) => screen.getByTestId(`vendor-${key}-menu`);
 const rowNamed = (scope: HTMLElement, name: string) =>
   within(scope)
@@ -197,6 +212,49 @@ describe('vendor groups in the model selector', () => {
     const other = groupNamed('other:mistral-paris');
     expect(within(other).getByRole('banner')).toHaveTextContent('Mistral (Paris)');
     expect(within(other).getByRole('menuitem')).toHaveTextContent('House Model');
+  });
+});
+
+describe('built-in endpoints in vendor groups', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('merges the built-in OpenAI endpoint into the one OpenAI group, hosted "direct"', () => {
+    render(<>{renderEndpoints([openAI, yaml, azure])}</>);
+
+    expect(screen.getAllByTestId(/^vendor-vendor:openai/)).toHaveLength(1);
+    expect(screen.queryByTestId('endpoint-openAI-menu')).not.toBeInTheDocument();
+    const rows = within(groupNamed('vendor:openai')).getAllByRole('menuitem');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'gpt-4oOpenAI direct',
+      'GPT-6.1 TerraAzure · Global',
+    ]);
+    /** The groups stand where the first grouped endpoint stood, before Ollama. */
+    expect(screen.getAllByTestId(/-menu$/).map((group) => group.dataset.testid)).toEqual([
+      'vendor-vendor:mistral-menu',
+      'vendor-vendor:openai-menu',
+      'vendor-vendor:anthropic-menu',
+      'endpoint-Ollama-menu',
+    ]);
+
+    fireEvent.click(rows[0]);
+    expect(mockHandleSelectModel).toHaveBeenCalledWith(openAI, 'gpt-4o');
+  });
+});
+
+describe('model spec groups', () => {
+  it("head a group named after a vendor-grouped endpoint with the endpoint's label", () => {
+    const spec = {
+      name: 'house',
+      label: 'House spec',
+      group: 'azure-anno-systems-westeurope',
+      preset: { endpoint: 'azure-anno-systems-westeurope', model: 'gpt-6.1-terra' },
+    } as never;
+    render(<>{renderCustomGroups([spec], [yaml], { [azure.value]: azure.label })}</>);
+
+    expect(screen.getByText('Azure')).toBeInTheDocument();
+    expect(screen.queryByText('azure-anno-systems-westeurope')).not.toBeInTheDocument();
   });
 });
 

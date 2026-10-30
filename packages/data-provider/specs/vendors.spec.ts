@@ -7,6 +7,7 @@ import {
   modelLabelOf,
   vendorIdSchema,
   suggestModelLabel,
+  builtinEndpointVendors,
 } from '../src/vendors';
 
 describe('detectVendor', () => {
@@ -52,6 +53,16 @@ describe('detectVendor', () => {
   });
 });
 
+describe('built-in endpoints', () => {
+  it('maps the direct endpoints to their vendor and nothing else', () => {
+    expect(builtinEndpointVendors).toEqual({
+      openAI: 'openai',
+      anthropic: 'anthropic',
+      google: 'google',
+    });
+  });
+});
+
 describe('vendor registry', () => {
   it('lists every vendor once, `other` last, each named', () => {
     expect(vendors.map((vendor) => vendor.id)).toEqual([...VENDOR_IDS]);
@@ -83,7 +94,17 @@ describe('suggestModelLabel', () => {
     ['chatgpt-4o-latest', 'ChatGPT-4o Latest'],
     ['gpt-4o-2024-08-06', 'GPT-4o 2024-08-06'],
     ['claude-opus-4-1', 'Claude Opus 4.1'],
-    ['claude-3-5-sonnet-20241022', 'Claude 3 5 Sonnet 20241022'],
+    ['claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet'],
+    ['claude-3-5-haiku-latest', 'Claude 3.5 Haiku Latest'],
+    ['claude-opus-4-1-20250805', 'Claude Opus 4.1'],
+    ['claude-3-haiku-20240307', 'Claude 3 Haiku'],
+    ['mistral-small-3-1-24b-instruct', 'Mistral Small 3.1 24B Instruct'],
+    ['qwen-2-5-72b', 'Qwen 2.5 72B'],
+    ['gemini-2-0-flash-001', 'Gemini 2.0 Flash 001'],
+    ['model-1-2-3', 'Model 1 2 3'],
+    ['release-20241022', 'Release'],
+    ['build-20241399', 'Build 20241399'],
+    ['20241022', '20241022'],
     ['anthropic/claude-sonnet-4.5', 'Claude Sonnet 4.5'],
     ['gemini-2.5-pro', 'Gemini 2.5 Pro'],
     ['llama-3.3-70b-instruct', 'Llama 3.3 70B Instruct'],

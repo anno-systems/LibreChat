@@ -5,7 +5,7 @@ import { isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider'
 import type { TModelSpec } from 'librechat-data-provider';
 import type { Endpoint, LocalizeFunction } from '~/common';
 import type { VendorEntry, VendorGroup } from '../vendors';
-import { catalogModelMatches, groupEntries, isCatalogEndpoint } from '../vendors';
+import { catalogModelMatches, groupEntries, isVendorGrouped } from '../vendors';
 import { EndpointModelItem, VIRTUALIZE_THRESHOLD } from './EndpointModelItem';
 import MarketplaceItem, { marketplaceSearchMatches } from './Marketplace';
 import { useModelSelectorContext } from '../ModelSelectorContext';
@@ -58,7 +58,7 @@ function prepareSearchResults(
     }
 
     /** Fork: catalog models are found by label, id, vendor or provider and shown by vendor. */
-    if (isCatalogEndpoint(endpoint)) {
+    if (isVendorGrouped(endpoint)) {
       const providerMatches = endpoint.label.toLowerCase().includes(lowerQuery);
       for (const { name } of endpoint.models ?? []) {
         if (providerMatches || catalogModelMatches(endpoint, name, lowerQuery)) {

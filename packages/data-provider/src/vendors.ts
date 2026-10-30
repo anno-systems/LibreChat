@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EModelEndpoint } from './schemas';
 import { ProviderId } from './providers';
 
 /**
@@ -61,6 +62,17 @@ export function isVendorId(value: unknown): value is VendorId {
   return typeof value === 'string' && byId.has(value as VendorId);
 }
 
+/**
+ * Built-in endpoints that call one vendor directly; their models join that vendor's group with
+ * the hosting line "<vendor> direct". Other built-ins (Azure OpenAI, which also serves other
+ * makers' models, Bedrock, assistants, agents) keep their own rows.
+ */
+export const builtinEndpointVendors: Readonly<Partial<Record<string, VendorId>>> = {
+  [EModelEndpoint.openAI]: 'openai',
+  [EModelEndpoint.anthropic]: 'anthropic',
+  [EModelEndpoint.google]: 'google',
+};
+
 /** First match wins; tested on the lower-cased id without its `vendor/` prefix. */
 const VENDOR_RULES: ReadonlyArray<readonly [RegExp, VendorId]> = [
   [
@@ -117,8 +129,35 @@ const KNOWN_WORDS: Readonly<Record<string, string>> = {
 };
 
 const NUMBER = /^\d+$/;
-/** A version pair joins only when both parts are short, so dates (`2024-08-06`) stay apart. */
+/** A version part is short, so dates (`2024-08-06`) and snapshots (`2411`) never join. */
 const VERSION_PART = /^\d{1,2}$/;
+/** A snapshot date such as `20241022`, dropped when it ends the id. */
+const SNAPSHOT_DATE = /^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
+
+/**
+ * Two short numbers in a row become one dotted version (`3-5` → `3.5`), wherever they stand,
+ * unless a number on either side makes them part of a longer run.
+ */
+function joinVersions(tokens: string[]): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const [current, next, after] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+    const before = result[result.length - 1];
+    if (
+      next != null &&
+      VERSION_PART.test(current) &&
+      VERSION_PART.test(next) &&
+      (before == null || !NUMBER.test(before)) &&
+      (after == null || !NUMBER.test(after) || SNAPSHOT_DATE.test(after))
+    ) {
+      result.push(`${current}.${next}`);
+      i++;
+      continue;
+    }
+    result.push(current);
+  }
+  return result;
+}
 
 function wordOf(token: string): string {
   const lower = token.toLowerCase();
@@ -137,24 +176,19 @@ function wordOf(token: string): string {
  * A readable name for a model id without a label: `mistral-medium-3-5` → "Mistral Medium 3.5",
  * `gpt-6.1-terra` → "GPT-6.1 Terra", `claude-sonnet-5-5` → "Claude Sonnet 5.5". Dashes and
  * underscores become spaces, words take their vendor's spelling (GPT, Claude, Gemini, Llama),
- * a GPT version stays joined ("GPT-4o"), two trailing short numbers become one version ("3.5"),
- * and OpenAI's o-series stays lower case ("o4-mini"). Any `vendor/` prefix is dropped.
+ * a GPT version stays joined ("GPT-4o"), two short numbers in a row become one version ("3.5")
+ * anywhere, a trailing snapshot date (`20241022`) is dropped while ISO dates (`2024-08-06`)
+ * stay, and OpenAI's o-series stays lower case ("o4-mini"). Any `vendor/` prefix is dropped.
  */
 export function suggestModelLabel(modelId: string): string {
   const id = baseId(modelId);
   if (/^o\d/i.test(id)) return id.toLowerCase();
-  /** A date (`2024-08-06`) stays one token. */
-  const tokens = id.match(/\d{4}-\d{2}-\d{2}|[^-_\s]+/g) ?? [];
-  if (tokens.length === 0) return id;
-  const n = tokens.length;
-  if (
-    n >= 3 &&
-    VERSION_PART.test(tokens[n - 1]) &&
-    VERSION_PART.test(tokens[n - 2]) &&
-    !NUMBER.test(tokens[n - 3])
-  ) {
-    tokens.splice(n - 2, 2, `${tokens[n - 2]}.${tokens[n - 1]}`);
-  }
+  /** An ISO date (`2024-08-06`) stays one token. */
+  const split = id.match(/\d{4}-\d{2}-\d{2}|[^-_\s]+/g) ?? [];
+  if (split.length === 0) return id;
+  /** A trailing snapshot date (`claude-3-5-sonnet-20241022`) is dropped. */
+  const dated = split.length > 1 && SNAPSHOT_DATE.test(split[split.length - 1]);
+  const tokens = joinVersions(dated ? split.slice(0, -1) : split);
   const words: string[] = [];
   for (const token of tokens) {
     const word = wordOf(token);

@@ -13,7 +13,11 @@ export type Option = Record<string, unknown> & {
   value: string | number | null;
 };
 
-export type OptionWithIcon = Option & { icon?: React.ReactNode };
+export type OptionWithIcon = Option & {
+  icon?: React.ReactNode;
+  /** Fork: a second, smaller line under the label (shown by `ControlCombobox`). */
+  description?: string;
+};
 export type DropdownValueSetter = (value: string | Option | OptionWithIcon) => void;
 export type MentionOption = OptionWithIcon & {
   type: string;

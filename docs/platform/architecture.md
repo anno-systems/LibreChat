@@ -327,13 +327,20 @@ Mistral, OpenAI and Anthropic models, so grouping the selector by provider showe
 - **Grouped by vendor.** The chat model selector shows the models of catalog endpoints (platform
   providers and tenant BYOK endpoints) under their vendor: Mistral, OpenAI, Anthropic, Google,
   Meta, DeepSeek, xAI, Cohere, Qwen, in that order, whichever account a model runs through.
-  Models of no known vendor (`other`) stay in a group named by the provider's label. Built-in
-  endpoints, YAML custom endpoints without catalog info and "My Agents" keep their rows, and the
-  vendor groups stand where the first catalog endpoint stood. Selecting a model still stores its
-  real endpoint and model, so conversations, agents, migrations, queues and prices are untouched.
-  Search matches the vendor's name, the model's label and id and the provider's label, and shows
-  matches by vendor. The agent builder's model picker (provider, then model) does not share the
-  selector's components and is unchanged.
+  Models of no known vendor (`other`) stay in a group named by the provider's label. The
+  built-in endpoints that call one vendor directly (`openAI`, `anthropic`, `google`;
+  `builtinEndpointVendors`) join that vendor's group with the hosting line "OpenAI direct"
+  ("OpenAI direkt"), so there is one group per vendor; one that needs the user's own key keeps
+  its row, where the key is set. Azure OpenAI (which also serves other makers' models), Bedrock,
+  assistants, YAML custom endpoints without catalog info and "My Agents" keep their rows, and the
+  vendor groups stand where the first grouped endpoint stood. Model specs whose `group` names a
+  grouped endpoint get a group headed by the endpoint's label. Selecting a model still stores
+  its real endpoint and model, so conversations, agents, migrations, queues and prices are
+  untouched. Search matches the vendor's name, the model's label and id and the provider's
+  label, and shows matches by vendor.
+- **Agent editor.** The agent builder's pickers (`vendorChoices.ts`, same grouping functions)
+  list vendor groups and the other providers first, then a group's models across endpoints, each
+  with its hosting line; the agent still stores provider and model.
 - **Vendor per model.** Catalog models have an optional `vendor` (one of the registry's ids,
   including `other`) that the operator may set; without one it is detected from the id,
   case-insensitively and without a `vendor/` prefix (`mistral*`, `mixtral*`, `codestral*`,
@@ -349,9 +356,11 @@ Mistral, OpenAI and Anthropic models, so grouping the selector by provider showe
   (flag and the country's name in the user's language), "… · EU".
 - **Names from ids.** A model without a `label` is shown with a name derived from its id
   (`suggestModelLabel`: `mistral-medium-3-5` → "Mistral Medium 3.5", `gpt-6.1-terra` → "GPT-6.1
-  Terra", `claude-sonnet-5-5` → "Claude Sonnet 5.5", `Mistral-Large-3` → "Mistral Large 3"):
-  vendors' spellings (GPT, Claude, Gemini, Llama, DeepSeek), the o-series lower case
-  ("o4-mini"), two short trailing numbers as one version, dates kept. An explicit `label` always
+  Terra", `claude-sonnet-5-5` → "Claude Sonnet 5.5", `Mistral-Large-3` → "Mistral Large 3",
+  `claude-3-5-sonnet-20241022` → "Claude 3.5 Sonnet"): vendors' spellings (GPT, Claude, Gemini,
+  Llama, DeepSeek), the o-series lower case ("o4-mini"), two short numbers in a row as one
+  version anywhere, a trailing snapshot date (`YYYYMMDD`) dropped, ISO dates (`2024-08-06`)
+  kept. Built-in endpoints keep showing model ids. An explicit `label` always
   wins. The name is the endpoint's `modelLabels` entry (so the selector and migration notices
   use it) and is shown read-only as `suggestedLabel` in the operator and tenant admin APIs, for
   the admin app's placeholder.

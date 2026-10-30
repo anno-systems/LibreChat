@@ -2181,6 +2181,7 @@
   "com_ui_mode": "Mode",
   "com_ui_mode_value": "Mode: {{0}}",
   "com_ui_model": "Model",
+  "com_ui_model_hosting_direct": "{{0}} direct",
   "com_ui_model_location_eu": "EU",
   "com_ui_model_location_global": "Global",
   "com_ui_model_migrated": "Now runs on {{to}} instead of {{from}}",
