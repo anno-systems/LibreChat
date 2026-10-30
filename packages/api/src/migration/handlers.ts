@@ -19,7 +19,7 @@ import { redirectView } from './service';
  * Both have a preview (counts per kind) and a usage count; neither returns documents.
  */
 
-const TENANT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+export const TENANT_ID: RegExp = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const REDIRECT_ID = /^mm_[0-9a-f-]{36}$/;
 const MAX_USAGE_MODELS = 50;
 const MAX_EXCEPT_GROUPS = 100;
@@ -98,6 +98,12 @@ export interface OperatorMigrationHandlerDeps {
   isCatalogModel(ref: ModelRef): Promise<boolean>;
   /** Fork: false for a model of a platform provider without a key (`createServedTargetCheck`). */
   isServedTarget?(ref: ModelRef): Promise<boolean>;
+  /**
+   * Fork: the listed tenants that can use neither `from` nor `to` (`OrphanedModelFinder`). A
+   * migration of an orphaned model there would only move it to another model the tenant cannot
+   * run, so it is refused with 400 `target_not_enabled` and those `tenantIds`.
+   */
+  unusableTargetTenants?(tenantIds: string[], from: ModelRef, to: ModelRef): Promise<string[]>;
   /** Records an operator event, as the operator the admin app names. */
   audit(req: Request, event: MigrationAuditEvent): Promise<void>;
   /** The operator the admin app names, recorded on the redirect. */
@@ -190,6 +196,13 @@ export function createOperatorMigrationHandlers(
         }
         if (deps.isServedTarget && !(await deps.isServedTarget(to))) {
           return res.status(400).json({ error: 'target_not_served' });
+        }
+        const unusable =
+          tenantIds && deps.unusableTargetTenants
+            ? await deps.unusableTargetTenants(tenantIds, from, to)
+            : [];
+        if (unusable.length > 0) {
+          return res.status(400).json({ error: 'target_not_enabled', tenantIds: unusable });
         }
         const outcome = await service.run({
           scope: scopeOf(tenantIds),

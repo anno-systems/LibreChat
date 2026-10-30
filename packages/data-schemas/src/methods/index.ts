@@ -62,6 +62,7 @@ export {
 } from './modelMigration';
 export type {
   ModelRef,
+  UsedModel,
   ModelUsage,
   UsageQuery,
   ModelRedirect,
@@ -73,6 +74,7 @@ export type {
   ModelRedirectInput,
   RetargetInput,
   SuccessorEnabled,
+  UsedModelsOptions,
   EnableSuccessorInput,
 } from './modelMigration';
 export type { TenantUsage, TenantUsageDays, TenantUsageDay, TenantUsageModel } from './tenantUsage';

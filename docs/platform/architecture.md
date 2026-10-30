@@ -557,6 +557,24 @@ maps (endpoint, model) to (endpoint, model) and does two things
   the response carries `exceptGroups`. Accepted for now: an agent authored by a member but
   shared with the whole tenant is not rewritten, so users outside the groups fail on it until
   its author moves it; membership changes after the run are not followed.
+- **Orphaned models (2026-10-30).** Documents can still name a model their tenant can no longer
+  use (dropped before the successor rule, a removed librechat.yaml model, a BYOK endpoint
+  deleted, an assignment narrowed with a redirect deleted later). The operator lists them with
+  `GET /api/platform/orphaned-models[?tenantId=]`, a tenant admin with
+  `GET /api/admin/models/orphans` (`read:configs`, own tenant only), each as
+  `{ orphans: [{ tenantId, endpoint, model, label?, agents, conversations, redirected }] }`
+  (`packages/api/src/migration/orphans.ts`, aggregation `listUsedModels`). Counted: agents by
+  (`provider`, `model`) without platform agent copies, active conversations by (`endpoint`,
+  `model`) outside the agents and assistants endpoints, documents with a tenant only. "Usable" is
+  read from the tenant-wide config the app serves (catalog assignment, providers for all
+  tenants, BYOK, librechat.yaml, narrowed by config documents) and is conservative: an endpoint
+  that fetches its models or takes a user-provided key or URL, and a built-in endpoint the
+  deployment serves without a configured model list, accept every model; a built-in endpoint
+  the deployment does not serve accepts none. The rescue is an ordinary migration from the
+  orphaned model (the `from` of a migration was never checked against the catalog); the target
+  checks stay. Because only a tenant that has `from` enabled gets the successor enabled with it,
+  an operator migration with `tenantIds` is refused with 400 `target_not_enabled` and the
+  `tenantIds` that can use neither model; one for every tenant is not checked.
 
 ## Admin app
 
