@@ -11,7 +11,6 @@ const {
   initializeAgent,
   primeInvokedSkillsForProfiles,
   createWorkspaceAttachmentPrimer,
-  validateAgentModel,
   extractManualSkills,
   GenerationJobManager,
   getCustomEndpointConfig,
@@ -123,6 +122,8 @@ const { getFileStorage } = require('~/server/services/Files/operations');
 const { getAppConfig } = require('~/server/services/Config');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { service: platformAgents } = require('~/server/services/platformAgents');
+/** Fork: validates each agent of the run after moving it to its model's successor, if redirected. */
+const { validateAgentModel } = require('~/server/services/Config/modelRedirector');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
 const { determineFileType } = require('~/server/utils');

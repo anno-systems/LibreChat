@@ -24,6 +24,7 @@ const guardSubagentThreadTurn = require('~/server/middleware/validate/subagentTh
 const AgentController = require('~/server/controllers/agents/request');
 const ResumeController = require('~/server/controllers/agents/resume');
 const addTitle = require('~/server/services/Endpoints/agents/title');
+const { redirectRequest } = require('~/server/services/Config/modelRedirector');
 const { getFiles, getRoleByName } = require('~/models');
 
 const router = express.Router();
@@ -78,6 +79,8 @@ router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);
 router.use(guardSubagentThreadTurn);
+/** Fork: a request that names a migrated model runs on its successor. */
+router.use(redirectRequest);
 router.use(buildEndpointOption);
 
 const controller = async (req, res, next) => {

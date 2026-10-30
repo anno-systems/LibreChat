@@ -11,9 +11,11 @@ import type {
   RecordAuditEntryInput,
 } from '@librechat/data-schemas';
 import type { NextFunction, Request, Response } from 'express';
+import type { ModelRemovalGuard, Successor } from '~/migration/guard';
 import type { RecordAuditEntry } from '~/admin/audit';
 import type { ServerRequest } from '~/types/http';
 import { createAdminAuditEmitter, recordSystemAuditEntry } from '~/admin/audit';
+import { createCatalogModelCheck, successorsSchema } from '~/migration/guard';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { validateEndpointURL } from '~/auth/domain';
 import { buildAuditContext } from '~/admin/context';
@@ -54,6 +56,12 @@ export interface PlatformCatalogHandlerDeps {
   invalidate(tenantId?: string): Promise<void>;
   /** The platform agents that run on a provider; such a provider cannot be deleted. */
   agentsUsingProvider?(name: string): Promise<string[]>;
+  /**
+   * Fork: refuses provider and tenant assignment updates that drop a model agents or
+   * conversations still use, unless it is redirected (`migration/guard.ts`). Absent, models are
+   * dropped unchecked, as before.
+   */
+  modelGuard?: ModelRemovalGuard;
   recordAuditEntry?: RecordAuditEntry;
   auditFailClosed?: boolean;
 }
@@ -104,6 +112,8 @@ const providerInputSchema = z
     allTenants: z.boolean().optional(),
     /** Fork: the provider's queue limits; omitted removes them (no queue). */
     limits: providerLimitsSchema.optional(),
+    /** Successors of dropped models, migrated before the update (`migration/guard.ts`). */
+    successors: successorsSchema,
   })
   .strict();
 
@@ -113,6 +123,8 @@ const tenantCatalogInputSchema = z
     providers: z
       .array(z.object({ name: z.string().regex(NAME), models: modelsSchema }).strict())
       .max(MAX_ASSIGNMENTS),
+    /** Successors of dropped models, migrated for the tenant before the update. */
+    successors: successorsSchema,
   })
   .strict();
 
@@ -221,6 +233,39 @@ export function createPlatformCatalogHandlers(
       ));
   const yamlEndpointNames = async () =>
     ((await deps.getBaseConfig()).config?.endpoints?.custom ?? []).map((e) => e.name ?? '');
+  const isCatalogModel = createCatalogModelCheck({
+    getBaseConfig: deps.getBaseConfig,
+    findPlatformProviders: catalog.findPlatformProviders,
+  });
+
+  /**
+   * Fork: runs the model guard for an update that drops `removed`; answers and returns false
+   * when the update must not go ahead.
+   */
+  async function guardRemoval(
+    req: Request,
+    res: Response,
+    params: Omit<Parameters<ModelRemovalGuard['check']>[0], 'successors'> & {
+      successors: Successor[];
+    },
+  ): Promise<boolean> {
+    if (!deps.modelGuard) {
+      if (params.successors.length === 0) return true;
+      res.status(400).json({ error: 'invalid_successor' });
+      return false;
+    }
+    const check = await deps.modelGuard.check(params);
+    if (!check.ok) {
+      res.status(check.status).json(check.body);
+      return false;
+    }
+    if (!(await deps.modelGuard.migrate(req, params.scope, params.successors))) {
+      res.status(409).json({ error: 'redirect_cycle' });
+      return false;
+    }
+    return true;
+  }
+
   const emitAdminAudit = createAdminAuditEmitter({
     recordAuditEntry: deps.recordAuditEntry,
     failClosed: deps.auditFailClosed,
@@ -288,8 +333,19 @@ export function createPlatformCatalogHandlers(
           return res.status(409).json({ error: 'name_taken' });
         }
       }
-      const { apiKey, allTenants, ...fields } = parsed.data;
+      const { apiKey, allTenants, successors = [], ...fields } = parsed.data;
       if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
+      const kept = new Set(fields.models);
+      const allowed = await guardRemoval(req, res, {
+        removed: (existing?.models ?? [])
+          .filter((model) => !kept.has(model))
+          .map((model) => ({ endpoint: name, model })),
+        scope: { platform: true },
+        successors,
+        isTarget: async (ref) =>
+          ref.endpoint === name ? kept.has(ref.model) : isCatalogModel(ref),
+      });
+      if (!allowed) return res;
       const saved = await catalog.upsertPlatformProvider({
         name,
         ...fields,
@@ -384,7 +440,7 @@ export function createPlatformCatalogHandlers(
       if (!tenantId) return res;
       const parsed = tenantCatalogInputSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: 'invalid_catalog' });
-      const { byok, providers } = parsed.data;
+      const { byok, providers, successors = [] } = parsed.data;
       const names = providers.map((p) => p.name);
       if (new Set(names).size !== names.length) {
         return res.status(400).json({ error: 'invalid_catalog' });
@@ -396,6 +452,7 @@ export function createPlatformCatalogHandlers(
         (p) => !known.has(p.name) || p.models.some((m) => !known.get(p.name)!.has(m)),
       );
       if (outside) return res.status(400).json({ error: 'unknown_provider_or_model' });
+      if (!(await guardTenantRemoval(req, res, tenantId, providers, successors))) return res;
       const assignments: CatalogAssignment[] = providers;
       const saved = await catalog.setTenantAssignments(tenantId, { byok, providers: assignments });
       await deps.invalidate(tenantId);
@@ -411,6 +468,47 @@ export function createPlatformCatalogHandlers(
     } catch (error) {
       return fail(res, 'tenant catalog update', error);
     }
+  }
+
+  /**
+   * Fork: the models a tenant assignment update takes from the tenant (a provider offered to all
+   * tenants keeps its models) go through the model guard, for that tenant only.
+   */
+  async function guardTenantRemoval(
+    req: Request,
+    res: Response,
+    tenantId: string,
+    providers: CatalogAssignment[],
+    successors: Successor[],
+  ): Promise<boolean> {
+    const previous = (await catalog.getTenantCatalog(tenantId))?.providers ?? [];
+    const assigned = new Map(providers.map((p) => [p.name, new Set(p.models)]));
+    const stored = new Map(
+      (
+        await catalog.findPlatformProviders([
+          ...new Set([...previous.map((p) => p.name), ...providers.map((p) => p.name)]),
+        ])
+      ).map((p) => [p.name, p]),
+    );
+    const forAll = (name: string, model: string) =>
+      stored.get(name)?.allTenants === true && stored.get(name)!.models.includes(model);
+    const removed = previous.flatMap((p) =>
+      p.models
+        .filter((model) => !assigned.get(p.name)?.has(model) && !forAll(p.name, model))
+        .map((model) => ({ endpoint: p.name, model })),
+    );
+    return guardRemoval(req, res, {
+      removed,
+      scope: { platform: true, tenantIds: [tenantId] },
+      successors,
+      isTarget: async (ref) => {
+        if (assigned.get(ref.endpoint)?.has(ref.model)) return true;
+        const provider =
+          stored.get(ref.endpoint) ?? (await catalog.findPlatformProviders([ref.endpoint]))[0];
+        if (provider) return provider.allTenants === true && provider.models.includes(ref.model);
+        return isCatalogModel(ref);
+      },
+    });
   }
 
   /** The caller's tenant; tenant admin routes run in it. */

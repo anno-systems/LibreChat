@@ -338,6 +338,42 @@ listed ones (`packages/api/src/platform/agents.ts`, `PlatformAgent` in
   the multi-conversation view and on the OpenAI-compatible agents API still needs the tenant's
   assignment of its provider.
 
+### Model migration (2026-10-30)
+
+Operators retire catalog models and add new ones; tenant admins switch older models off before
+that. Everything that still named the old model broke. A model migration (owner's decision)
+maps (endpoint, model) to (endpoint, model) and does two things
+(`packages/api/src/migration/`, `packages/data-schemas/src/methods/modelMigration.ts`):
+
+- **Rewrite, once.** Agents (`provider`, `model`; version history stays history), conversations
+  (`endpoint`, `model`, `endpointType`), presets, model spec presets in config documents (tenant,
+  group, role and user, `configVersion` bumped) and model favorites of users are moved to the
+  successor, in batches of `_id`s per kind, scoped to the tenant for a tenant migration. Running
+  the same mapping again changes nothing. Messages keep the model they were written with.
+  Platform agent copies are left to their definition. Merged configs and cached auth documents
+  of changed users are invalidated.
+- **Redirect, kept.** The mapping stays as a platform-wide document (scope `platform`, for every
+  or listed tenants, or a tenant's id), held in memory and reloaded every 30 seconds per
+  replica. Chat requests (`routes/agents/chat.js`), every agent of a run before its model is
+  validated (primary, handoff, subagents, added conversation) and model spec presets in the
+  served config go to the successor. At each step the tenant's redirect wins, then the
+  operator's for listed tenants, then the operator's for all; chains are followed and a step
+  back to a model already passed ends the chain.
+- **Notice.** A migrated conversation and agent carry `modelMigration: { id, from, to, at }`;
+  the chat shows "Now runs on X instead of Y" once above the composer and the agent builder once
+  to an editor, and each clears it on the server. Conversations of a migrated agent get the
+  notice too. Every migration is recorded as `model.migrated` in each affected tenant's audit
+  chain (and the platform chain for the operator's), with counts per kind.
+- **Who.** The operator through `/api/platform/model-migrations` (target: a model of the
+  catalog); tenant admins through `/api/admin/models/migrations` (`manage:configs`; target: a
+  model enabled in the tenant-wide config). Both have a preview with counts per kind and a usage
+  count per model.
+- **Successor mandatory.** A provider update or tenant assignment that drops a model agents or
+  conversations still use is refused with 409 `model_in_use`, unless a redirect covers it or the
+  same call names `successors`, which are migrated before the write. A model a platform agent
+  runs on cannot be dropped (`model_used_by_platform_agents`). For tenant admins the admin app
+  asks for a successor before saving a narrowing, using the usage count.
+
 ## Admin app
 
 One application serves both tenant admins and the operator, so there is one codebase, one design
@@ -1079,6 +1115,12 @@ Decided:
   LibreChat fills with the caller's tenant, so a new tenant can search at once without a key of
   its own. The gateway counts every search and scrape per tenant for billing, never stores
   queries, and can cap a tenant per month.
+
+- Model migration (2026-10-30): a mapping from an old to a new model is a kept redirect plus a
+  one-time rewrite of agents, conversations, presets, model specs and favorites, with a one-time
+  notice to users; the operator migrates for all or listed tenants, tenant admins within their
+  tenant, and the operator API refuses to drop a model in use without a successor (see [Model
+  migration](#model-migration-2026-10-30)).
 
 Open:
 

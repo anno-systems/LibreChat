@@ -19,6 +19,8 @@ const platformMcp = require('./platformMcp');
 const adminMcpTools = require('./admin/mcpTools');
 const adminMcpSubscriptions = require('./admin/mcpSubscriptions');
 const adminUsage = require('./admin/usage');
+const adminModels = require('./admin/models');
+const modelMigration = require('./modelMigration');
 const endpoints = require('./endpoints');
 const staticRoute = require('./static');
 const messages = require('./messages');
@@ -76,6 +78,8 @@ module.exports = {
   adminMcpTools,
   adminMcpSubscriptions,
   adminUsage,
+  adminModels,
+  modelMigration,
   keys,
   apiKeys,
   user,

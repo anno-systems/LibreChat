@@ -29,6 +29,10 @@ jest.mock('@librechat/api', () => ({
   resolveModelSpecSkillIds: (...args) => mockResolveModelSpecSkillIds(...args),
 }));
 
+/* Fork: model redirects (`services/Config/modelRedirector.js`). */
+jest.mock('~/server/services/Config/modelRedirector', () => ({
+  validateAgentModel: (params) => require('@librechat/api').validateAgentModel(params),
+}));
 jest.mock('~/server/services/Files/permissions', () => ({
   filterFilesByAgentAccess: jest.fn(),
 }));

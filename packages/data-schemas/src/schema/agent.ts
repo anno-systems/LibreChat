@@ -1,6 +1,7 @@
 import { Schema } from 'mongoose';
 import { SkillsScope } from 'librechat-data-provider';
 import type { IAgent } from '~/types';
+import { modelMigrationNoticeSchema } from './modelMigration';
 
 const agentSchema: Schema<IAgent> = new Schema<IAgent>(
   {
@@ -183,6 +184,8 @@ const agentSchema: Schema<IAgent> = new Schema<IAgent>(
       enum: ['user', 'agent'],
       default: undefined,
     },
+    /** Fork: the model migration that last changed `provider`/`model`, until an editor saw it. */
+    modelMigration: { type: modelMigrationNoticeSchema, default: undefined },
     /** Fork: a tenant's copy of a platform agent; written by the platform sync only. */
     platformAgentId: {
       type: String,

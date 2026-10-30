@@ -49,6 +49,22 @@ export type {
   CatalogAssignment,
 } from './platformCatalog';
 export type { TenantUserTarget } from './tenantPurge';
+export {
+  emptyCounts as emptyMigrationCounts,
+  PLATFORM_REDIRECT_SCOPE,
+  createModelMigrationMethods,
+} from './modelMigration';
+export type {
+  ModelRef,
+  ModelUsage,
+  UsageQuery,
+  ModelRedirect,
+  MigrationCounts,
+  MigrateModelInput,
+  MigrationAudience,
+  MigrateModelResult,
+  ModelRedirectInput,
+} from './modelMigration';
 export type { TenantUsage, TenantUsageDays, TenantUsageDay, TenantUsageModel } from './tenantUsage';
 import type {
   FileMethods,
@@ -143,6 +159,7 @@ import { getTenantId } from '~/config/tenantContext';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
 import { createMcpPricingMethods, type McpPricingMethods } from './mcpPricing';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
+import { createModelMigrationMethods, type ModelMigrationMethods } from './modelMigration';
 import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
@@ -362,6 +379,7 @@ export type AllMethods = SubagentContentMethods &
   McpToolPolicyMethods &
   McpPricingMethods &
   TenantPurgeMethods &
+  ModelMigrationMethods &
   TenantUsageMethods &
   TenantCostMethods &
   ToolCallMethods &
@@ -628,6 +646,7 @@ export function createMethods(
     ...createMcpToolPolicyMethods(mongoose),
     ...createMcpPricingMethods(mongoose),
     ...createTenantPurgeMethods(mongoose),
+    ...createModelMigrationMethods(mongoose),
     ...createTenantUsageMethods(mongoose),
     ...createTenantCostMethods(mongoose),
     ...createToolCallMethods(mongoose),
@@ -713,6 +732,7 @@ export type {
   McpToolPolicyMethods,
   McpPricingMethods,
   TenantPurgeMethods,
+  ModelMigrationMethods,
   TenantUsageMethods,
   TenantCostMethods,
   ToolCallMethods,

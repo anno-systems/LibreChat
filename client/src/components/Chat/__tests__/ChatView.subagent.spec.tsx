@@ -58,6 +58,8 @@ jest.mock('~/Providers', () => {
   };
 });
 
+/* Fork: the model migration notice has its own tests. */
+jest.mock('~/components/ModelMigration', () => ({ ConversationModelMigrationNotice: () => null }));
 jest.mock('~/data-provider', () => ({
   useProjectQuery: () => ({ data: undefined }),
   useGetMessagesByConvoId: () => ({

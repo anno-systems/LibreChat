@@ -74,6 +74,10 @@ export {
   createPlatformAgentMethods,
   platformAgentCopyId,
   PLATFORM_AGENT_AUTHOR,
+  /* Fork: model migrations. */
+  emptyMigrationCounts,
+  PLATFORM_REDIRECT_SCOPE,
+  createModelMigrationMethods,
 } from './methods';
 export {
   PLATFORM_AGENT_LOCKED,

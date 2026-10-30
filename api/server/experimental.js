@@ -87,6 +87,7 @@ const {
   sweepOrphanedPreviews,
   loadPlatformPricing,
   loadMcpPricing,
+  loadModelRedirects,
 } = require('~/models');
 const { checkMigrations } = require('./services/start/migration');
 const initializeMCPs = require('./services/initializeMCPs');
@@ -500,6 +501,8 @@ if (cluster.isMaster) {
     await loadPlatformPricing();
     /* Fork: MCP server prices and active subscriptions, held in memory (mcpPricing.ts). */
     await loadMcpPricing();
+    /* Fork: model redirects, held in memory for every chat request (modelMigration.ts). */
+    await loadModelRedirects();
 
     /* Mirrors `server/index.js`; `runAsSystem` for tenant-isolated File. */
     runAsSystem(sweepOrphanedPreviews).catch((err) => {

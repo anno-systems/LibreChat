@@ -2,13 +2,14 @@ const { logger } = require('@librechat/data-schemas');
 const {
   ADDED_AGENT_ID,
   initializeAgent,
-  validateAgentModel,
   resolveAgentScopedSkillIds,
   resolveModelSpecSkillIds,
   loadAddedAgent: loadAddedAgentFn,
   hasEntityEmbeddings,
 } = require('@librechat/api');
 const { isEphemeralAgentId } = require('librechat-data-provider');
+/** Fork: validates the added agent after moving it to its model's successor, if redirected. */
+const { validateAgentModel } = require('~/server/services/Config/modelRedirector');
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
 const { getMCPServerTools } = require('~/server/services/Config');
 const { getAccessibleMcpServerNames, getAccessibleMCPServers } = require('~/server/services/MCP');

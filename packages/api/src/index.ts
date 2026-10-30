@@ -11,6 +11,7 @@ export * from './artifacts';
 /* Admin */
 export * from './admin';
 export * from './platform';
+export * from './migration';
 export * from './queue';
 export * from './cdn';
 export * from './code';
