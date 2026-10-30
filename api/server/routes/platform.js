@@ -6,6 +6,7 @@ const {
   createPlatformPricingHandlers,
   createMcpPricingHandlers,
   listConfiguredMcpServers,
+  createPlatformUsageHandler,
 } = require('@librechat/api');
 const handlers = require('~/server/services/Config/platformCatalog');
 const { deleteTenant } = require('~/server/services/platformTenants');
@@ -38,7 +39,10 @@ const mcpPricing = createMcpPricingHandlers({
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
 });
 
+const getUsage = createPlatformUsageHandler({ getPlatformUsage: db.getPlatformUsage });
+
 router.use(requirePlatformToken(process.env.PLATFORM_API_TOKEN));
+router.get('/usage', getUsage);
 router.get('/providers', handlers.listProviders);
 router.post('/providers', handlers.postProvider);
 router.put('/providers/:name', handlers.putProvider);

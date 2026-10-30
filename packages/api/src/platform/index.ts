@@ -58,3 +58,5 @@ export { createPlatformAgentHandlers } from './agentApi';
 export type { PlatformAgentHandlerDeps, PlatformAgentHandlers } from './agentApi';
 export { createPlatformAgentLock, markPlatformAgents, platformAgentListFilter } from './agentLock';
 export type { PlatformAgentLock, PlatformAgentLockDeps } from './agentLock';
+export { createPlatformUsageHandler, createSignInRecorder } from './usage';
+export type { PlatformUsageDeps, SignInRecorderDeps } from './usage';
