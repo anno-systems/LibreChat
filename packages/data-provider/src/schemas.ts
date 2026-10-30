@@ -13,6 +13,7 @@ import {
 import { userSubmittedMessageFieldPathSchema } from './filters';
 import { TFeedback, feedbackSchema } from './feedback';
 import { CODE_APPROVAL_MODES } from './code/approval';
+import { bannerKindSchema } from './banners';
 import { Tools } from './types/tools';
 
 export const isUUID = z.string().uuid();
@@ -1806,6 +1807,8 @@ export const tBannerSchema = z.object({
   updatedAt: z.string(),
   isPublic: z.boolean(),
   persistable: z.boolean().default(false),
+  /** Fork: set on the platform operator's banners only. */
+  kind: bannerKindSchema.optional(),
 });
 export type TBanner = z.infer<typeof tBannerSchema>;
 

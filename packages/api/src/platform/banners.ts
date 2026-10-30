@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { logger } from '@librechat/data-schemas';
+import { bannerKindSchema, toBannerKind } from 'librechat-data-provider';
 import type { PlatformBanner } from '@librechat/data-schemas';
+import type { BannerKind } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
 import { getSafeErrorMetadata } from '~/utils/errors';
 
@@ -20,6 +22,8 @@ const bannerInputSchema = z
     displayTo: z.string().datetime({ offset: true }).optional(),
     isPublic: z.boolean().optional(),
     persistable: z.boolean().optional(),
+    /** Omitted: `info`, shown like an upstream banner. */
+    kind: bannerKindSchema.optional(),
     /** Omitted: every tenant. */
     tenantIds: z
       .array(z.string().regex(TENANT_ID))
@@ -73,7 +77,7 @@ export function createPlatformBannerHandlers(store: PlatformBannerStore): Platfo
         if (!parsed.success) {
           return res.status(400).json({ error: 'invalid_banner' });
         }
-        const { displayFrom, displayTo, isPublic, persistable, ...rest } = parsed.data;
+        const { displayFrom, displayTo, isPublic, persistable, kind, ...rest } = parsed.data;
         const banner = await store.upsertPlatformBanner({
           ...rest,
           bannerId,
@@ -81,9 +85,11 @@ export function createPlatformBannerHandlers(store: PlatformBannerStore): Platfo
           ...(displayTo && { displayTo: new Date(displayTo) }),
           isPublic: isPublic === true,
           persistable: persistable === true,
+          kind: kind ?? 'info',
         });
         logger.info('[platformBanners] banner saved', {
           bannerId,
+          kind: banner.kind,
           tenants: banner.tenantIds?.length ?? 'all',
         });
         return res.json({ banner });
@@ -120,6 +126,8 @@ export interface ShownBanner {
   type: 'banner';
   isPublic: boolean;
   persistable: boolean;
+  /** Platform banners only; a tenant's own banner has none. */
+  kind?: BannerKind;
 }
 
 export interface BannerResolverDeps<T extends ShownBanner> {
@@ -151,6 +159,7 @@ export function createBannerResolver<T extends ShownBanner>(deps: BannerResolver
             type: 'banner' as const,
             isPublic: platform.isPublic,
             persistable: platform.persistable,
+            kind: toBannerKind(platform.kind),
           }
         : null;
     if (!own) return shown;

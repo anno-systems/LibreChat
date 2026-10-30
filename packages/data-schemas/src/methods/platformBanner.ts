@@ -1,4 +1,6 @@
 import { Schema } from 'mongoose';
+import { bannerKinds, toBannerKind } from 'librechat-data-provider';
+import type { BannerKind } from 'librechat-data-provider';
 import type { Model } from 'mongoose';
 
 /**
@@ -19,6 +21,8 @@ export interface PlatformBanner {
   persistable: boolean;
   /** The tenants that see it; absent means every tenant. */
   tenantIds?: string[];
+  /** How the chat shows it; banners stored without one are `info`. */
+  kind?: BannerKind;
   updatedAt?: Date;
 }
 
@@ -43,6 +47,7 @@ const platformBannerSchema = new Schema<PlatformBanner>(
     isPublic: { type: Boolean, default: false },
     persistable: { type: Boolean, default: false },
     tenantIds: { type: [String], default: undefined },
+    kind: { type: String, enum: bannerKinds, default: 'info' },
   },
   { timestamps: true },
 );
@@ -56,6 +61,7 @@ function toBanner(doc: PlatformBanner): PlatformBanner {
     ...(doc.displayTo && { displayTo: doc.displayTo }),
     isPublic: doc.isPublic === true,
     persistable: doc.persistable === true,
+    kind: toBannerKind(doc.kind),
     ...(doc.tenantIds && { tenantIds: [...doc.tenantIds] }),
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
   };
@@ -83,7 +89,7 @@ export function createPlatformBannerMethods(
       const doc = await Banner.findOneAndUpdate(
         { bannerId },
         {
-          $set: { ...fields, bannerId },
+          $set: { ...fields, bannerId, kind: banner.kind ?? 'info' },
           ...(Object.keys(unset).length > 0 && { $unset: unset }),
         },
         { upsert: true, new: true, runValidators: true },
