@@ -9,3 +9,4 @@ export * from './tenant';
 export * from './roles';
 export * from './groups';
 export * from './mfa';
+export * from './hint';

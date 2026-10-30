@@ -37,6 +37,7 @@ const {
   hasSecondFactor,
   requiresAdminMfa,
   ADMIN_MFA_REQUIRED,
+  applyLoginHint,
 } = require('@librechat/api');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
@@ -162,6 +163,7 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
     if (options?.state && !params.has('state')) {
       params.set('state', options.state);
     }
+    applyLoginHint(params, req?.query);
 
     if (this._tenantAware) {
       const tenantId = getTenantId();
