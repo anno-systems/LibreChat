@@ -12,6 +12,7 @@ import type {
 } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
 import { resolveCustomEndpointSecrets } from '~/admin/secrets';
+import { withModelRoute } from '~/endpoints/custom/routes';
 import { isEnabled } from '~/utils';
 
 /**
@@ -60,9 +61,12 @@ export function getTransactionsConfig(appConfig?: AppConfig): Partial<TTransacti
 export const getCustomEndpointConfig = ({
   endpoint,
   appConfig,
+  model,
 }: {
   endpoint: string | EModelEndpoint;
   appConfig?: AppConfig;
+  /** Fork: the requested model, whose `modelRoutes` entry applies over the endpoint's fields. */
+  model?: string | null;
 }): Partial<TEndpoint> | undefined => {
   if (!appConfig) {
     throw new Error(`Config not found for the ${endpoint} custom endpoint.`);
@@ -72,7 +76,7 @@ export const getCustomEndpointConfig = ({
   const endpointConfig = customEndpoints.find(
     (config) => normalizeEndpointName(config.name) === normalizeEndpointName(endpoint),
   );
-  return endpointConfig && resolveCustomEndpointSecrets(endpointConfig);
+  return endpointConfig && resolveCustomEndpointSecrets(withModelRoute(endpointConfig, model));
 };
 
 /**

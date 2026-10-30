@@ -194,6 +194,7 @@ export async function initializeCustom(
   const configuredEndpoint = getCustomEndpointConfig({
     endpoint,
     appConfig,
+    model: typeof model_parameters?.model === 'string' ? model_parameters.model : undefined,
   });
 
   if (!configuredEndpoint) {

@@ -2348,6 +2348,25 @@ export const endpointSchema = baseEndpointSchema.merge(
     modelLimits: z.record(providerLimitsSchema).optional(),
     /** Fork: display names of models in the model selector, by model id. */
     modelLabels: z.record(z.string().min(1).max(128)).optional(),
+    /**
+     * Fork: how single models are reached, by model id, over the endpoint's own fields: another
+     * base URL, the native Anthropic client (`provider: anthropic`), the OpenAI Responses API
+     * (`addParams.useResponsesApi`) or other rejected request fields (`dropParams`, replacing the
+     * endpoint's). The selector still shows one endpoint; a model without a route uses the
+     * endpoint's fields.
+     */
+    modelRoutes: z
+      .record(
+        z
+          .object({
+            baseURL: z.string().optional(),
+            provider: z.literal(EModelEndpoint.anthropic).optional(),
+            addParams: addParamsSchema.optional(),
+            dropParams: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     /** Static per-model token config: context window and per-million-token rates */
     tokenConfig: z
       .record(

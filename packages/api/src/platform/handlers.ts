@@ -18,8 +18,11 @@ import type { ServerRequest } from '~/types/http';
 import {
   hasModel,
   uniqueSlug,
+  pastedURLSchema,
   ownModelsSchema,
   tenantModelView,
+  dropParamsSchema,
+  normaliseBaseURL,
   providerModelsSchema,
 } from './models';
 import { createAdminAuditEmitter, recordSystemAuditEntry } from '~/admin/audit';
@@ -27,6 +30,8 @@ import { createCatalogModelCheck, successorsSchema } from '~/migration/guard';
 import { getSafeErrorMetadata } from '~/utils/errors';
 import { validateEndpointURL } from '~/auth/domain';
 import { buildAuditContext } from '~/admin/context';
+import { defaultDropParams } from './params';
+import { apiOf } from './catalog';
 
 /**
  * HTTP handlers of the platform model catalog (fork-only, see `catalog.ts`).
@@ -92,32 +97,32 @@ const modelsSchema = z
   .max(MAX_MODELS)
   .transform((models) => [...new Set(models)]);
 
-/** Request fields an endpoint rejects, e.g. `user`; omitted means the catalog's default. */
-const dropParamsSchema = z
-  .array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/))
-  .max(32)
-  .transform((params) => [...new Set(params)])
-  .optional();
-
-const httpURL = z
-  .string()
-  .trim()
-  .max(2048)
-  .url()
-  .refine((value) => /^https?:$/.test(new URL(value).protocol), 'must be http or https');
+const httpURL = pastedURLSchema;
 
 const providerInputSchema = z
   .object({
     /** The display name; can change at any time, unlike `name`. */
     label: z.string().trim().min(1).max(64),
-    baseURL: httpURL,
-    /** Omitted on an update: the stored key stays. */
+    /**
+     * Base URL of models without their own; a pasted request URL is normalised and its ending
+     * names the API of models that name none. Omitted: every model needs its own
+     * (`base_url_required`).
+     */
+    baseURL: httpURL.optional(),
+    /** Omitted on a create: stored without a key (`keyMissing`); on an update: the key stays. */
     apiKey: z.string().trim().min(1).max(4096).optional(),
-    /** `{ id, label?, location?, limits? }` per model; a model with limits gets its own queue. */
+    /**
+     * `{ id, label?, location?, limits?, api?, baseURL?, dropParams? }` per model; a model with
+     * limits gets its own queue.
+     */
     models: providerModelsSchema,
     /** Default location of the models; required (`location_required`), checked after parsing. */
     location: locationSchema.optional(),
-    dropParams: dropParamsSchema,
+    /**
+     * Legacy: request fields every model rejects, replacing the built-in rules. Omitted on an
+     * update: the stored list stays; `null` removes it.
+     */
+    dropParams: dropParamsSchema.nullable().optional(),
     /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
     allTenants: z.boolean().optional(),
     /** Maximum wait and pause after a 429 of every model's queue; omitted removes them. */
@@ -153,7 +158,7 @@ const ownEndpointInputSchema = z
     models: ownModelsSchema,
     /** Default location of the models; omitted removes it. */
     location: locationSchema.optional(),
-    dropParams: dropParamsSchema,
+    dropParams: dropParamsSchema.optional(),
   })
   .strict();
 
@@ -169,6 +174,26 @@ function preview(encrypted: string, decrypt: (value: string) => string): string 
   } catch {
     return '';
   }
+}
+
+/**
+ * The provider's base URL normalised, and its models with an API each: the model's own, else
+ * the one its URL's ending named (`models.ts`), else the one the provider URL's ending named;
+ * a model with none is `chat`. Null when a model has no base URL of its own or the provider's.
+ */
+function resolveModels(
+  baseURL: string | undefined,
+  models: CatalogModel[],
+): { baseURL?: string; models: CatalogModel[] } | null {
+  const provider = baseURL ? normaliseBaseURL(baseURL) : undefined;
+  if (!provider && models.some((model) => !model.baseURL)) return null;
+  return {
+    ...(provider && { baseURL: provider.baseURL }),
+    models: models.map((model) => {
+      const api = model.api ?? (model.baseURL ? undefined : provider?.api);
+      return api ? { ...model, api } : model;
+    }),
+  };
 }
 
 function digest(value: string): Buffer {
@@ -322,17 +347,26 @@ export function createPlatformCatalogHandlers(
     return new Set([...yaml, ...providers.map((p) => p.name), ...own].map((n) => n.toLowerCase()));
   }
 
+  /**
+   * A provider as the operator sees it: each model with its API (`chat` when stored without one)
+   * and the request fields the built-in rules drop for it (`defaultDropParams`, read-only).
+   */
   function providerView(provider: PlatformProvider, tenants?: string[]) {
     return {
       name: provider.name,
       label: provider.label,
-      baseURL: provider.baseURL,
+      ...(provider.baseURL && { baseURL: provider.baseURL }),
       ...(provider.location && { location: provider.location }),
-      models: provider.models,
+      models: provider.models.map((model) => ({
+        ...model,
+        api: apiOf(model),
+        defaultDropParams: defaultDropParams(apiOf(model), model.id),
+      })),
       ...(provider.dropParams && { dropParams: provider.dropParams }),
       allTenants: provider.allTenants === true,
       ...(provider.queue && { queue: provider.queue }),
-      apiKeyPreview: preview(provider.apiKey, decrypt),
+      keyMissing: !provider.apiKey,
+      apiKeyPreview: provider.apiKey ? preview(provider.apiKey, decrypt) : '',
       ...(tenants && { tenants }),
     };
   }
@@ -372,10 +406,16 @@ export function createPlatformCatalogHandlers(
     existing: PlatformProvider | undefined,
     input: ProviderInput,
   ): Promise<Response | 'name_taken'> {
-    const { apiKey, allTenants, successors = [], ...fields } = input;
+    const { apiKey, allTenants, successors = [], dropParams, ...given } = input;
     /** Required on every write; a provider migrated without one keeps working until saved. */
-    if (!fields.location) return res.status(400).json({ error: 'location_required' });
-    if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
+    if (!given.location) return res.status(400).json({ error: 'location_required' });
+    const resolved = resolveModels(given.baseURL, given.models);
+    if (!resolved) return res.status(400).json({ error: 'base_url_required' });
+    const { baseURL: _pasted, ...rest } = given;
+    const fields = { ...rest, ...resolved };
+    /** Omitted keeps the stored legacy list, `null` removes it. */
+    const keptDropParams =
+      dropParams === undefined ? existing?.dropParams : (dropParams ?? undefined);
     const kept = new Set(fields.models.map((model) => model.id));
     const allowed = await guardRemoval(req, res, {
       removed: (existing?.models ?? [])
@@ -386,11 +426,13 @@ export function createPlatformCatalogHandlers(
       isTarget: async (ref) => (ref.endpoint === name ? kept.has(ref.model) : isCatalogModel(ref)),
     });
     if (!allowed) return res;
+    const storedKey = apiKey ? encrypt(apiKey) : existing?.apiKey;
     const provider: PlatformProvider = {
       name,
       ...fields,
+      ...(keptDropParams && { dropParams: keptDropParams }),
       allTenants: allTenants ?? existing?.allTenants === true,
-      apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
+      ...(storedKey && { apiKey: storedKey }),
     };
     let saved: PlatformProvider;
     if (existing) {
@@ -410,6 +452,7 @@ export function createPlatformCatalogHandlers(
       metadata: {
         created: !existing,
         keyChanged: Boolean(apiKey),
+        keyMissing: !saved.apiKey,
         models: saved.models.length,
         allTenants: saved.allTenants === true,
         queued: saved.models.some((model) => model.limits != null),
@@ -646,9 +689,10 @@ export function createPlatformCatalogHandlers(
       const tenantId = callerTenant(req, res);
       if (!tenantId) return res;
       const stored = await catalog.getTenantCatalog(tenantId);
-      const providers = await catalog.findCatalogProviders(
-        (stored?.providers ?? []).map((p) => p.name),
-      );
+      /** A provider without a key is not served, so tenant admins do not see it. */
+      const providers = (
+        await catalog.findCatalogProviders((stored?.providers ?? []).map((p) => p.name))
+      ).filter((p) => p.apiKey);
       const byName = new Map(providers.map((p) => [p.name, p]));
       /** Each model with its display name and effective location; limits stay the operator's. */
       const view = (provider: PlatformProvider, ids: string[]) => {

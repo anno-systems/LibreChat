@@ -122,6 +122,56 @@ describe('platform providers', () => {
   });
 });
 
+describe('per-model APIs and keyless providers', () => {
+  it("stores each model's API, base URL and request fields, and reads an old model without them", async () => {
+    const saved = await methods.upsertPlatformProvider({
+      ...mistral,
+      baseURL: undefined,
+      models: [
+        { id: 'gpt-6.1-terra', api: 'responses', baseURL: 'https://x.example/openai/v1' },
+        {
+          id: 'claude',
+          api: 'anthropic',
+          baseURL: 'https://x.example/anthropic/v1',
+          dropParams: [],
+        },
+      ],
+    });
+    expect(saved).not.toHaveProperty('baseURL');
+    expect(saved.models).toEqual([
+      { id: 'gpt-6.1-terra', api: 'responses', baseURL: 'https://x.example/openai/v1' },
+      { id: 'claude', api: 'anthropic', baseURL: 'https://x.example/anthropic/v1', dropParams: [] },
+    ]);
+
+    await mongoose.models.PlatformProvider.collection.insertOne({
+      name: 'Old',
+      label: 'Old',
+      baseURL: 'https://api.example/v1',
+      apiKey: 'v3:encrypted',
+      models: [{ id: 'small', api: 'gemini' }],
+      dropParams: ['user'],
+      allTenants: false,
+    });
+    const [old] = await methods.findPlatformProviders(['Old']);
+    /** An unknown API is not one: the model is served as Chat Completions. */
+    expect(old).toMatchObject({ baseURL: 'https://api.example/v1', dropParams: ['user'] });
+    expect(old.models).toEqual([{ id: 'small' }]);
+  });
+
+  it('stores a provider without a key and removes a key an update leaves out', async () => {
+    const { apiKey: _key, ...keyless } = mistral;
+    const created = await methods.createPlatformProvider(keyless);
+    expect(created.ok && created.value).not.toHaveProperty('apiKey');
+
+    await methods.upsertPlatformProvider(mistral);
+    expect((await methods.findPlatformProviders([mistral.name]))[0].apiKey).toBe('v3:encrypted');
+
+    await methods.upsertPlatformProvider(keyless);
+    const raw = await mongoose.models.PlatformProvider.collection.findOne({ name: mistral.name });
+    expect(raw).not.toHaveProperty('apiKey');
+  });
+});
+
 describe('tenant catalogs', () => {
   it('is null until the operator sets it', async () => {
     expect(await methods.getTenantCatalog('tenant-a')).toBeNull();

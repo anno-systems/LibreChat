@@ -26,6 +26,15 @@ import { runAsSystem, tenantStorage } from '~/config/tenantContext';
 
 export type CatalogLocation = TLocation;
 
+/**
+ * The API a platform model is served through: OpenAI Chat Completions (`chat`), the OpenAI
+ * Responses API (`responses`) or the Anthropic Messages API (`anthropic`). Absent means `chat`,
+ * the only API before per-model APIs.
+ */
+export type CatalogApi = 'chat' | 'responses' | 'anthropic';
+
+export const CATALOG_APIS: readonly CatalogApi[] = ['chat', 'responses', 'anthropic'];
+
 /** One model of a provider or own endpoint. */
 export interface CatalogModel {
   /** The model's name in the provider's API. */
@@ -36,22 +45,38 @@ export interface CatalogModel {
   location?: CatalogLocation;
   /** Limits of the model's queue (`packages/api/src/queue`); absent means no queue. */
   limits?: TModelLimits;
+  /** Platform providers only: the model's API; absent means `chat`. */
+  api?: CatalogApi;
+  /** Platform providers only: the model's base URL; absent means the provider's. */
+  baseURL?: string;
+  /** Platform providers only: request fields the model rejects, over the built-in rules. */
+  dropParams?: string[];
 }
 
-/** A tenant's own endpoints never get a shared queue, so their models carry no limits. */
-export type OwnModel = Omit<CatalogModel, 'limits'>;
+/**
+ * A tenant's own endpoints never get a shared queue, so their models carry no limits; they
+ * speak Chat Completions at the endpoint's URL.
+ */
+export type OwnModel = Omit<CatalogModel, 'limits' | 'api' | 'baseURL' | 'dropParams'>;
 
 export interface PlatformProvider {
   /** Fixed id, the endpoint name; derived from the label on create. */
   name: string;
   label: string;
-  baseURL: string;
-  /** Encrypted by the caller. */
-  apiKey: string;
+  /** Base URL of models without their own; absent when every model has one. */
+  baseURL?: string;
+  /**
+   * Encrypted by the caller. Absent until the operator sets a key: such a provider is listed to
+   * the operator (`keyMissing`) but served to no tenant.
+   */
+  apiKey?: string;
   models: CatalogModel[];
   /** Default location of the provider's models, shown to tenant admins. */
   location?: CatalogLocation;
-  /** Request fields the provider rejects; absent means the catalog's default. */
+  /**
+   * Legacy: request fields every model rejects, set by the operator before the built-in rules
+   * (`packages/api/src/platform/params.ts`); a provider that has it keeps it.
+   */
   dropParams?: string[];
   /** Offered to every tenant with all its models, without an assignment. */
   allTenants?: boolean;
@@ -125,6 +150,9 @@ interface StoredModel {
   label?: unknown;
   location?: unknown;
   limits?: unknown;
+  api?: unknown;
+  baseURL?: unknown;
+  dropParams?: unknown;
 }
 
 interface StoredProvider extends Omit<PlatformProvider, 'models' | 'location' | 'queue'> {
@@ -183,6 +211,9 @@ const catalogModelSchema = new Schema<CatalogModel>(
     label: { type: String },
     location: { type: locationSchema, default: undefined },
     limits: { type: modelLimitsSchema, default: undefined },
+    api: { type: String, enum: CATALOG_APIS },
+    baseURL: { type: String },
+    dropParams: { type: [String], default: undefined },
   },
   { _id: false },
 );
@@ -212,8 +243,8 @@ const platformProviderSchema = new Schema<StoredProvider>(
   {
     name: { type: String, required: true, unique: true },
     label: { type: String, required: true },
-    baseURL: { type: String, required: true },
-    apiKey: { type: String, required: true },
+    baseURL: { type: String },
+    apiKey: { type: String },
     models: { type: [catalogModelSchema], default: [] },
     location: { type: locationSchema, default: undefined },
     dropParams: { type: [String], default: undefined },
@@ -303,19 +334,29 @@ function modelOf(raw: string | StoredModel, legacyLimits?: TModelLimits): Catalo
   if (raw == null || typeof raw.id !== 'string') return null;
   const location = locationOf(raw.location);
   const limits = limitsOf(raw.limits);
+  const api = CATALOG_APIS.find((value) => value === raw.api);
+  const dropParams = Array.isArray(raw.dropParams)
+    ? raw.dropParams.filter((param): param is string => typeof param === 'string')
+    : undefined;
   return {
     id: raw.id,
     ...(typeof raw.label === 'string' && raw.label && { label: raw.label }),
     ...(location && { location }),
     ...(limits && { limits }),
+    ...(api && { api }),
+    ...(typeof raw.baseURL === 'string' && raw.baseURL && { baseURL: raw.baseURL }),
+    ...(dropParams && { dropParams }),
   };
 }
 
 function ownModelOf(raw: string | StoredModel): OwnModel | null {
   const model = modelOf(raw);
   if (!model) return null;
-  const { limits: _limits, ...own } = model;
-  return own;
+  return {
+    id: model.id,
+    ...(model.label && { label: model.label }),
+    ...(model.location && { location: model.location }),
+  };
 }
 
 function toProvider(doc: StoredProvider): PlatformProvider {
@@ -325,8 +366,8 @@ function toProvider(doc: StoredProvider): PlatformProvider {
   return {
     name: doc.name,
     label: doc.label,
-    baseURL: doc.baseURL,
-    apiKey: doc.apiKey,
+    ...(doc.baseURL && { baseURL: doc.baseURL }),
+    ...(doc.apiKey && { apiKey: doc.apiKey }),
     models: (doc.models ?? [])
       .map((model) => modelOf(model, legacyLimits))
       .filter((model): model is CatalogModel => model != null),
@@ -359,10 +400,13 @@ function toCatalog(doc: StoredCatalog): TenantCatalog {
   };
 }
 
-/** The stored fields of a provider without `updatedAt` (timestamps set it). */
+/** The stored fields of a provider without `updatedAt` (timestamps set it) or unset ones. */
 function providerFields(provider: PlatformProvider) {
   const { updatedAt: _updatedAt, ...fields } = provider;
-  return { ...fields, allTenants: provider.allTenants === true };
+  const set = Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Omit<PlatformProvider, 'updatedAt'>;
+  return { ...set, allTenants: provider.allTenants === true };
 }
 
 function isDuplicateKey(error: unknown): boolean {
@@ -430,6 +474,8 @@ export function createPlatformCatalogMethods(
       const unset = {
         ...LEGACY_PROVIDER_FIELDS,
         ...(provider.location ? {} : { location: 1 }),
+        ...(provider.baseURL ? {} : { baseURL: 1 }),
+        ...(provider.apiKey ? {} : { apiKey: 1 }),
         ...(provider.dropParams ? {} : { dropParams: 1 }),
         ...(provider.queue ? {} : { queue: 1 }),
       };

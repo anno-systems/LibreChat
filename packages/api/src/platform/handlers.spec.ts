@@ -206,8 +206,15 @@ describe('operator API', () => {
     const listed = await call(handlers.listProviders, operatorReq({}));
     expect(created.statusCode).toBe(201);
     /** Empty limits are no limits: that model has no queue. */
+    const rules = { api: 'chat', defaultDropParams: ['user'] };
     expect(listed.body?.providers).toEqual([
-      expect.objectContaining({ models: [models[0], { id: 'large' }], queue }),
+      expect.objectContaining({
+        models: [
+          { ...models[0], ...rules },
+          { id: 'large', ...rules },
+        ],
+        queue,
+      }),
     ]);
 
     const { apiKey: _key, ...update } = provider;
@@ -231,12 +238,10 @@ describe('operator API', () => {
     }
   });
 
-  it('refuses a new provider without key, a YAML name, bad fields and bad names', async () => {
+  it('refuses a YAML name, bad fields and bad names', async () => {
     const { handlers } = setup();
-    const { apiKey: _key, ...withoutKey } = provider;
 
     const cases = [
-      [{ name: 'New' }, withoutKey, 400],
       [{ name: 'Mistral EU' }, provider, 409],
       [{ name: 'Bad/Name' }, provider, 400],
       [{ name: 'X' }, { ...provider, baseURL: 'ftp://x' }, 400],
@@ -588,7 +593,9 @@ describe('creating providers', () => {
     expect(again.body).toEqual({ error: 'name_taken' });
     expect(yaml.body).toEqual({ error: 'name_taken' });
     expect(bad.statusCode).toBe(400);
-    expect(keyless.body).toEqual({ error: 'api_key_required' });
+    /** The operator adds the key later; until then the provider is listed but not served. */
+    expect(keyless.statusCode).toBe(201);
+    expect(keyless.body?.provider).toMatchObject({ keyMissing: true, apiKeyPreview: '' });
   });
 
   it('keeps the name when the label changes', async () => {
@@ -788,5 +795,178 @@ describe('provider location and names (owner decisions)', () => {
     );
     expect(res.statusCode).toBe(201);
     expect(res.body).not.toHaveProperty('location');
+  });
+});
+
+describe('per-model URLs and APIs, providers without a key (owner decisions)', () => {
+  const SERVICES = 'https://anno-systems-westeurope.services.ai.azure.com';
+  /** The URLs as the owner pasted them from the Azure AI Foundry portal. */
+  const foundry = {
+    label: 'Azure AI Foundry',
+    location: { type: 'global' },
+    models: [
+      {
+        id: 'mistral-medium-3-5',
+        baseURL: `${SERVICES}/openai/v1/chat/completions`,
+        limits: { tokensPerMinute: 20000, requestsPerMinute: 20 },
+      },
+      {
+        id: 'Mistral-Large-3',
+        baseURL: 'https://anno-systems-westeurope.openai.azure.com/openai/v1',
+        limits: { tokensPerMinute: 20000, requestsPerMinute: 20 },
+      },
+      {
+        id: 'gpt-6.1-terra',
+        baseURL: `${SERVICES}/openai/v1/responses`,
+        limits: { tokensPerMinute: 1000000, requestsPerMinute: 1000 },
+      },
+      {
+        id: 'claude-sonnet-5-5',
+        baseURL: `${SERVICES}/anthropic/v1/messages/`,
+        limits: { tokensPerMinute: 80000, requestsPerMinute: 80 },
+      },
+    ],
+  };
+
+  it('creates a provider without a key, normalises pasted URLs and infers each API', async () => {
+    const { handlers } = setup();
+    const res = await call(handlers.postProvider, operatorReq({}, foundry));
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body?.provider).toMatchObject({
+      name: 'azure-ai-foundry',
+      keyMissing: true,
+      apiKeyPreview: '',
+      models: [
+        { id: 'mistral-medium-3-5', api: 'chat', baseURL: `${SERVICES}/openai/v1` },
+        {
+          id: 'Mistral-Large-3',
+          api: 'chat',
+          baseURL: 'https://anno-systems-westeurope.openai.azure.com/openai/v1',
+        },
+        { id: 'gpt-6.1-terra', api: 'responses', baseURL: `${SERVICES}/openai/v1` },
+        { id: 'claude-sonnet-5-5', api: 'anthropic', baseURL: `${SERVICES}/anthropic/v1` },
+      ],
+    });
+    expect(res.body?.provider).not.toHaveProperty('baseURL');
+    const [stored] = await methods.listPlatformProviders();
+    expect(stored.apiKey).toBeUndefined();
+    /** A URL without an ending names no API: stored without one, served as `chat`. */
+    expect(stored.models[1].api).toBeUndefined();
+    expect(stored.models[2].api).toBe('responses');
+  });
+
+  it('takes an API from the provider URL for models without their own, and an explicit one over both', async () => {
+    const { handlers } = setup();
+    const res = await call(
+      handlers.postProvider,
+      operatorReq(
+        {},
+        {
+          ...provider,
+          baseURL: `${SERVICES}/openai/v1/responses?api-version=1`,
+          models: [
+            { id: 'gpt-6.1-terra' },
+            { id: 'gpt-4.1', api: 'chat' },
+            { id: 'claude', baseURL: `${SERVICES}/anthropic/v1/messages` },
+          ],
+        },
+      ),
+    );
+
+    expect(res.body?.provider).toMatchObject({
+      baseURL: `${SERVICES}/openai/v1`,
+      models: [
+        { id: 'gpt-6.1-terra', api: 'responses' },
+        { id: 'gpt-4.1', api: 'chat' },
+        { id: 'claude', api: 'anthropic' },
+      ],
+    });
+  });
+
+  it('refuses a model without a base URL of its own or the provider', async () => {
+    const { handlers } = setup();
+    const { baseURL: _url, ...withoutURL } = provider;
+    const res = await call(handlers.postProvider, operatorReq({}, withoutURL));
+    const badApi = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...provider, models: [{ id: 'x', api: 'gemini' }] }),
+    );
+
+    expect(res.body).toEqual({ error: 'base_url_required' });
+    expect(badApi.statusCode).toBe(400);
+    expect(await methods.listPlatformProviders()).toEqual([]);
+  });
+
+  it('serves a keyless provider to no tenant until the operator sets a key', async () => {
+    const { handlers } = setup();
+    const created = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...foundry, allTenants: true }),
+    );
+    const name = String((created.body?.provider as { name: string }).name);
+    const read = () => call(handlers.getOwnCatalog, adminReq({}));
+
+    expect((await read()).body?.providers).toEqual([]);
+
+    const keyed = await call(
+      handlers.putProvider,
+      operatorReq({ name }, { ...foundry, apiKey: KEY }),
+    );
+    expect(keyed.body?.provider).toMatchObject({ keyMissing: false, apiKeyPreview: '...abcd' });
+    expect((await read()).body?.providers).toEqual([
+      expect.objectContaining({ name, allTenants: true }),
+    ]);
+
+    /** An update without a key keeps the stored one. */
+    await call(handlers.putProvider, operatorReq({ name }, foundry));
+    const [stored] = await methods.findPlatformProviders([name]);
+    expect(stored.apiKey).toBe(`enc:${KEY}`);
+  });
+
+  it("keeps an old provider's request fields unless the operator removes them", async () => {
+    const { handlers } = setup();
+    await methods.upsertPlatformProvider({
+      name: 'legacy',
+      label: 'Legacy',
+      baseURL: 'https://api.mistral.ai/v1',
+      apiKey: `enc:${KEY}`,
+      location: { type: 'eu' },
+      models: [{ id: 'small' }],
+      dropParams: ['user', 'stop'],
+    });
+    const { apiKey: _key, dropParams: _drop, ...update } = { ...provider, dropParams: [] };
+
+    await call(handlers.putProvider, operatorReq({ name: 'legacy' }, update));
+    expect((await methods.findPlatformProviders(['legacy']))[0].dropParams).toEqual([
+      'user',
+      'stop',
+    ]);
+
+    await call(
+      handlers.putProvider,
+      operatorReq({ name: 'legacy' }, { ...update, dropParams: null }),
+    );
+    expect((await methods.findPlatformProviders(['legacy']))[0].dropParams).toBeUndefined();
+  });
+
+  it('stores a per-model override of the rules and shows the rules beside it', async () => {
+    const { handlers } = setup();
+    const res = await call(
+      handlers.postProvider,
+      operatorReq(
+        {},
+        { ...provider, models: [{ id: 'gpt-6.1-terra', api: 'responses', dropParams: ['stop'] }] },
+      ),
+    );
+
+    expect((res.body?.provider as { models: unknown[] }).models).toEqual([
+      {
+        id: 'gpt-6.1-terra',
+        api: 'responses',
+        dropParams: ['stop'],
+        defaultDropParams: expect.arrayContaining(['user', 'temperature', 'topP']),
+      },
+    ]);
   });
 });

@@ -1569,6 +1569,7 @@ export async function initializeAgent(
   const { getOptions, overrideProvider, customEndpointConfig } = getProviderConfig({
     provider,
     appConfig,
+    model: agent.model,
   });
   if (overrideProvider !== agent.provider) {
     agent.provider = overrideProvider;
