@@ -100,3 +100,40 @@ describe('loadEphemeralAgent → resolveSender parity', () => {
     expect(sender).toBe(parseEphemeralAgentId(agent?.id ?? '')?.sender);
   });
 });
+
+describe('loadEphemeralAgent on a catalog endpoint', () => {
+  test("answers under the model's own name, not the provider's", async () => {
+    const req = {
+      ...baseReq,
+      config: {
+        endpoints: {
+          custom: [
+            {
+              name: 'azure-westeurope',
+              modelDisplayLabel: 'Azure',
+              modelLabels: { 'claude-sonnet-5-5': 'Claude Sonnet 5.5' },
+            },
+          ],
+        },
+      },
+    } as unknown as Parameters<typeof loadEphemeralAgent>[0]['req'];
+    const agent = await loadEphemeralAgent(
+      {
+        req,
+        endpoint: 'azure-westeurope',
+        model_parameters: { model: 'claude-sonnet-5-5' } as never,
+      },
+      deps,
+    );
+    expect(parseEphemeralAgentId(agent?.id ?? '')?.sender).toBe('Claude Sonnet 5.5');
+    const sender = resolveSender({
+      agent: { id: agent?.id },
+      endpointOption: {
+        endpoint: 'azure-westeurope' as EModelEndpoint,
+        model: 'claude-sonnet-5-5',
+        modelDisplayLabel: 'Claude Sonnet 5.5',
+      },
+    });
+    expect(sender).toBe('Claude Sonnet 5.5');
+  });
+});

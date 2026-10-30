@@ -1,5 +1,10 @@
 import { useCallback } from 'react';
-import { getResponseSender, getEphemeralSender, isAgentsEndpoint } from 'librechat-data-provider';
+import {
+  isAgentsEndpoint,
+  getResponseSender,
+  getEphemeralSender,
+  getModelDisplayLabel,
+} from 'librechat-data-provider';
 import type { TEndpointOption, TEndpointsConfig } from 'librechat-data-provider';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { getModelSpec } from '~/utils';
@@ -18,7 +23,10 @@ export default function useGetSender() {
   const { data: endpointsConfig = {} as TEndpointsConfig } = useGetEndpointsQuery();
   return useCallback(
     (endpointOption: TEndpointOption) => {
-      const { modelDisplayLabel } = endpointsConfig?.[endpointOption.endpoint ?? ''] ?? {};
+      const modelDisplayLabel = getModelDisplayLabel(
+        endpointsConfig?.[endpointOption.endpoint ?? ''] ?? undefined,
+        endpointOption.model,
+      );
       if (isAgentsEndpoint(endpointOption.endpoint)) {
         return getResponseSender({ ...endpointOption, modelDisplayLabel });
       }

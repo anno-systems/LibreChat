@@ -537,6 +537,24 @@ export function getEphemeralSender({
   return modelLabel ?? specLabel ?? modelDisplayLabel ?? '';
 }
 
+/**
+ * Fork: the display label an endpoint gives one of its models, for the sender chain: the
+ * model's own name from `modelLabels` (catalog endpoints name every model), else the endpoint's
+ * `modelDisplayLabel`. Without it, every model of a catalog provider answered under the
+ * provider's name.
+ */
+export function getModelDisplayLabel(
+  endpointConfig: { modelDisplayLabel?: string; modelLabels?: Record<string, string> } | undefined,
+  model?: string | null,
+): string | undefined {
+  const labels = endpointConfig?.modelLabels;
+  const label =
+    model && labels && Object.prototype.hasOwnProperty.call(labels, model)
+      ? labels[model]
+      : undefined;
+  return label || endpointConfig?.modelDisplayLabel;
+}
+
 /** Built-in endpoints; anything else in `endpoint` is a custom endpoint's own name. */
 const builtInEndpoints = new Set<string>(Object.values(EModelEndpoint));
 

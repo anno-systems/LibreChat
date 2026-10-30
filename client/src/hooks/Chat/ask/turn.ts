@@ -1,17 +1,6 @@
 import { v4 } from 'uuid';
 import { cloneDeep } from 'lodash';
 import {
-  Constants,
-  ContentTypes,
-  EModelEndpoint,
-  getEndpointField,
-  getDefaultParamsEndpoint,
-  isAgentsEndpoint,
-  parseCompactConvo,
-  replaceSpecialVars,
-  isAssistantsEndpoint,
-} from 'librechat-data-provider';
-import {
   createDualMessageContent,
   stripStreamedIndexStamps,
   getAppendParentMessageId,
@@ -19,6 +8,18 @@ import {
   getRegenerateSubmissionMessages,
   getPreliminaryRegenerateResponseMessageId,
 } from '@librechat/chat';
+import {
+  Constants,
+  ContentTypes,
+  EModelEndpoint,
+  getEndpointField,
+  getModelDisplayLabel,
+  getDefaultParamsEndpoint,
+  isAgentsEndpoint,
+  parseCompactConvo,
+  replaceSpecialVars,
+  isAssistantsEndpoint,
+} from 'librechat-data-provider';
 import type {
   TUser,
   TMessage,
@@ -240,7 +241,10 @@ export function buildTurn({
     defaultParamsEndpoint,
   });
 
-  const { modelDisplayLabel } = endpointsConfig?.[endpoint ?? ''] ?? {};
+  const modelDisplayLabel = getModelDisplayLabel(
+    endpointsConfig?.[endpoint ?? ''] ?? undefined,
+    conversation?.model,
+  );
   const endpointOption = Object.assign(
     {
       endpoint,

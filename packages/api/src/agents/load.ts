@@ -5,6 +5,7 @@ import {
   isAgentsEndpoint,
   isEphemeralAgentId,
   getEphemeralSender,
+  getModelDisplayLabel,
   encodeEphemeralAgentId,
   resolveMCPAppsPolicy,
 } from 'librechat-data-provider';
@@ -175,8 +176,10 @@ export async function loadEphemeralAgent(
   const sender = getEphemeralSender({
     modelLabel: (model_parameters as AgentModelParameters & { modelLabel?: string })?.modelLabel,
     specLabel: modelSpec?.label,
-    modelDisplayLabel: (endpointConfig as { modelDisplayLabel?: string } | undefined)
-      ?.modelDisplayLabel,
+    modelDisplayLabel: getModelDisplayLabel(
+      endpointConfig as Parameters<typeof getModelDisplayLabel>[0],
+      model as string,
+    ),
   });
 
   // Encode ephemeral agent ID with endpoint, model, and computed sender for display

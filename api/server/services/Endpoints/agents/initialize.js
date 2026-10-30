@@ -70,6 +70,7 @@ const {
   MAX_SUBAGENT_GRAPH_NODES,
   MAX_SUBAGENT_RUN_CONFIGS,
   isEphemeralAgentId,
+  getModelDisplayLabel,
   resolveAllowedStatefulCodeEnvironments,
 } = require('librechat-data-provider');
 const {
@@ -1948,7 +1949,10 @@ const initializeClientWithProvider = async ({
     endpointOption: {
       ...endpointOption,
       model: endpointOption.model_parameters.model,
-      modelDisplayLabel: endpointConfig?.modelDisplayLabel,
+      modelDisplayLabel: getModelDisplayLabel(
+        endpointConfig,
+        endpointOption.model_parameters.model,
+      ),
       modelLabel: endpointOption.model_parameters.modelLabel,
     },
   });
