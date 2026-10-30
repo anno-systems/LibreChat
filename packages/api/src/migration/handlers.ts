@@ -22,6 +22,7 @@ import { redirectView } from './service';
 const TENANT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const REDIRECT_ID = /^mm_[0-9a-f-]{36}$/;
 const MAX_USAGE_MODELS = 50;
+const MAX_EXCEPT_GROUPS = 100;
 
 export const modelRefSchema: z.ZodType<ModelRef> = z
   .object({
@@ -56,10 +57,27 @@ const operatorUsageSchema = z
   })
   .strict();
 
-const adminMigrationSchema = z.object({ from: modelRefSchema, to: modelRefSchema }).strict();
-const adminPreviewSchema = z.object({ from: modelRefSchema }).strict();
+/**
+ * Groups whose members keep the old model (a model restricted to them): a migration with them
+ * rewrites only what other users own and stores no redirect. Ids of groups of the caller's tenant.
+ */
+const exceptGroupsSchema = z
+  .array(z.string().trim().min(1).max(64))
+  .min(1)
+  .max(MAX_EXCEPT_GROUPS)
+  .transform((ids) => [...new Set(ids)]);
+
+const adminMigrationSchema = z
+  .object({ from: modelRefSchema, to: modelRefSchema, exceptGroups: exceptGroupsSchema.optional() })
+  .strict();
+const adminPreviewSchema = z
+  .object({ from: modelRefSchema, exceptGroups: exceptGroupsSchema.optional() })
+  .strict();
 const adminUsageSchema = z
-  .object({ models: z.array(modelRefSchema).min(1).max(MAX_USAGE_MODELS) })
+  .object({
+    models: z.array(modelRefSchema).min(1).max(MAX_USAGE_MODELS),
+    exceptGroups: exceptGroupsSchema.optional(),
+  })
   .strict();
 
 type Store = Pick<ModelMigrationMethods, 'listModelRedirects' | 'deleteModelRedirect'>;
@@ -225,6 +243,18 @@ export function createAdminMigrationHandlers(
 ): AdminMigrationHandlers {
   const { service, store } = deps;
 
+  /** The caller's tenant scope, or null after answering 400 `unknown_group`. */
+  async function scopeOf(
+    res: Response,
+    tenantId: string,
+    exceptGroups?: string[],
+  ): Promise<MigrationScope | null> {
+    const outcome = await service.tenantScope(tenantId, exceptGroups);
+    if (outcome.ok) return outcome.scope;
+    res.status(400).json({ error: outcome.error.code, groupIds: outcome.error.groupIds });
+    return null;
+  }
+
   function tenantOf(req: ServerRequest, res: Response): string | null {
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
@@ -289,32 +319,40 @@ export function createAdminMigrationHandlers(
       }
     },
 
-    /** POST /api/admin/models/migrations/preview */
+    /** POST /api/admin/models/migrations/preview (counts with the same `exceptGroups` filter) */
     async preview(req, res) {
       try {
         const tenantId = tenantOf(req, res);
         if (!tenantId) return res;
         const parsed = adminPreviewSchema.safeParse(req.body);
         if (!parsed.success) return res.status(400).json({ error: 'invalid_migration' });
-        return res.json({ counts: await service.preview({ tenantId }, parsed.data.from) });
+        const scope = await scopeOf(res, tenantId, parsed.data.exceptGroups);
+        if (!scope) return res;
+        return res.json({ counts: await service.preview(scope, parsed.data.from) });
       } catch (error) {
         return fail(res, 'migration preview', error);
       }
     },
 
-    /** POST /api/admin/models/migrations */
+    /**
+     * POST /api/admin/models/migrations. With `exceptGroups` (a model restricted to those groups)
+     * it rewrites the agents, conversations, presets and favorites of users outside them, leaves
+     * config documents alone and stores no redirect; `migration.id` then names the run only.
+     */
     async migrate(req, res) {
       try {
         const tenantId = tenantOf(req, res);
         if (!tenantId) return res;
         const parsed = adminMigrationSchema.safeParse(req.body);
         if (!parsed.success) return res.status(400).json({ error: 'invalid_migration' });
-        const { from, to } = parsed.data;
+        const { from, to, exceptGroups } = parsed.data;
         if (!(await isEnabled(req, tenantId, to))) {
           return res.status(400).json({ error: 'target_not_enabled' });
         }
+        const scope = await scopeOf(res, tenantId, exceptGroups);
+        if (!scope) return res;
         const outcome = await service.run({
-          scope: { tenantId },
+          scope,
           from,
           to,
           createdBy: req.user?.id,
@@ -334,7 +372,8 @@ export function createAdminMigrationHandlers(
     /**
      * POST /api/admin/models/usage: agents and conversations per model, for the admin app to ask
      * for a successor before switching a model off. `redirected` is true when a redirect already
-     * covers the model for the tenant.
+     * covers the model for the tenant. With `exceptGroups`, only what non-members own is counted
+     * (before restricting a model to those groups).
      */
     async usage(req, res) {
       try {
@@ -342,8 +381,10 @@ export function createAdminMigrationHandlers(
         if (!tenantId) return res;
         const parsed = adminUsageSchema.safeParse(req.body);
         if (!parsed.success) return res.status(400).json({ error: 'invalid_models' });
-        const usage = await service.usage({ tenantId }, parsed.data.models);
-        return res.json({ models: usage.map((u) => withRedirect(service, { tenantId }, u)) });
+        const scope = await scopeOf(res, tenantId, parsed.data.exceptGroups);
+        if (!scope) return res;
+        const usage = await service.usage(scope, parsed.data.models);
+        return res.json({ models: usage.map((u) => withRedirect(service, scope, u)) });
       } catch (error) {
         return fail(res, 'usage count', error);
       }

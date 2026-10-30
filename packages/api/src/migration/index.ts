@@ -15,6 +15,8 @@ export type {
   MigrationView,
   RedirectView,
   MigrationScope,
+  ScopeOutcome,
+  MigrationExcept,
   MigrationStore,
   MigrationOutcome,
   MigrationAuditEvent,

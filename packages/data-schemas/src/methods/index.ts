@@ -67,6 +67,7 @@ export type {
   MigrationCounts,
   MigrateModelInput,
   MigrationAudience,
+  GroupMembersResult,
   MigrateModelResult,
   ModelRedirectInput,
   RetargetInput,

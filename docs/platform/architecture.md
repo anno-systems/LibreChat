@@ -427,6 +427,20 @@ maps (endpoint, model) to (endpoint, model) and does two things
   same call names `successors`, which are migrated before the write. A model a platform agent
   runs on cannot be dropped (`model_used_by_platform_agents`). For tenant admins the admin app
   asks for a successor before saving a narrowing, using the usage count.
+- **Restricted to groups (owner's decision).** A tenant admin may restrict a model from everyone
+  to some groups; users outside them lose it, members keep it. The admin's migration, preview
+  and usage count (`/api/admin/models/migrations`, `…/migrations/preview`, `…/usage`) take
+  `exceptGroups` (1–100 group ids of the caller's tenant; any other id is 400 `unknown_group`
+  with the offending `groupIds`). Members are resolved at run time from the groups' `memberIds`
+  the way `getUserPrincipals` does (a user's `idOnTheSource`, else its id). The rewrite then
+  covers only what non-members own: agents by `author`, conversations and presets by `user`,
+  favorites by user. Model specs in config documents are not touched, because the config
+  applies to the members too, and no redirect is stored, because the old model stays valid for
+  them. `migration.id` is still an `mm_` id, which names the run in notices and the audit
+  (`model.migrated` with `exceptGroups`, `exceptedUsers`, `redirect: false`) but no redirect;
+  the response carries `exceptGroups`. Accepted for now: an agent authored by a member but
+  shared with the whole tenant is not rewritten, so users outside the groups fail on it until
+  its author moves it; membership changes after the run are not followed.
 
 ## Admin app
 
@@ -1182,8 +1196,9 @@ Decided:
 - Model migration (2026-10-30): a mapping from an old to a new model is a kept redirect plus a
   one-time rewrite of agents, conversations, presets, model specs and favorites, with a one-time
   notice to users; the operator migrates for all or listed tenants, tenant admins within their
-  tenant, and the operator API refuses to drop a model in use without a successor (see [Model
-  migration](#model-migration-2026-10-30)).
+  tenant, and the operator API refuses to drop a model in use without a successor; a tenant
+  migration with `exceptGroups` (a model restricted to groups) moves only non-members and keeps
+  no redirect (see [Model migration](#model-migration-2026-10-30)).
 
 Open:
 
