@@ -1,7 +1,7 @@
 import type { PlatformPricing } from '@librechat/data-schemas';
 import type { Request, Response } from 'express';
+import { createWebSearchCharge, countFetchedPages, isNewsSearch } from './searchCharge';
 import { createPlatformPricingHandlers, withPricingCurrency } from './pricing';
-import { createWebSearchCharge, countFetchedPages } from './searchCharge';
 
 function mockRes() {
   const res = {
@@ -197,15 +197,13 @@ describe('createWebSearchCharge', () => {
     expect(createTransaction).not.toHaveBeenCalled();
   });
 
-  /** A `web_search` artifact: two fetched pages, one also a top story, and snippet-only results. */
+  /** A `web_search` artifact: two results, and top stories, one of them also a result. */
   const artifact = {
     organic: [
-      { link: 'https://a.example', snippet: 'a', highlights: [{ text: 'a', score: 1 }] },
-      { link: 'https://b.example', snippet: 'b', highlights: [{ text: 'b', score: 1 }] },
-      { link: 'https://c.example', snippet: 'c' },
-      { link: 'https://d.example', snippet: 'd', highlights: [] },
+      { link: 'https://a.example', snippet: 'a' },
+      { link: 'https://b.example', snippet: 'b' },
     ],
-    topStories: [{ link: 'https://b.example', highlights: [{ text: 'b', score: 1 }] }],
+    topStories: [{ link: 'https://b.example' }, { link: 'https://n.example/news/1' }],
   };
 
   it('writes one web_scrape debit per fetched page at the page price', async () => {
@@ -261,6 +259,21 @@ describe('createWebSearchCharge', () => {
     ]);
   });
 
+  it('doubles the page limit for a call with news', async () => {
+    const createTransaction = jest.fn(async (_tx: { context: string }) => {});
+    const charge = createWebSearchCharge({
+      webSearchCredits: () => 0,
+      webFetchCredits: () => 1087,
+      maxPagesPerSearch: () => 1,
+      createTransaction,
+    });
+    await charge(request, 'c', artifact, { query: 'x', news: true });
+    await charge(request, 'c', artifact, JSON.stringify({ query: 'x', news: true }));
+    await charge(request, 'c', artifact, { query: 'x', news: false });
+
+    expect(createTransaction).toHaveBeenCalledTimes(5);
+  });
+
   it('keeps charging the other debits when one ledger write fails', async () => {
     const createTransaction = jest
       .fn(async (_tx: { context: string }) => {})
@@ -285,25 +298,49 @@ describe('createWebSearchCharge', () => {
 });
 
 describe('countFetchedPages', () => {
-  it('counts distinct links with highlights, up to the limit', () => {
+  const links = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, i) => ({ link: `https://${prefix}${i}.example` }));
+
+  it('counts the distinct results the tool fetches, 5 at most, up to the limit', () => {
     const result = {
-      organic: [
-        { link: 'https://a.example', highlights: [{ text: 'a' }] },
-        { link: 'https://a.example', highlights: [{ text: 'a' }] },
-        { link: 'https://b.example', highlights: [{ text: 'b' }] },
-        { link: 'https://c.example' },
-      ],
-      topStories: [{ link: 'https://d.example', highlights: [{ text: 'd' }] }],
+      organic: [...links('a', 7), { link: 'https://a0.example' }, { snippet: 'no link' }],
+      topStories: links('n', 3),
     };
 
-    expect(countFetchedPages(result, 5)).toBe(3);
-    expect(countFetchedPages(result, 2)).toBe(2);
+    expect(countFetchedPages(result, 10)).toBe(5);
+    expect(countFetchedPages(result, 3)).toBe(3);
     expect(countFetchedPages(result, 0)).toBe(0);
+    expect(countFetchedPages({ organic: links('a', 2) }, 5)).toBe(2);
+  });
+
+  it('adds up to 5 top stories that are no result for a news call', () => {
+    const result = {
+      organic: links('a', 3),
+      topStories: [{ link: 'https://a0.example' }, ...links('n', 7)],
+    };
+
+    // The tool keeps the first 5 top stories, one of which is a result.
+    expect(countFetchedPages(result, 10, true)).toBe(3 + 4);
+    expect(countFetchedPages(result, 4, true)).toBe(4);
   });
 
   it('counts nothing for a failed search or anything else', () => {
     expect(countFetchedPages({ organic: [], error: 'Search failed' }, 5)).toBe(0);
     expect(countFetchedPages(undefined, 5)).toBe(0);
     expect(countFetchedPages({ organic: 'x' }, 5)).toBe(0);
+  });
+});
+
+describe('isNewsSearch', () => {
+  it('follows the call arguments, as an object or as JSON', () => {
+    expect(isNewsSearch({ query: 'x', news: true })).toBe(true);
+    expect(isNewsSearch('{"query":"x","news":true}')).toBe(true);
+    expect(isNewsSearch({ query: 'x', news: false })).toBe(false);
+    expect(isNewsSearch({ query: 'x' })).toBe(false);
+  });
+
+  it('counts a call without readable arguments as one without news', () => {
+    expect(isNewsSearch(undefined)).toBe(false);
+    expect(isNewsSearch('not json')).toBe(false);
   });
 });

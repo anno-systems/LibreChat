@@ -51,7 +51,7 @@ const { saveBase64Image, saveMCPFileOutput } = require('~/server/services/Files/
  *  page price (platform pricing). Built on first use, so loading this module does not load the
  *  models; never rejects. */
 let webSearchCharge;
-async function chargeWebSearch(req, conversationId, result) {
+async function chargeWebSearch(req, conversationId, result, input) {
   if (!webSearchCharge) {
     const db = require('~/models');
     webSearchCharge = createWebSearchCharge({
@@ -61,7 +61,7 @@ async function chargeWebSearch(req, conversationId, result) {
       createTransaction: (tx) => db.createTransaction(tx),
     });
   }
-  return webSearchCharge(req, conversationId, result);
+  return webSearchCharge(req, conversationId, result, input);
 }
 
 function isHostFileAuthoringArtifact(artifact) {
@@ -1021,9 +1021,11 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
     }
 
     if (output.artifact[Tools.web_search]) {
-      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search]).catch((error) => {
-        logger.error('Error charging a web search:', error);
-      });
+      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search], data.input).catch(
+        (error) => {
+          logger.error('Error charging a web search:', error);
+        },
+      );
       artifactPromises.push(
         (async () => {
           const attachment = {
@@ -1413,9 +1415,11 @@ function createResponsesToolEndCallback({ req, res, tracker, artifactPromises })
     }
 
     if (output.artifact[Tools.web_search]) {
-      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search]).catch((error) => {
-        logger.error('Error charging a web search:', error);
-      });
+      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search], data.input).catch(
+        (error) => {
+          logger.error('Error charging a web search:', error);
+        },
+      );
       artifactPromises.push(
         (async () => {
           const attachment = {

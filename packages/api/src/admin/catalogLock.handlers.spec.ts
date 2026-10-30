@@ -165,8 +165,44 @@ describe('admin config writes under the catalog lock (fork)', () => {
     expect(res.body?.code).toBe('CONFIG_OVERRIDE_INVALID');
     expect(issues(res)).toEqual([
       { path: 'webSearch.serperApiKey', code: 'catalog_env_reference' },
+      { path: 'webSearch.serperApiKey', code: 'catalog_field_locked' },
     ]);
     expect(stored).toBeNull();
+  });
+
+  it('stores a page limit per search and refuses every other web search field', async () => {
+    const refused = await call('patchConfigField', {
+      entries: [
+        { fieldPath: 'webSearch.maxPagesPerSearch', value: 2 },
+        { fieldPath: 'webSearch.searxngInstanceUrl', value: 'https://search.example' },
+        { fieldPath: 'webSearch.serperApiKey', value: 'own-key' },
+      ],
+    });
+    expect(refused.res.statusCode).toBe(400);
+    expect(refused.res.body?.code).toBe('CONFIG_OVERRIDE_INVALID');
+    expect(issues(refused.res)).toEqual([
+      { path: 'webSearch.searxngInstanceUrl', code: 'catalog_field_locked' },
+      { path: 'webSearch.serperApiKey', code: 'catalog_field_locked' },
+    ]);
+    expect(refused.stored).toBeNull();
+
+    const replaced = await call('upsertConfigOverrides', {
+      overrides: { webSearch: { maxPagesPerSearch: 2, scraperProvider: 'firecrawl' } },
+    });
+    expect(replaced.res.statusCode).toBe(400);
+    expect(issues(replaced.res)).toEqual([
+      { path: 'webSearch.scraperProvider', code: 'catalog_field_locked' },
+    ]);
+
+    const tombstone = await call('tombstoneConfigField', { fieldPath: 'webSearch' });
+    expect(tombstone.res.statusCode).toBe(400);
+    expect(issues(tombstone.res)).toEqual([{ path: 'webSearch', code: 'catalog_field_locked' }]);
+
+    const { res, stored } = await call('patchConfigField', {
+      entries: [{ fieldPath: 'webSearch.maxPagesPerSearch', value: 2 }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(stored?.overrides).toEqual({ webSearch: { maxPagesPerSearch: 2 } });
   });
 
   it('stores a PATCH that narrows a catalog endpoint and switches an MCP server off', async () => {
@@ -275,13 +311,25 @@ describe('admin config writes under the catalog lock (fork)', () => {
       'webSearch.serperApiKey',
       'catalog_env_reference',
     ],
+    [
+      'a web search field other than the page limit',
+      { op: 'set', fieldPath: 'webSearch.searxngApiKey', value: 'own-key' },
+      'webSearch.searxngApiKey',
+      'catalog_field_locked',
+    ],
+    [
+      'a tombstone of a web search field other than the page limit',
+      { op: 'tombstone', fieldPath: 'webSearch.serperApiKey' },
+      'webSearch.serperApiKey',
+      'catalog_field_locked',
+    ],
   ])('refuses a changes batch with %s and stores nothing', async (_label, op, path, code) => {
     const { res, stored } = await call('applyConfigChanges', {
       ops: [{ op: 'set', fieldPath: 'mcpServers.gmail.enabled', value: false }, op],
     });
 
     expect(res.statusCode).toBe(400);
-    expect(issues(res)).toEqual([{ path, code }]);
+    expect(issues(res)).toEqual(expect.arrayContaining([{ path, code }]));
     expect(stored).toBeNull();
   });
 

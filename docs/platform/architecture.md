@@ -476,20 +476,26 @@ pages per search (plus 5 top stories for news), so one search could cost the pla
 while the tenant paid for one search. Decisions:
 
 - **Page fetches have their own price**, `fetchPer1000` next to `searchPer1000`, as default and per
-  tenant. Each fetched page is one ledger transaction of context `web_scrape`; a page counts when
-  its source in the tool's `web_search` artifact carries highlights (fetched and text found).
-  Tenant costs report `fetchCredits` and `fetches` apart from searches. Without a price, fetches
-  cost nothing.
+  tenant. Each page the gateway let through is one ledger transaction of context `web_scrape`,
+  including pages that returned no text; refused pages are not charged. The tool's artifact cannot
+  tell a fetched page from a refused one (the tool strips each source's highlights and content), so
+  LibreChat counts the pages the tool attempted, as the tool picks them (the first 5 distinct
+  results and, for a news call, up to 5 top stories that are no result), and charges the smaller of
+  that and the page limit, which is exactly what the gateway lets through. A page that failed at
+  Serper after the gateway let it through is charged too. Tenant costs report `fetchCredits` and
+  `fetches` apart from searches. Without a price, fetches cost nothing.
 - **The operator caps the pages per search** (`maxPagesPerSearch`, 0 to 10, default 5) as default
   and per tenant; a tenant admin can only go lower (`webSearch.maxPagesPerSearch` in the tenant's
-  config). The search tool cannot be told, so **the search gateway enforces it**: LibreChat sends
-  a run id and the page limit in the gateway key (`{{LIBRECHAT_SEARCH_RUN}}`,
-  `{{LIBRECHAT_SEARCH_PAGES}}`), each search starts a fresh budget for its run, and fetches over it
-  are refused before Serper and not metered.
-- Open: budgets live in each gateway replica's memory (10-minute TTL). With 2 replicas a run's
-  search and fetches can reach different replicas, each of which allows the limit, so Serper may
-  fetch up to twice the limit (never more than the tool's 5 + 5) while users are charged at most the
-  limit. Route by key (sticky) or keep budgets in Valkey/PostgreSQL before production.
+  config, the only `webSearch` field the catalog lock lets tenants write). **A call that searches
+  news gets twice the limit**, in the gateway and in the charge (LibreChat reads `news` from the
+  tool call's arguments; the gateway sees the call's search of category `news`).
+- **The search gateway enforces it**, because the search tool cannot be told: LibreChat sends a
+  run id and the page limit in the gateway key (`{{LIBRECHAT_SEARCH_RUN}}`,
+  `{{LIBRECHAT_SEARCH_PAGES}}`). Each search starts a fresh budget for its run (twice the limit for
+  a news search; the web and news searches of one call, sent together before any fetch, keep the
+  larger budget), and fetches over it are refused before Serper and not metered. Budgets are rows
+  in the gateway's PostgreSQL (`search_page_budgets`, tenant and run, remaining pages and expiry,
+  10 minutes), so every replica shares them; queries and URLs are never stored.
 
 ### MCP server prices (2026-10-27)
 

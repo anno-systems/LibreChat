@@ -95,12 +95,36 @@ describe('createAdminPricingHandler', () => {
     );
   });
 
-  it('answers models only without platform pricing', async () => {
-    const { res, handler } = setup({ resolvePricing: () => ({ searchPer1000: 0 }) });
+  it("adds the page fetch price and the operator's page cap per search", async () => {
+    const resolvePricing = jest.fn(() => ({
+      searchPer1000: 2,
+      fetchPer1000: 4,
+      maxPagesPerSearch: 3,
+      currency: { code: 'EUR', rate: 0.92 },
+    }));
+    const { res, handler } = setup({ resolvePricing });
     await handler(adminReq('tenant-a'), res as unknown as Response);
 
-    const body = res.json.mock.calls[0][0];
-    expect(Object.keys(body)).toEqual(['models']);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { per1000: 2 },
+        fetch: { per1000: 4, maxPagesPerSearch: 3 },
+      }),
+    );
+  });
+
+  it('sends the default page cap with a fetch price, and models only without prices', async () => {
+    const priced = setup({ resolvePricing: () => ({ searchPer1000: 0, fetchPer1000: 4 }) });
+    await priced.handler(adminReq('tenant-a'), priced.res as unknown as Response);
+    const unpriced = setup({
+      resolvePricing: () => ({ searchPer1000: 0, fetchPer1000: 0, maxPagesPerSearch: 3 }),
+    });
+    await unpriced.handler(adminReq('tenant-a'), unpriced.res as unknown as Response);
+
+    const body = priced.res.json.mock.calls[0][0];
+    expect(Object.keys(body)).toEqual(['models', 'fetch']);
+    expect(body.fetch).toEqual({ per1000: 4, maxPagesPerSearch: 5 });
+    expect(Object.keys(unpriced.res.json.mock.calls[0][0])).toEqual(['models']);
   });
 
   it('answers an empty list when the tenant offers no models', async () => {

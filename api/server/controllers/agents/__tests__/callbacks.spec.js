@@ -771,10 +771,10 @@ describe('createToolEndCallback', () => {
   });
 
   it.each(['createToolEndCallback', 'createResponsesToolEndCallback'])(
-    '%s charges each fetched page of a search at the page price, up to the limit',
+    '%s charges each fetched page of a search at the page price, up to twice the limit for news',
     async (factoryName) => {
       mockWebFetchCredits.mockReturnValue(1087);
-      mockResolvePricing.mockReturnValue({ maxPagesPerSearch: 2 });
+      mockResolvePricing.mockReturnValue({ maxPagesPerSearch: 1 });
       req.user.tenantId = 'tenant-a';
       req.config = { balance: { enabled: true } };
       res.writableEnded = false;
@@ -782,6 +782,7 @@ describe('createToolEndCallback', () => {
       const toolEndCallback = require('../callbacks')[factoryName]({ req, res, artifactPromises });
       await toolEndCallback(
         {
+          input: { query: 'pages', news: true },
           output: {
             tool_call_id: 'call_0',
             artifact: {
