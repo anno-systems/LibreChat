@@ -42,14 +42,20 @@ jest.mock('@librechat/api', () => ({
 }));
 
 const mockWebSearchCredits = jest.fn(() => 0);
+const mockWebFetchCredits = jest.fn(() => 0);
+const mockResolvePricing = jest.fn(() => ({ maxPagesPerSearch: 5 }));
 const mockCreateTransaction = jest.fn(async () => undefined);
 jest.mock('~/models', () => ({
   webSearchCredits: (...args) => mockWebSearchCredits(...args),
+  webFetchCredits: (...args) => mockWebFetchCredits(...args),
+  resolvePricing: (...args) => mockResolvePricing(...args),
   createTransaction: (...args) => mockCreateTransaction(...args),
 }));
 
 jest.mock('@librechat/data-schemas', () => ({
   WEB_SEARCH_CONTEXT: 'web_search',
+  WEB_FETCH_CONTEXT: 'web_scrape',
+  DEFAULT_MAX_PAGES_PER_SEARCH: 5,
   logger: {
     debug: jest.fn(),
     info: jest.fn(),
@@ -763,6 +769,51 @@ describe('createToolEndCallback', () => {
       }),
     );
   });
+
+  it.each(['createToolEndCallback', 'createResponsesToolEndCallback'])(
+    '%s charges each fetched page of a search at the page price, up to the limit',
+    async (factoryName) => {
+      mockWebFetchCredits.mockReturnValue(1087);
+      mockResolvePricing.mockReturnValue({ maxPagesPerSearch: 2 });
+      req.user.tenantId = 'tenant-a';
+      req.config = { balance: { enabled: true } };
+      res.writableEnded = false;
+      const highlights = [{ text: 'page text', score: 1 }];
+      const toolEndCallback = require('../callbacks')[factoryName]({ req, res, artifactPromises });
+      await toolEndCallback(
+        {
+          output: {
+            tool_call_id: 'call_0',
+            artifact: {
+              [Tools.web_search]: {
+                turn: 0,
+                organic: [
+                  { link: 'https://a.example', highlights },
+                  { link: 'https://b.example', highlights },
+                  { link: 'https://c.example', highlights },
+                  { link: 'https://d.example', snippet: 'not fetched' },
+                ],
+              },
+            },
+          },
+        },
+        { run_id: 'run456', thread_id: 'thread789' },
+      );
+      await Promise.all(artifactPromises);
+      await new Promise((resolve) => setImmediate(resolve));
+      mockWebFetchCredits.mockReturnValue(0);
+      mockResolvePricing.mockReturnValue({ maxPagesPerSearch: 5 });
+
+      expect(mockResolvePricing).toHaveBeenCalledWith('tenant-a');
+      expect(mockCreateTransaction.mock.calls.map(([tx]) => [tx.context, tx.rawAmount])).toEqual([
+        ['web_scrape', -1087],
+        ['web_scrape', -1087],
+      ]);
+      expect(mockCreateTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ user: 'user123', conversationId: 'thread789' }),
+      );
+    },
+  );
 
   it('preserves separate owners for final search artifacts with repeated tool-call IDs', async () => {
     const toolEndCallback = createToolEndCallback({ req, res, artifactPromises });

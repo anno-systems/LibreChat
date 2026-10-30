@@ -17,6 +17,8 @@ import type { ConfigOverrideIssue } from '@librechat/data-schemas';
  * - `endpoints.agents` may set only `pullRequests.enabled`, the boolean that switches the
  *   conversation pull request chip on or off for the scope. Where pull requests are looked up,
  *   with which token and which repositories, stays as the operator configured it.
+ * - `webSearch.maxPagesPerSearch` must be a whole number of at least 0. It can only lower the
+ *   operator's cap on the pages one search fetches (platform pricing), never raise it.
  */
 
 export type CatalogIssueCode =
@@ -185,6 +187,16 @@ function checkMCPServers(
   }
 }
 
+function checkWebSearch(webSearch: unknown, issues: ConfigOverrideIssue[]): void {
+  if (!isRecord(webSearch) || webSearch.maxPagesPerSearch === undefined) {
+    return;
+  }
+  const pages = webSearch.maxPagesPerSearch;
+  if (typeof pages !== 'number' || !Number.isInteger(pages) || pages < 0) {
+    issues.push(issue(['webSearch', 'maxPagesPerSearch'], 'catalog_field_locked'));
+  }
+}
+
 function checkAgentsEndpoint(agents: unknown, issues: ConfigOverrideIssue[]): void {
   const segments = ['endpoints', 'agents'];
   if (!isRecord(agents)) {
@@ -301,6 +313,7 @@ function checkOverrides(
 ): ConfigOverrideIssue[] {
   const issues: ConfigOverrideIssue[] = [];
   collectEnvReferences(overrides, [], issues);
+  checkWebSearch(overrides.webSearch, issues);
   for (const section of MCP_SECTIONS) {
     if (overrides[section] !== undefined) {
       checkMCPServers(section, overrides[section], baseYaml.mcpServers, issues);

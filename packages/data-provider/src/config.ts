@@ -3857,6 +3857,12 @@ export const webSearchSchema = z.object({
   scraperProvider: z.nativeEnum(ScraperProviders).optional(),
   rerankerType: z.nativeEnum(RerankerTypes).optional(),
   scraperTimeout: z.number().int().nonnegative().optional(),
+  /**
+   * Fork (platform pricing): the most pages one search may fetch for this scope. The operator's
+   * cap (`maxPagesPerSearch` in platform pricing) still applies, so a value can only lower it.
+   * Unset, the operator's cap applies (5 without one, as the search tool fetches today).
+   */
+  maxPagesPerSearch: z.number().int().min(0).optional(),
   safeSearch: z.nativeEnum(SafeSearchTypes).default(SafeSearchTypes.MODERATE),
   firecrawlOptions: z
     .object({

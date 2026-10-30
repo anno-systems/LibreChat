@@ -112,6 +112,25 @@ describe('getCatalogLockIssues', () => {
     ]);
   });
 
+  it('accepts a page limit per search that is a whole number of at least 0 (fork)', () => {
+    expect(codes({ 'webSearch.maxPagesPerSearch': 0 })).toEqual([]);
+    expect(codes({ webSearch: { maxPagesPerSearch: 3 } })).toEqual([]);
+  });
+
+  it.each([[-1], [2.5], ['3'], [null], [true]])(
+    'refuses a page limit per search of %j (fork)',
+    (pages) => {
+      expect(codes({ 'webSearch.maxPagesPerSearch': pages })).toEqual([
+        { path: 'webSearch.maxPagesPerSearch', code: 'catalog_field_locked' },
+      ]);
+      expect(
+        getCatalogLockEntryIssues(['webSearch', 'maxPagesPerSearch'], pages, catalog).map(
+          ({ path, code }) => ({ path, code }),
+        ),
+      ).toEqual([{ path: 'webSearch.maxPagesPerSearch', code: 'catalog_field_locked' }]);
+    },
+  );
+
   it('refuses narrowing an endpoint whose models are fetched at runtime', () => {
     expect(
       codes({ 'endpoints.custom': [{ name: 'Fetched', models: { default: ['a'] } }] }),

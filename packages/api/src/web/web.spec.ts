@@ -554,6 +554,48 @@ describe('web.ts', () => {
       }
     });
 
+    it('puts the search run and its page limit into the same keys (fork)', async () => {
+      const originalEnv = process.env;
+      try {
+        process.env = {
+          ...originalEnv,
+          SEARCH_GATEWAY_URL: 'http://search-gateway:3000',
+          SEARCH_GATEWAY_KEY:
+            'platform-secret:{{LIBRECHAT_TENANT_ID}};run={{LIBRECHAT_SEARCH_RUN}};pages={{LIBRECHAT_SEARCH_PAGES}}',
+        };
+        mockLoadAuthValues.mockImplementation(({ authFields }) =>
+          Promise.resolve(
+            Object.fromEntries(
+              authFields
+                .filter((field: string) => process.env[field])
+                .map((field: string) => [field, process.env[field]]),
+            ),
+          ),
+        );
+        const run = { id: 'r'.repeat(22), pages: 3 };
+        const result = await loadWebSearchAuth({
+          userId,
+          tenantId: 'tenant-a',
+          searchRun: run,
+          webSearchConfig: {
+            searchProvider: 'searxng' as SearchProviders,
+            searxngInstanceUrl: '${SEARCH_GATEWAY_URL}',
+            searxngApiKey: '${SEARCH_GATEWAY_KEY}',
+            scraperProvider: 'serper' as ScraperProviders,
+            serperApiKey: '${SEARCH_GATEWAY_KEY}',
+            rerankerType: 'none' as RerankerTypes,
+          } as TWebSearchConfig,
+          loadAuthValues: mockLoadAuthValues,
+        });
+
+        const key = `platform-secret:tenant-a;run=${run.id};pages=3`;
+        expect(result.authResult.searxngApiKey).toBe(key);
+        expect(result.authResult.serperApiKey).toBe(key);
+      } finally {
+        process.env = originalEnv;
+      }
+    });
+
     it('should preserve safeSearch setting from webSearchConfig', async () => {
       // Mock successful authentication
       mockLoadAuthValues.mockImplementation(({ authFields }) => {

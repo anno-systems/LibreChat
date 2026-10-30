@@ -13,6 +13,7 @@ const {
   selectMCPUpstreamTokenProvider,
   mcpToolPattern,
   loadWebSearchAuth,
+  createSearchRun,
   splitMCPToolKey,
   buildServerNameAliases,
   findShadowedServerNames,
@@ -72,7 +73,13 @@ const { primeFiles: primeCodeFiles } = require('~/server/services/Files/Code/pro
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { getMCPServerTools, checkCapability } = require('~/server/services/Config');
 const { getMCPServersRegistry } = require('~/config');
-const { getRoleByName, setMemory, deleteMemory, getFormattedMemories } = require('~/models');
+const {
+  getRoleByName,
+  setMemory,
+  deleteMemory,
+  resolvePricing,
+  getFormattedMemories,
+} = require('~/models');
 
 /** @typedef {typeof import('@librechat/agents/langchain/tools').Tool} ToolConstructor */
 /** @typedef {import('@librechat/agents/langchain/tools').Tool} Tool */
@@ -391,9 +398,15 @@ const loadTools = async ({
       };
       continue;
     } else if (tool === Tools.web_search) {
+      const tenantId = options.req?.user?.tenantId;
       const result = await loadWebSearchAuth({
         userId: user,
-        tenantId: options.req?.user?.tenantId,
+        tenantId,
+        /** Fork: the run id and page limit the search gateway counts pages by (platform pricing). */
+        searchRun: createSearchRun({
+          operatorCap: resolvePricing(tenantId).maxPagesPerSearch,
+          configured: webSearch?.maxPagesPerSearch,
+        }),
         loadAuthValues,
         webSearchConfig: webSearch,
       });

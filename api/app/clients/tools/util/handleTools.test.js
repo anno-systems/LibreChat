@@ -1068,6 +1068,18 @@ describe('Tool Handlers', () => {
       ).resolves.toBeDefined();
     });
 
+    it("passes a fresh search run with the scope's lower page limit (fork)", async () => {
+      await loadWebSearchConfig({ maxPagesPerSearch: 2 });
+      await loadWebSearchConfig({});
+      const [first, second] = mockLoadWebSearchAuth.mock.calls
+        .slice(-2)
+        .map(([params]) => params.searchRun);
+
+      expect(first).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), pages: 2 });
+      expect(second.pages).toBe(5);
+      expect(second.id).not.toBe(first.id);
+    });
+
     it('does not construct web search when authentication is incomplete', async () => {
       mockLoadWebSearchAuth.mockResolvedValueOnce({
         authenticated: false,

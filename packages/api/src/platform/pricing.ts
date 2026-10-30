@@ -1,14 +1,15 @@
 import { z } from 'zod';
-import { logger } from '@librechat/data-schemas';
+import { logger, MAX_PAGES_PER_SEARCH } from '@librechat/data-schemas';
 import type { PlatformPricing } from '@librechat/data-schemas';
 import type { Request, Response } from 'express';
 import { getSafeErrorMetadata } from '~/utils/errors';
 
 /**
  * The operator's prices (fork-only), on the operator API (`PLATFORM_API_TOKEN`): a markup on
- * every model's token rates and a price per 1,000 web searches, as a platform default and per
- * tenant, and the currency prices are shown in. Unset, nothing is added to upstream's rates and
- * searches cost nothing.
+ * every model's token rates, a price per 1,000 web searches and one per 1,000 pages they fetch,
+ * and the most pages one search may fetch (`maxPagesPerSearch`, 5 when unset; a tenant admin can
+ * only go lower), as a platform default and per tenant, and the currency prices are shown in.
+ * Unset, nothing is added to upstream's rates and searches and their pages cost nothing.
  *
  *   GET    /api/platform/pricing                     default and every tenant override
  *   PUT    /api/platform/pricing                     the default, with the currency
@@ -24,6 +25,10 @@ const amounts = {
   tokenMarkup: z.number().min(0).max(10).optional(),
   /** Price of 1,000 web searches in the display currency. */
   searchPer1000: z.number().min(0).max(10_000).optional(),
+  /** Price of 1,000 pages fetched by web searches in the display currency. */
+  fetchPer1000: z.number().min(0).max(10_000).optional(),
+  /** Most pages one web search may fetch. */
+  maxPagesPerSearch: z.number().int().min(0).max(MAX_PAGES_PER_SEARCH).optional(),
 };
 
 const defaultSchema = z
@@ -100,6 +105,8 @@ export function createPlatformPricingHandlers(
         logger.info('[platformPricing] default saved', {
           tokenMarkup: saved.tokenMarkup ?? 0,
           searchPer1000: saved.searchPer1000 ?? 0,
+          fetchPer1000: saved.fetchPer1000 ?? 0,
+          maxPagesPerSearch: saved.maxPagesPerSearch,
           currency: saved.currency?.code,
         });
         return res.json({ pricing: present(saved) });

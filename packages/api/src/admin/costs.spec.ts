@@ -22,7 +22,7 @@ function mockRes() {
 const COSTS: TenantCosts = {
   from: '2026-10-01',
   to: '2026-10-21',
-  totals: { tokenCredits: 3950, searchCredits: 4348, searches: 2 },
+  totals: { tokenCredits: 3950, searchCredits: 4348, searches: 2, fetchCredits: 2174, fetches: 2 },
   daily: [],
   models: [],
 };

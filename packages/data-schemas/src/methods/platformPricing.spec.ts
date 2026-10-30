@@ -33,8 +33,14 @@ describe('platform pricing', () => {
     const methods = createPlatformPricingMethods(mongoose);
     await methods.loadPlatformPricing();
 
-    expect(methods.resolvePricing('tenant-a')).toEqual({ tokenMarkup: 0, searchPer1000: 0 });
+    expect(methods.resolvePricing('tenant-a')).toEqual({
+      tokenMarkup: 0,
+      searchPer1000: 0,
+      fetchPer1000: 0,
+      maxPagesPerSearch: 5,
+    });
     expect(methods.webSearchCredits('tenant-a')).toBe(0);
+    expect(methods.webFetchCredits('tenant-a')).toBe(0);
   });
 
   it('applies the default, a tenant override over it, and the default currency', async () => {
@@ -50,11 +56,15 @@ describe('platform pricing', () => {
     expect(methods.resolvePricing('tenant-a')).toEqual({
       tokenMarkup: 0.15,
       searchPer1000: 2,
+      fetchPer1000: 0,
+      maxPagesPerSearch: 5,
       currency: EUR,
     });
     expect(methods.resolvePricing('tenant-big')).toEqual({
       tokenMarkup: 0.05,
       searchPer1000: 2,
+      fetchPer1000: 0,
+      maxPagesPerSearch: 5,
       currency: EUR,
     });
     expect(methods.resolvePricing(undefined).tokenMarkup).toBe(0.15);
@@ -67,6 +77,27 @@ describe('platform pricing', () => {
 
     // 2 EUR / 1000 = 0.002 EUR = 0.002 / 0.92 USD ≈ 2174 credits.
     expect(methods.webSearchCredits('tenant-a')).toBe(2174);
+  });
+
+  it('prices a fetched page and caps the pages per search, per tenant over the default', async () => {
+    const methods = createPlatformPricingMethods(mongoose);
+    await methods.setPlatformPricing({
+      scope: 'default',
+      fetchPer1000: 1,
+      maxPagesPerSearch: 3,
+      currency: EUR,
+    });
+    await methods.setPlatformPricing({ scope: 'tenant-big', maxPagesPerSearch: 0 });
+
+    // 1 EUR / 1000 = 0.001 EUR = 0.001 / 0.92 USD ≈ 1087 credits.
+    expect(methods.webFetchCredits('tenant-a')).toBe(1087);
+    expect(methods.webSearchCredits('tenant-a')).toBe(0);
+    expect(methods.resolvePricing('tenant-a').maxPagesPerSearch).toBe(3);
+    expect(methods.resolvePricing('tenant-big').maxPagesPerSearch).toBe(0);
+    expect(await methods.listPlatformPricing()).toEqual([
+      expect.objectContaining({ scope: 'default', fetchPer1000: 1, maxPagesPerSearch: 3 }),
+      { scope: 'tenant-big', maxPagesPerSearch: 0, updatedAt: expect.any(Date) },
+    ]);
   });
 
   it('needs a currency to price searches', async () => {
@@ -99,6 +130,15 @@ describe('platform pricing', () => {
     ).rejects.toThrow();
     await expect(
       methods.setPlatformPricing({ scope: 'default', currency: { code: 'euro', rate: 1 } }),
+    ).rejects.toThrow();
+    await expect(
+      methods.setPlatformPricing({ scope: 'default', maxPagesPerSearch: 2.5 }),
+    ).rejects.toThrow();
+    await expect(
+      methods.setPlatformPricing({ scope: 'default', maxPagesPerSearch: 11 }),
+    ).rejects.toThrow();
+    await expect(
+      methods.setPlatformPricing({ scope: 'default', fetchPer1000: -1 }),
     ).rejects.toThrow();
   });
 

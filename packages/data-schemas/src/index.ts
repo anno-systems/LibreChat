@@ -62,6 +62,9 @@ export {
   /* Fork: platform pricing and tenant costs. */
   isCostMonth,
   WEB_SEARCH_CONTEXT,
+  WEB_FETCH_CONTEXT,
+  MAX_PAGES_PER_SEARCH,
+  DEFAULT_MAX_PAGES_PER_SEARCH,
   /* Fork: MCP server prices and subscriptions. */
   billingMonth,
   chargedMonths,

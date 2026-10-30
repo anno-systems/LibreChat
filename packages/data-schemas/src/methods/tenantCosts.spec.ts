@@ -46,6 +46,13 @@ const search = (credits: number) => ({
   tokenValue: -credits,
 });
 
+const fetch = (credits: number) => ({
+  tokenType: 'credits',
+  context: 'web_scrape',
+  rawAmount: -credits,
+  tokenValue: -credits,
+});
+
 beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri());
@@ -77,6 +84,8 @@ beforeAll(async () => {
     tx('tenant-a', anna, prompt(1000, 2300), daysAgo(0)),
     tx('tenant-a', anna, completion(200, 1150), daysAgo(0)),
     tx('tenant-a', anna, search(2174), daysAgo(0)),
+    tx('tenant-a', anna, fetch(1087), daysAgo(0)),
+    tx('tenant-a', anna, fetch(1087), daysAgo(0)),
     tx('tenant-a', ben, completion(100, 500, 'mistral-small'), daysAgo(1)),
     tx('tenant-a', external, search(2174), daysAgo(1)),
     // A refill is no cost.
@@ -110,10 +119,16 @@ const costs = (
   );
 
 describe('getTenantCosts', () => {
-  it('sums token and search spend, not refills, in the window', async () => {
+  it('sums token, search and page fetch spend, not refills, in the window', async () => {
     const result = await costs('tenant-a', { days: 7 });
 
-    expect(result.totals).toEqual({ tokenCredits: 3950, searchCredits: 4348, searches: 2 });
+    expect(result.totals).toEqual({
+      tokenCredits: 3950,
+      searchCredits: 4348,
+      searches: 2,
+      fetchCredits: 2174,
+      fetches: 2,
+    });
     expect(result.models).toEqual([
       { model: 'mistral-large', tokenCredits: 3450, promptTokens: 1000, completionTokens: 200 },
       { model: 'mistral-small', tokenCredits: 500, promptTokens: 0, completionTokens: 100 },
@@ -133,12 +148,16 @@ describe('getTenantCosts', () => {
       tokenCredits: 3450,
       searchCredits: 2174,
       searches: 1,
+      fetchCredits: 2174,
+      fetches: 2,
     });
     expect(result.daily[0]).toEqual({
       date: '2026-10-15',
       tokenCredits: 0,
       searchCredits: 0,
       searches: 0,
+      fetchCredits: 0,
+      fetches: 0,
     });
   });
 
@@ -165,6 +184,8 @@ describe('getTenantCosts', () => {
         tokenCredits: 3450,
         searchCredits: 2174,
         searches: 1,
+        fetchCredits: 2174,
+        fetches: 2,
       },
       {
         userId: external.toString(),
@@ -173,6 +194,8 @@ describe('getTenantCosts', () => {
         tokenCredits: 0,
         searchCredits: 2174,
         searches: 1,
+        fetchCredits: 0,
+        fetches: 0,
       },
       {
         userId: ben.toString(),
@@ -181,6 +204,8 @@ describe('getTenantCosts', () => {
         tokenCredits: 500,
         searchCredits: 0,
         searches: 0,
+        fetchCredits: 0,
+        fetches: 0,
       },
     ]);
     expect(result.groups).toEqual([
@@ -190,6 +215,8 @@ describe('getTenantCosts', () => {
         tokenCredits: 3450,
         searchCredits: 4348,
         searches: 2,
+        fetchCredits: 2174,
+        fetches: 2,
       }),
       expect.objectContaining({ name: 'Empty', members: 0, tokenCredits: 0, searches: 0 }),
     ]);

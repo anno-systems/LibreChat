@@ -22,9 +22,14 @@ export {
   PLATFORM_AGENT_AUTHOR,
 } from './platformAgent';
 export type { PlatformAgent, PlatformAgentCopy, PlatformAgentInput } from './platformAgent';
-export { createPlatformPricingMethods, withTokenMarkup } from './platformPricing';
+export {
+  withTokenMarkup,
+  MAX_PAGES_PER_SEARCH,
+  createPlatformPricingMethods,
+  DEFAULT_MAX_PAGES_PER_SEARCH,
+} from './platformPricing';
 export type { PlatformPricing, PricingCurrency, ResolvedPricing } from './platformPricing';
-export { isCostMonth, WEB_SEARCH_CONTEXT } from './tenantCosts';
+export { isCostMonth, WEB_SEARCH_CONTEXT, WEB_FETCH_CONTEXT } from './tenantCosts';
 export type { TenantCosts, TenantCostPeriod } from './tenantCosts';
 export { createMcpToolPolicyMethods } from './mcpToolPolicy';
 export { billingMonth, chargedMonths, mcpChargesBetween, FREE_MCP_SERVERS } from './mcpPricing';
