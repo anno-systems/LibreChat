@@ -13,7 +13,9 @@ import type { ServerRequest } from '~/types/http';
 import { createAdminMigrationHandlers, createOperatorMigrationHandlers } from './handlers';
 import { createCatalogModelCheck, createModelRemovalGuard } from './guard';
 import { createPlatformCatalogHandlers } from '~/platform/handlers';
+import { createModelMigrationNoticeHandlers } from './notice';
 import { createModelMigrationService } from './service';
+import { createAssignedProviderCheck } from './labels';
 
 let mongoServer: MongoMemoryServer;
 let store: ReturnType<typeof createModelMigrationMethods>;
@@ -125,7 +127,15 @@ function setup(
   const audits: RecordAuditEntryInput[] = [];
   const invalidateConfig = jest.fn(async () => undefined);
   const invalidateUser = jest.fn(async () => undefined);
-  const service = createModelMigrationService({ store, invalidateConfig, invalidateUser });
+  const service = createModelMigrationService({
+    store,
+    invalidateConfig,
+    invalidateUser,
+    labelOf: async (ref) => (ref.model === 'large-2' ? 'Mistral Large 3' : undefined),
+    isAssignedProvider: createAssignedProviderCheck({
+      findPlatformProviders: catalog.findPlatformProviders,
+    }),
+  });
   const audit = async (_req: unknown, event: Omit<RecordAuditEntryInput, 'actor' | 'context'>) => {
     audits.push(event as RecordAuditEntryInput);
   };
@@ -281,7 +291,11 @@ describe('model removal guard', () => {
     expect((await catalog.findPlatformProviders(['Mistral']))[0].models).toEqual(['large-2']);
     const redirects = await call(operator.listRedirects, operatorReq());
     expect(redirects.body?.redirects).toEqual([
-      expect.objectContaining({ scope: 'platform', from: LARGE, to: LARGE2 }),
+      expect.objectContaining({
+        scope: 'platform',
+        from: LARGE,
+        to: { ...LARGE2, label: 'Mistral Large 3' },
+      }),
     ]);
 
     /* A new chat on the redirected model no longer blocks removing it again. */
@@ -348,6 +362,120 @@ describe('model removal guard', () => {
     const accepted = await assign('acme', ['large-2'], [{ from: LARGE, to: LARGE2 }]);
     expect(accepted.statusCode).toBe(200);
     expect(await agentModel('acme')).toBe('large-2');
+  });
+});
+
+describe('operator migration extras', () => {
+  it('rewrites to the end of the chain, stores labels and retargets redirects', async () => {
+    await catalog.upsertPlatformProvider({
+      name: 'Mistral',
+      ...provider,
+      models: ['small', 'large', 'large-2', 'large-3'],
+      apiKey: 'enc:x',
+    });
+    await seedChat('acme', { endpoint: 'Mistral', model: 'small' });
+    const { operator } = setup();
+    const L3 = { endpoint: 'Mistral', model: 'large-3' };
+    await call(operator.migrate, operatorReq({ from: LARGE2, to: L3 }));
+    await call(
+      operator.migrate,
+      operatorReq({ from: { endpoint: 'Mistral', model: 'small' }, to: LARGE }),
+    );
+    /* small→large exists; large→large-2 continues at large-3, so documents go straight there. */
+    const res = await call(operator.migrate, operatorReq({ from: LARGE, to: LARGE2 }));
+    const migration = res.body?.migration as Record<string, unknown>;
+    expect(migration.to).toEqual({ ...LARGE2, label: 'Mistral Large 3' });
+    expect(migration.rewrittenTo).toEqual(L3);
+    expect(await agentModel('acme')).toBe('large-3');
+    const list = await call(operator.listRedirects, operatorReq());
+    const redirects = list.body?.redirects as Array<{
+      from: { model: string };
+      to: { model: string };
+    }>;
+    expect(redirects.find((r) => r.from.model === 'small')?.to.model).toBe('large-3');
+    expect(redirects.find((r) => r.from.model === 'large')?.to.model).toBe('large-2');
+  });
+
+  it('enables the successor for tenants that had the old model, and records it', async () => {
+    const { platform, operator, audits, invalidateConfig } = setup();
+    await call(platform.putProvider, operatorReq(provider, { name: 'Mistral' }));
+    await call(
+      platform.putProvider,
+      operatorReq({ ...provider, models: ['gpt-5'] }, { name: 'Nebius' }),
+    );
+    await catalog.setTenantAssignments('acme', {
+      byok: false,
+      providers: [{ name: 'Mistral', models: ['large'] }],
+    });
+    await catalog.setTenantAssignments('globex', {
+      byok: false,
+      providers: [{ name: 'Mistral', models: ['large-2'] }],
+    });
+    await inTenant('acme', async () => {
+      await mongoose.models.Config.create({
+        principalType: 'role',
+        principalId: '__base__',
+        principalModel: 'Role',
+        priority: 0,
+        overrides: {
+          endpoints: {
+            custom: [
+              { name: 'Mistral', models: { default: ['large'] } },
+              { name: 'Nebius', models: { default: [] } },
+            ],
+          },
+        },
+      });
+    });
+    const NEBIUS = { endpoint: 'Nebius', model: 'gpt-5' };
+    const res = await call(operator.migrate, operatorReq({ from: LARGE, to: NEBIUS }));
+    expect(res.statusCode).toBe(200);
+    expect((res.body?.migration as Record<string, unknown>).successorEnabled).toEqual({
+      acme: { configs: 1, assignment: true },
+    });
+    expect((await catalog.getTenantCatalog('acme'))?.providers).toEqual([
+      { name: 'Mistral', models: ['large'] },
+      { name: 'Nebius', models: ['gpt-5'] },
+    ]);
+    expect((await catalog.getTenantCatalog('globex'))?.providers).toHaveLength(1);
+    expect(invalidateConfig).toHaveBeenCalledWith('acme');
+    expect(audits).toContainEqual(
+      expect.objectContaining({
+        action: 'model.migrated',
+        tenantId: 'acme',
+        metadata: expect.objectContaining({ successorConfigs: 1, successorAssigned: true }),
+      }),
+    );
+  });
+});
+
+describe('notice handlers', () => {
+  it('answers labels and acknowledges an agent notice per user', async () => {
+    await seedChat('acme');
+    const { operator } = setup();
+    await catalog.upsertPlatformProvider({ name: 'Mistral', ...provider, apiKey: 'enc:x' });
+    await call(operator.migrate, operatorReq({ from: LARGE, to: LARGE2 }));
+    const notices = createModelMigrationNoticeHandlers(store);
+    const userReq = (id: string) =>
+      ({
+        params: { id: 'agent_acme' },
+        user: { id, tenantId: 'acme' },
+      }) as unknown as ServerRequest;
+    const read = (id: string) => inTenant('acme', () => call(notices.getAgentNotice, userReq(id)));
+    const first = await read('u1');
+    expect(first.body?.modelMigration).toMatchObject({
+      from: { endpoint: 'Mistral', model: 'large' },
+      to: { endpoint: 'Mistral', model: 'large-2', label: 'Mistral Large 3' },
+    });
+    expect(
+      (await inTenant('acme', () => call(notices.clearAgentNotice, userReq('u1')))).statusCode,
+    ).toBe(204);
+    expect((await read('u1')).body).toEqual({ modelMigration: null });
+    expect((await read('u2')).body?.modelMigration).not.toBeNull();
+    const anonymous = await call(notices.getAgentNotice, {
+      params: { id: 'agent_acme' },
+    } as unknown as ServerRequest);
+    expect(anonymous.statusCode).toBe(401);
   });
 });
 

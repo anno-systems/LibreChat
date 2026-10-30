@@ -8,14 +8,18 @@ import { cn } from '~/utils';
 /** Notices shown in this session, so a cached copy is not shown twice. */
 const seenNoticesAtom = atom<ReadonlySet<string>>(new Set<string>());
 
+/** The key under which a migration counts as seen, wherever it was shown. */
+export const migrationKey = (notice: TModelMigrationNotice) => `migration:${notice.id}`;
+
 /**
  * Shows a model migration notice once: the first time it arrives it is kept on screen until
  * dismissed or the view changes, and `markSeen` tells the server, which then stops sending it.
+ * `scope` names where it was shown; the migration itself counts as seen in this session too.
  */
 export function useOneTimeNotice(
-  scope: string,
+  scope: string | ((notice: TModelMigrationNotice) => string),
   notice: TModelMigrationNotice | null | undefined,
-  markSeen: () => void,
+  markSeen: (notice: TModelMigrationNotice) => void,
 ): [TModelMigrationNotice | null, () => void] {
   const [seen, setSeen] = useAtom(seenNoticesAtom);
   const [shown, setShown] = useState<TModelMigrationNotice | null>(null);
@@ -24,11 +28,11 @@ export function useOneTimeNotice(
 
   useEffect(() => {
     if (!notice || shown) return;
-    const key = `${scope}:${notice.id}`;
+    const key = typeof scope === 'function' ? scope(notice) : `${scope}:${notice.id}`;
     if (seen.has(key)) return;
     setShown(notice);
-    setSeen((previous) => new Set(previous).add(key));
-    markSeenRef.current();
+    setSeen((previous) => new Set(previous).add(key).add(migrationKey(notice)));
+    markSeenRef.current(notice);
   }, [scope, notice, shown, seen, setSeen]);
 
   return [shown, () => setShown(null)];
@@ -53,7 +57,10 @@ function Notice({
       )}
     >
       <span className="min-w-0 flex-1">
-        {localize('com_ui_model_migrated', { to: notice.to.model, from: notice.from.model })}
+        {localize('com_ui_model_migrated', {
+          to: notice.to.label ?? notice.to.model,
+          from: notice.from.label ?? notice.from.model,
+        })}
       </span>
       <button
         type="button"

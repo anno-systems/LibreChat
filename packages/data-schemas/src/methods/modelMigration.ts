@@ -21,6 +21,30 @@ export const PLATFORM_REDIRECT_SCOPE = 'platform';
 export interface ModelRef {
   endpoint: string;
   model: string;
+  /** Display name shown to users ("Mistral Large 3"); the model id stands in without one. */
+  label?: string;
+}
+
+/** How long a migrated agent's notice is shown on new chats with it. */
+export const AGENT_NOTICE_WINDOW_MS: number = 30 * 24 * 60 * 60 * 1000;
+/** How long a user's acknowledgement of a notice is kept; beyond the agent notice window. */
+const SEEN_TTL_SECONDS = 90 * 24 * 60 * 60;
+
+/** What enabling the successor changed in one tenant. */
+export interface SuccessorEnabled {
+  /** Config documents (tenant, group or role) whose narrowed lists gained the successor. */
+  configs: number;
+  /** Whether the tenant's catalog assignment gained the successor. */
+  assignment: boolean;
+}
+
+export interface EnableSuccessorInput {
+  from: ModelRef;
+  to: ModelRef;
+  /** Platform audiences only: tenant migrations need an enabled target already. */
+  audience: { tenantIds: string[] } | { all: true };
+  /** Whether `to.endpoint` is a platform provider assigned per tenant (not offered to all). */
+  assignProvider: boolean;
 }
 
 /** What a migration rewrote (or a preview would rewrite), per kind. */
@@ -97,6 +121,15 @@ export interface MigrateModelResult {
   configTenants: string[];
 }
 
+export interface RetargetInput {
+  scope: string;
+  tenantIds?: string[];
+  /** Redirects that end at this model … */
+  from: ModelRef;
+  /** … end here instead. */
+  to: ModelRef;
+}
+
 export interface ModelMigrationMethods {
   listModelRedirects(filter?: { scope?: string }): Promise<ModelRedirect[]>;
   /** Creates the redirect, or updates the one with the same scope, audience and old model. */
@@ -116,24 +149,56 @@ export interface ModelMigrationMethods {
   ): Promise<MigrationCounts>;
   /** Rewrites the stored documents in batches; running it again changes nothing. */
   migrateModelUsage(input: MigrateModelInput): Promise<MigrateModelResult>;
+  /**
+   * Enables `to` wherever a tenant of the audience had `from` enabled: in narrowed lists of
+   * config documents and in the catalog assignment. Tenants without `from` are not touched.
+   */
+  enableSuccessor(input: EnableSuccessorInput): Promise<Record<string, SuccessorEnabled>>;
+  /** Points redirects of the same scope and audience that end at `from` to `to`; the count. */
+  retargetModelRedirects(input: RetargetInput): Promise<number>;
   /** The conversation's unseen notice, for its owner. */
   getConversationModelMigration(
     user: string,
     conversationId: string,
   ): Promise<ModelMigrationNotice | null>;
-  /** False when the conversation had no notice. */
+  /** False when the conversation had no notice; the user has then seen the migration. */
   clearConversationModelMigration(user: string, conversationId: string): Promise<boolean>;
-  /** False when the agent had no notice. */
-  clearAgentModelMigration(agentId: string): Promise<boolean>;
+  /**
+   * The agent's notice for one user: set by a migration less than `AGENT_NOTICE_WINDOW_MS` ago
+   * and not yet seen by the user.
+   */
+  getAgentModelMigration(
+    agentId: string,
+    userId: string,
+    now?: Date,
+  ): Promise<ModelMigrationNotice | null>;
+  /** Records that the user saw the agent's notice; false when it has none. */
+  markAgentModelMigrationSeen(agentId: string, userId: string): Promise<boolean>;
 }
 
 const modelRefSchema = new Schema<ModelRef>(
   {
     endpoint: { type: String, required: true, maxlength: 128 },
     model: { type: String, required: true, maxlength: 256 },
+    label: { type: String, maxlength: 128 },
   },
   { _id: false },
 );
+
+interface SeenNotice {
+  migrationId: string;
+  userId: string;
+  at: Date;
+}
+
+/** One row per user and migration: who has seen a notice, so shared agents scale. */
+const seenNoticeSchema = new Schema<SeenNotice>({
+  migrationId: { type: String, required: true },
+  userId: { type: String, required: true },
+  at: { type: Date, required: true, default: () => new Date() },
+});
+seenNoticeSchema.index({ migrationId: 1, userId: 1 }, { unique: true });
+seenNoticeSchema.index({ at: 1 }, { expireAfterSeconds: SEEN_TTL_SECONDS });
 
 const countsDefinition = {
   agents: Number,
@@ -184,13 +249,28 @@ function redirectKey(input: ModelRedirectInput): string {
   return [input.scope, audience, input.from.endpoint, input.from.model].join('\u0000');
 }
 
+const toRef = (ref: ModelRef): ModelRef => ({
+  endpoint: ref.endpoint,
+  model: ref.model,
+  ...(ref.label && { label: ref.label }),
+});
+
+/** A model list entry's id (`models.default` holds names or `{ name }`). */
+const listedName = (item: unknown) =>
+  typeof item === 'string' ? item : String((item as { name?: string } | null)?.name ?? '');
+
+interface EndpointEntry {
+  name?: string;
+  models?: { default?: unknown[] };
+}
+
 function toRedirect(doc: StoredRedirect): ModelRedirect {
   return {
     redirectId: doc.redirectId,
     scope: doc.scope,
     ...(doc.tenantIds && { tenantIds: [...doc.tenantIds] }),
-    from: { endpoint: doc.from.endpoint, model: doc.from.model },
-    to: { endpoint: doc.to.endpoint, model: doc.to.model },
+    from: toRef(doc.from),
+    to: toRef(doc.to),
     ...(doc.createdBy && { createdBy: doc.createdBy }),
     ...(doc.lastRun?.at && {
       lastRun: { at: doc.lastRun.at, counts: { ...emptyCounts(), ...doc.lastRun.counts } },
@@ -219,6 +299,9 @@ export function createModelMigrationMethods(
   const Redirect: Model<StoredRedirect> =
     mongoose.models.ModelRedirect ||
     mongoose.model<StoredRedirect>('ModelRedirect', modelRedirectSchema);
+  const Seen: Model<SeenNotice> =
+    mongoose.models.ModelMigrationSeen ||
+    mongoose.model<SeenNotice>('ModelMigrationSeen', seenNoticeSchema);
   const refreshMs = options.refreshMs ?? 30_000;
   const now = options.now ?? Date.now;
 
@@ -272,6 +355,8 @@ export function createModelMigrationMethods(
     endpoint: from.endpoint,
     model: from.model,
   });
+  /** Counts and previews cover active chats: neither archived nor temporary. */
+  const active = { isArchived: { $ne: true }, isTemporary: { $ne: true } };
   const specMatch = (from: ModelRef, audience: MigrationAudience) => ({
     ...audienceFilter(audience),
     'overrides.modelSpecs.list': {
@@ -323,6 +408,147 @@ export function createModelMigrationMethods(
       await onBatch(rows);
       if (rows.length < batchSize) return;
     }
+  }
+
+  async function markSeen(migrationId: string, userId: string): Promise<void> {
+    await Seen.updateOne(
+      { migrationId, userId },
+      { $setOnInsert: { migrationId, userId, at: new Date() } },
+      { upsert: true },
+    );
+  }
+
+  async function agentNotice(agentId: string): Promise<ModelMigrationNotice | null> {
+    const Agent = model('Agent');
+    if (!Agent) return null;
+    const doc = await Agent.findOne({ id: agentId })
+      .select('modelMigration')
+      .lean<{ modelMigration?: ModelMigrationNotice }>();
+    return doc?.modelMigration ?? null;
+  }
+
+  /** Adds `model` to a model list once, keeping how the list writes its entries. */
+  const withModel = (list: unknown[], model: string) =>
+    list.some((item) => listedName(item) === model) ? list : [...list, model];
+
+  /**
+   * The successor's place in one document's narrowed endpoints, or null when the document does
+   * not enable the old model or already offers the successor. `inherited` is the list a lower
+   * layer (the tenant's base document) narrows the successor's endpoint to.
+   */
+  function enableInEntries(
+    entries: EndpointEntry[],
+    from: ModelRef,
+    to: ModelRef,
+    inherited: unknown[] | undefined,
+  ): EndpointEntry[] | null {
+    const old = entries.find((e) => e.name === from.endpoint);
+    if (!old?.models?.default?.some((item) => listedName(item) === from.model)) return null;
+    const index = entries.findIndex((e) => e.name === to.endpoint);
+    const target = index >= 0 ? entries[index] : undefined;
+    if (target && !target.models?.default) return null;
+    const current = target?.models?.default ?? inherited;
+    /* Neither this document nor the base narrows the successor's endpoint: it is offered whole. */
+    if (!current) return null;
+    const next = withModel(current, to.model);
+    if (target && next === current) return null;
+    const entry: EndpointEntry = {
+      ...(target ?? { name: to.endpoint }),
+      models: { ...(target?.models ?? {}), default: next },
+    };
+    return index >= 0 ? entries.map((e, i) => (i === index ? entry : e)) : [...entries, entry];
+  }
+
+  interface ConfigRow {
+    _id: unknown;
+    tenantId?: string;
+    principalType?: string;
+    principalId?: string;
+    configVersion?: number;
+    overrides?: { endpoints?: { custom?: EndpointEntry[] } };
+  }
+
+  async function enableSuccessor(
+    input: EnableSuccessorInput,
+  ): Promise<Record<string, SuccessorEnabled>> {
+    const { from, to, audience } = input;
+    const changed: Record<string, SuccessorEnabled> = {};
+    const mark = (tenantId: string) => (changed[tenantId] ??= { configs: 0, assignment: false });
+
+    await runAsSystem(async () => {
+      const Config = model('Config');
+      if (Config) {
+        const docs = await Config.find({
+          ...audienceFilter(audience),
+          'overrides.endpoints.custom': {
+            $elemMatch: { name: from.endpoint, 'models.default': from.model },
+          },
+        })
+          .select('_id tenantId principalType principalId configVersion overrides.endpoints')
+          .lean<ConfigRow[]>();
+        const bases = new Map<string, EndpointEntry[]>();
+        const baseOf = async (tenantId: string | undefined) => {
+          const key = tenantId ?? '';
+          if (!bases.has(key)) {
+            const base = await Config.findOne({
+              tenantId: tenantId ?? { $in: [null, ''] },
+              principalType: 'role',
+              principalId: '__base__',
+            })
+              .select('overrides.endpoints')
+              .lean<ConfigRow>();
+            bases.set(key, base?.overrides?.endpoints?.custom ?? []);
+          }
+          return bases.get(key)!;
+        };
+        for (const doc of docs) {
+          const isBase = doc.principalType === 'role' && doc.principalId === '__base__';
+          const inherited = isBase
+            ? undefined
+            : (await baseOf(doc.tenantId)).find((e) => e.name === to.endpoint)?.models?.default;
+          const entries = enableInEntries(
+            doc.overrides?.endpoints?.custom ?? [],
+            from,
+            to,
+            inherited,
+          );
+          if (!entries) continue;
+          /* Guarded by the version read: a concurrent admin write wins and is not overwritten. */
+          const result = await Config.updateOne(
+            { _id: doc._id, configVersion: doc.configVersion ?? { $in: [0, null] } },
+            {
+              $set: { 'overrides.endpoints.custom': entries },
+              $inc: { configVersion: 1 },
+            },
+          );
+          if (result.modifiedCount > 0) mark(doc.tenantId ?? '').configs += 1;
+        }
+      }
+
+      const Catalog = model('TenantCatalog');
+      if (!Catalog || !input.assignProvider) return;
+      const holders = await Catalog.find({
+        ...audienceFilter(audience),
+        providers: { $elemMatch: { name: from.endpoint, models: from.model } },
+      })
+        .select('tenantId providers')
+        .lean<Array<{ tenantId: string; providers: Array<{ name: string; models: string[] }> }>>();
+      for (const holder of holders) {
+        const entry = holder.providers.find((p) => p.name === to.endpoint);
+        if (entry?.models.includes(to.model)) continue;
+        const result = entry
+          ? await Catalog.updateOne(
+              { tenantId: holder.tenantId, 'providers.name': to.endpoint },
+              { $addToSet: { 'providers.$.models': to.model } },
+            )
+          : await Catalog.updateOne(
+              { tenantId: holder.tenantId, 'providers.name': { $ne: to.endpoint } },
+              { $push: { providers: { name: to.endpoint, models: [to.model] } } },
+            );
+        if (result.modifiedCount > 0) mark(holder.tenantId).assignment = true;
+      }
+    });
+    return changed;
   }
 
   async function migrateModelUsage(input: MigrateModelInput): Promise<MigrateModelResult> {
@@ -435,6 +661,23 @@ export function createModelMigrationMethods(
           ],
         },
       );
+      /* A user who already pinned the successor keeps that pin, not a duplicate. */
+      await rewrite(
+        'User',
+        {
+          ...audienceFilter(audience),
+          $and: [
+            { favorites: { $elemMatch: { endpoint: from.endpoint, model: from.model } } },
+            { favorites: { $elemMatch: { endpoint: to.endpoint, model: to.model } } },
+          ],
+        },
+        { $pull: { favorites: { endpoint: from.endpoint, model: from.model } } },
+        batchSize,
+        (rows) => {
+          tally('favorites', rows);
+          rows.forEach((row) => userIds.add(String(row._id)));
+        },
+      );
       await rewrite(
         'User',
         favoriteMatch(from, audience),
@@ -510,7 +753,7 @@ export function createModelMigrationMethods(
           models.map(async (ref) => {
             const [agents, conversations] = await Promise.all([
               count('Agent', agentMatch(ref, ref.agentProviders, audience)),
-              count('Conversation', convoMatch(ref, audience)),
+              count('Conversation', { ...convoMatch(ref, audience), ...active }),
             ]);
             return { endpoint: ref.endpoint, model: ref.model, agents, conversations };
           }),
@@ -539,11 +782,12 @@ export function createModelMigrationMethods(
             count('Conversation', {
               ...(tenant ? { tenantId: tenant } : { tenantId: { $in: [null, ''] } }),
               agent_id: { $in: ids },
+              ...active,
             }),
           ),
         );
         const [conversations, presets, modelSpecs, favorites] = await Promise.all([
-          count('Conversation', convoMatch(from, audience)),
+          count('Conversation', { ...convoMatch(from, audience), ...active }),
           count('Preset', convoMatch(from, audience)),
           count('Config', specMatch(from, audience)),
           count('User', favoriteMatch(from, audience)),
@@ -573,23 +817,45 @@ export function createModelMigrationMethods(
     async clearConversationModelMigration(user, conversationId) {
       const Conversation = model('Conversation');
       if (!Conversation) return false;
-      const result = await Conversation.updateOne(
+      const previous = await Conversation.findOneAndUpdate(
         { user, conversationId, modelMigration: { $exists: true } },
         { $unset: { modelMigration: 1 } },
-        { timestamps: false },
-      );
-      return result.modifiedCount > 0;
+        { timestamps: false, projection: { modelMigration: 1 } },
+      ).lean<{ modelMigration?: ModelMigrationNotice }>();
+      const migrationId = previous?.modelMigration?.id;
+      if (!migrationId) return false;
+      await markSeen(migrationId, user);
+      return true;
     },
 
-    async clearAgentModelMigration(agentId) {
-      const Agent = model('Agent');
-      if (!Agent) return false;
-      const result = await Agent.updateOne(
-        { id: agentId, modelMigration: { $exists: true } },
-        { $unset: { modelMigration: 1 } },
-        { timestamps: false },
+    async getAgentModelMigration(agentId, userId, now = new Date()) {
+      const notice = await agentNotice(agentId);
+      if (!notice || now.getTime() - new Date(notice.at).getTime() > AGENT_NOTICE_WINDOW_MS) {
+        return null;
+      }
+      const seen = await Seen.exists({ migrationId: notice.id, userId });
+      return seen ? null : notice;
+    },
+
+    async markAgentModelMigrationSeen(agentId, userId) {
+      const notice = await agentNotice(agentId);
+      if (!notice) return false;
+      await markSeen(notice.id, userId);
+      return true;
+    },
+
+    enableSuccessor,
+
+    async retargetModelRedirects({ scope, tenantIds, from, to }) {
+      const audience = tenantIds
+        ? { tenantIds: [...new Set(tenantIds)].sort() }
+        : { tenantIds: { $exists: false } };
+      const result = await Redirect.updateMany(
+        { scope, ...audience, 'to.endpoint': from.endpoint, 'to.model': from.model },
+        { $set: { to: toRef(to) } },
       );
-      return result.modifiedCount > 0;
+      if (result.modifiedCount > 0) await loadModelRedirects();
+      return result.modifiedCount;
     },
   };
 }

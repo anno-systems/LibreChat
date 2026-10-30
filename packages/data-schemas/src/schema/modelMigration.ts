@@ -7,8 +7,9 @@ import { Schema } from 'mongoose';
 export interface ModelMigrationNotice {
   /** The migration (redirect) id. */
   id: string;
-  from: { endpoint: string; model: string };
-  to: { endpoint: string; model: string };
+  /** `label` is the display name at migration time, when one was known. */
+  from: { endpoint: string; model: string; label?: string };
+  to: { endpoint: string; model: string; label?: string };
   at: Date;
 }
 
@@ -16,6 +17,7 @@ const modelRefSchema = new Schema(
   {
     endpoint: { type: String, required: true },
     model: { type: String, required: true },
+    label: { type: String },
   },
   { _id: false },
 );

@@ -23,8 +23,8 @@ import {
   useLocalize,
 } from '~/hooks';
 import { ChatContext, AddedChatContext, ChatFormProvider, useFileMapContext } from '~/Providers';
-import { ConversationModelMigrationNotice } from '~/components/ModelMigration';
 import Footer, { useLandingFooter, useConfiguredFooter } from './Footer';
+import { ChatModelMigrationNotice } from '~/components/ModelMigration';
 import { QueuedTurnPortalProvider } from './Steering/QueuedTurnPortal';
 import { useChatSettings } from '~/Providers/ChatSettingsContext';
 import ApprovalProvider from './Messages/Content/ApprovalContext';
@@ -251,12 +251,12 @@ function ChatView({
                             )}
                           >
                             {isLandingPage && <ConversationStarters />}
-                            {!isLandingPage && conversationId && (
-                              <ConversationModelMigrationNotice
-                                key={conversationId}
-                                conversationId={conversationId}
-                              />
-                            )}
+                            <ChatModelMigrationNotice
+                              key={`${conversationId ?? ''}:${chatHelpers.conversation?.agent_id ?? ''}`}
+                              conversationId={conversationId ?? ''}
+                              endpoint={chatHelpers.conversation?.endpoint}
+                              agentId={chatHelpers.conversation?.agent_id}
+                            />
                             {isSubagentThreadReadOnly ? (
                               <div
                                 className="text-text-secondary mx-auto w-full max-w-3xl px-4 py-3 text-center text-sm xl:max-w-4xl"

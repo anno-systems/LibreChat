@@ -104,7 +104,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await runAsSystem(async () => {
-    for (const name of ['User', 'Agent', 'Conversation', 'Preset', 'Config', 'ModelRedirect']) {
+    for (const name of [
+      'User',
+      'Agent',
+      'Conversation',
+      'Preset',
+      'Config',
+      'ModelRedirect',
+      'TenantCatalog',
+    ]) {
+      if (!mongoose.models[name]) continue;
       await mongoose.models[name].deleteMany({});
     }
   });
@@ -338,8 +347,207 @@ describe('notices', () => {
       expect(await methods.clearConversationModelMigration(userId, 'direct-acme')).toBe(true);
       expect(await methods.clearConversationModelMigration(userId, 'direct-acme')).toBe(false);
       expect(await methods.getConversationModelMigration(userId, 'direct-acme')).toBeNull();
-      expect(await methods.clearAgentModelMigration('agent_acme')).toBe(true);
-      expect(await methods.clearAgentModelMigration('agent_acme')).toBe(false);
+      /* The conversation's notice came from the agent's migration: seen once, seen everywhere. */
+      expect(await methods.getAgentModelMigration('agent_acme', userId)).toBeNull();
+      expect(await methods.getAgentModelMigration('agent_acme', 'someone-else')).not.toBeNull();
     });
+  });
+
+  it('shows an agent notice to every user once, for 30 days, and keeps labels', async () => {
+    await seed('acme');
+    const at = new Date('2026-10-01T00:00:00Z');
+    await methods.migrateModelUsage({
+      migrationId: 'mm_2',
+      from: { ...OLD, label: 'Mistral Large 2' },
+      to: { ...NEW, label: 'Mistral Large 3' },
+      agentProviders: ['Mistral'],
+      audience: { tenantId: 'acme' },
+      at,
+    });
+    const soon = new Date('2026-10-20T00:00:00Z');
+    await inTenant('acme', async () => {
+      const first = await methods.getAgentModelMigration('agent_acme', 'u1', soon);
+      expect(first).toMatchObject({
+        id: 'mm_2',
+        from: { model: OLD.model, label: 'Mistral Large 2' },
+        to: { model: NEW.model, label: 'Mistral Large 3' },
+      });
+      expect(await methods.getAgentModelMigration('agent_acme', 'u2', soon)).not.toBeNull();
+      expect(await methods.markAgentModelMigrationSeen('agent_acme', 'u1')).toBe(true);
+      expect(await methods.getAgentModelMigration('agent_acme', 'u1', soon)).toBeNull();
+      expect(await methods.getAgentModelMigration('agent_acme', 'u2', soon)).not.toBeNull();
+      const late = new Date('2026-11-05T00:00:00Z');
+      expect(await methods.getAgentModelMigration('agent_acme', 'u2', late)).toBeNull();
+      expect(await methods.markAgentModelMigrationSeen('agent_other_acme', 'u1')).toBe(false);
+    });
+  });
+});
+
+describe('active chats only in counts', () => {
+  it('leaves archived and temporary chats out of usage and previews, but rewrites them', async () => {
+    const userId = await seed('acme');
+    await inTenant('acme', async () => {
+      await mongoose.models.Conversation.create([
+        { conversationId: 'archived', user: userId, ...OLD, isArchived: true },
+        { conversationId: 'temporary', user: userId, ...OLD, isTemporary: true },
+        {
+          conversationId: 'agent-archived',
+          user: userId,
+          endpoint: 'agents',
+          agent_id: 'agent_acme',
+          isArchived: true,
+        },
+      ]);
+    });
+    const [usage] = await methods.countModelUsage([{ ...OLD, agentProviders: ['Mistral'] }], {
+      tenantId: 'acme',
+    });
+    expect(usage.conversations).toBe(1);
+    const preview = await methods.previewModelMigration(OLD, ['Mistral'], { tenantId: 'acme' });
+    expect(preview).toMatchObject({ conversations: 1, agentConversations: 1 });
+    const result = await methods.migrateModelUsage({
+      migrationId: 'mm_1',
+      from: OLD,
+      to: NEW,
+      agentProviders: ['Mistral'],
+      audience: { tenantId: 'acme' },
+    });
+    expect(result.counts).toMatchObject({ conversations: 3, agentConversations: 2 });
+  });
+});
+
+describe('favorites', () => {
+  it('drops the migrated pin when the successor is already pinned', async () => {
+    await inTenant('acme', async () => {
+      await mongoose.models.User.create({
+        email: 'bo@acme.test',
+        provider: 'openid',
+        favorites: [{ ...OLD }, { ...NEW }, { agentId: 'agent_x' }],
+      });
+    });
+    const result = await methods.migrateModelUsage({
+      migrationId: 'mm_1',
+      from: OLD,
+      to: NEW,
+      agentProviders: ['Mistral'],
+      audience: { tenantId: 'acme' },
+    });
+    expect(result.counts.favorites).toBe(1);
+    const user = await read<StoredDoc>('acme', 'User', { email: 'bo@acme.test' });
+    expect(user.favorites).toEqual([
+      expect.objectContaining(NEW),
+      expect.objectContaining({ agentId: 'agent_x' }),
+    ]);
+  });
+});
+
+describe('enableSuccessor', () => {
+  const AZURE = { endpoint: 'Azure', model: 'gpt-5' };
+  const narrow = (tenantId: string, principalType: string, principalId: string, custom: unknown) =>
+    inTenant(tenantId, async () => {
+      await mongoose.models.Config.create({
+        principalType,
+        principalId,
+        principalModel: principalType === 'group' ? 'Group' : 'Role',
+        priority: principalType === 'group' ? 10 : 0,
+        overrides: { endpoints: { custom } },
+      });
+    });
+  const custom = async (tenantId: string, principalId: string) =>
+    await read<{ overrides: { endpoints: { custom: EndpointRow[] } }; configVersion: number }>(
+      tenantId,
+      'Config',
+      { principalId },
+    );
+  type EndpointRow = { name: string; models: { default: string[] } };
+
+  it('enables the successor where the old model was enabled, with the same grants', async () => {
+    await narrow('acme', 'role', '__base__', [
+      { name: 'Mistral', models: { default: [OLD.model] } },
+      { name: 'Azure', models: { default: ['gpt-4o'] } },
+    ]);
+    await narrow('acme', 'group', 'sales', [{ name: 'Mistral', models: { default: [OLD.model] } }]);
+    await narrow('acme', 'group', 'ops', [{ name: 'Mistral', models: { default: ['other'] } }]);
+    await narrow('globex', 'role', '__base__', [
+      { name: 'Mistral', models: { default: ['other'] } },
+    ]);
+
+    const changed = await methods.enableSuccessor({
+      from: OLD,
+      to: AZURE,
+      audience: { all: true },
+      assignProvider: false,
+    });
+    expect(changed).toEqual({ acme: { configs: 2, assignment: false } });
+    const base = await custom('acme', '__base__');
+    expect(base.overrides.endpoints.custom[1].models.default).toEqual(['gpt-4o', 'gpt-5']);
+    expect(base.configVersion).toBe(1);
+    const sales = await custom('acme', 'sales');
+    expect(sales.overrides.endpoints.custom).toEqual([
+      { name: 'Mistral', models: { default: [OLD.model] } },
+      { name: 'Azure', models: { default: ['gpt-4o', 'gpt-5'] } },
+    ]);
+    const ops = await custom('acme', 'ops');
+    expect(ops.overrides.endpoints.custom).toHaveLength(1);
+    const other = await custom('globex', '__base__');
+    expect(other.configVersion).toBe(0);
+
+    const again = await methods.enableSuccessor({
+      from: OLD,
+      to: AZURE,
+      audience: { all: true },
+      assignProvider: false,
+    });
+    expect(again).toEqual({});
+  });
+
+  it('adds the successor to catalog assignments that had the old model', async () => {
+    const { createPlatformCatalogMethods } = await import('./platformCatalog');
+    const catalog = createPlatformCatalogMethods(mongoose);
+    await catalog.setTenantAssignments('acme', {
+      byok: false,
+      providers: [{ name: 'Mistral', models: [OLD.model] }],
+    });
+    await catalog.setTenantAssignments('globex', {
+      byok: false,
+      providers: [{ name: 'Mistral', models: ['other'] }],
+    });
+    await catalog.setTenantAssignments('initech', {
+      byok: false,
+      providers: [{ name: 'Mistral', models: [OLD.model] }],
+    });
+    const changed = await methods.enableSuccessor({
+      from: OLD,
+      to: NEW,
+      audience: { tenantIds: ['acme', 'globex'] },
+      assignProvider: true,
+    });
+    expect(changed).toEqual({ acme: { configs: 0, assignment: true } });
+    expect((await catalog.getTenantCatalog('acme'))?.providers).toEqual([
+      { name: 'Mistral', models: [OLD.model, NEW.model] },
+    ]);
+    expect((await catalog.getTenantCatalog('initech'))?.providers[0].models).toEqual([OLD.model]);
+    await methods.enableSuccessor({
+      from: OLD,
+      to: { endpoint: 'Azure', model: 'gpt-5' },
+      audience: { tenantIds: ['acme'] },
+      assignProvider: true,
+    });
+    expect((await catalog.getTenantCatalog('acme'))?.providers[1]).toEqual({
+      name: 'Azure',
+      models: ['gpt-5'],
+    });
+  });
+});
+
+describe('retargetModelRedirects', () => {
+  it('points redirects of the same scope and audience at the end of the chain', async () => {
+    const a = await methods.upsertModelRedirect({ scope: 'platform', from: OLD, to: NEW });
+    await methods.upsertModelRedirect({ scope: 'acme', from: OLD, to: NEW });
+    const end = { endpoint: 'Mistral', model: 'mistral-large-3' };
+    expect(await methods.retargetModelRedirects({ scope: 'platform', from: NEW, to: end })).toBe(1);
+    const all = methods.getModelRedirects();
+    expect(all.find((r) => r.redirectId === a.redirectId)?.to).toEqual(end);
+    expect(all.find((r) => r.scope === 'acme')?.to).toEqual(NEW);
   });
 });

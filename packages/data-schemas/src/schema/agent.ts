@@ -210,5 +210,7 @@ agentSchema.index({ createdAt: -1, _id: 1 });
 agentSchema.index({ tenantId: 1, createdAt: -1, _id: 1 });
 agentSchema.index({ 'edges.to': 1 });
 agentSchema.index({ platformAgentId: 1, tenantId: 1 }, { sparse: true });
+/** Fork: model migrations count and rewrite agents per model (`methods/modelMigration.ts`). */
+agentSchema.index({ tenantId: 1, provider: 1, model: 1 });
 
 export default agentSchema;

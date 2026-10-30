@@ -5,6 +5,8 @@ const {
   createAdminAuditEmitter,
   createCatalogModelCheck,
   createModelRemovalGuard,
+  createModelLabelLookup,
+  createAssignedProviderCheck,
   invalidateCachedAuthUserDoc,
   createModelMigrationService,
   createAdminMigrationHandlers,
@@ -23,6 +25,12 @@ const service = createModelMigrationService({
   store: db,
   invalidateConfig: invalidateConfigCaches,
   invalidateUser: (userId) => invalidateCachedAuthUserDoc(authUserDocCacheStore, { userId }),
+  labelOf: createModelLabelLookup({
+    getConfig: (tenantId) => getAppConfig(tenantId ? { tenantId } : { baseOnly: true }),
+  }),
+  isAssignedProvider: createAssignedProviderCheck({
+    findPlatformProviders: db.findPlatformProviders,
+  }),
 });
 
 const operatorAudit = createOperatorAudit({

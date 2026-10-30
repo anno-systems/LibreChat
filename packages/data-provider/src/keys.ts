@@ -15,6 +15,8 @@ export enum QueryKeys {
   conversation = 'conversation',
   /* Fork: a conversation's unseen model migration notice */
   conversationModelMigration = 'conversationModelMigration',
+  /* Fork: an agent's model migration notice for the caller */
+  agentModelMigration = 'agentModelMigration',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
   langfuseSessionLink = 'langfuseSessionLink',

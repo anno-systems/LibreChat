@@ -447,6 +447,9 @@ convoSchema.index({ tenantId: 1, isTemporary: 1, createdAt: -1, _id: -1 });
  * to the mutable agent field only for legacy rows where the primary field is absent. */
 convoSchema.index({ tenantId: 1, isTemporary: 1, initial_agent_id: 1, createdAt: -1, _id: -1 });
 convoSchema.index({ tenantId: 1, isTemporary: 1, agent_id: 1, createdAt: -1, _id: -1 });
+/** Fork: model migrations count and rewrite chats per model, and per agent (`methods/modelMigration.ts`). */
+convoSchema.index({ tenantId: 1, endpoint: 1, model: 1 });
+convoSchema.index({ tenantId: 1, agent_id: 1 });
 convoSchema.index({ user: 1, _id: 1 });
 convoSchema.index({ user: 1, chatProjectId: 1, updatedAt: -1, _id: -1 });
 convoSchema.index({ user: 1, chatProjectId: 1, createdAt: -1, _id: -1 });

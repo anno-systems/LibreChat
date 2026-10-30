@@ -8,8 +8,8 @@ import type {
 } from './types/traces';
 import type { TInsightsAccessResponse, TInsightsParams, TInsightsResponse } from './types/insights';
 import type { ScheduleMCPConsentView, ConfirmScheduleMCPConsent } from './types/scheduleConsent';
-import type { TConversationModelMigrationResponse } from './types/modelMigration';
 import type { CodeSetupAttempt, CodeSetupApprovalRequest } from './codeSetup';
+import type { TModelMigrationNoticeResponse } from './types/modelMigration';
 import type { TFileConfig } from './file-config';
 import type * as tl from './types/tools';
 import type * as t from './types';
@@ -1063,9 +1063,7 @@ export function getConversationById(id: string, signal?: AbortSignal): Promise<s
 }
 
 /** Fork: the conversation's unseen model migration notice. */
-export function getConversationModelMigration(
-  id: string,
-): Promise<TConversationModelMigrationResponse> {
+export function getConversationModelMigration(id: string): Promise<TModelMigrationNoticeResponse> {
   return request.get(endpoints.conversationModelMigration(id));
 }
 
@@ -1074,7 +1072,12 @@ export function clearConversationModelMigration(id: string): Promise<void> {
   return request.delete(endpoints.conversationModelMigration(id));
 }
 
-/** Fork: marks the agent's model migration notice as seen. */
+/** Fork: the agent's model migration notice for the caller (unseen, within 30 days). */
+export function getAgentModelMigration(id: string): Promise<TModelMigrationNoticeResponse> {
+  return request.get(endpoints.agentModelMigration(id));
+}
+
+/** Fork: marks the agent's model migration notice as seen by the caller. */
 export function clearAgentModelMigration(id: string): Promise<void> {
   return request.delete(endpoints.agentModelMigration(id));
 }

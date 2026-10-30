@@ -27,6 +27,8 @@ export const modelRefSchema: z.ZodType<ModelRef> = z
   .object({
     endpoint: z.string().trim().min(1).max(128),
     model: z.string().trim().min(1).max(256),
+    /** Display name for notices ("Mistral Large 3"); the configuration's or the id without one. */
+    label: z.string().trim().min(1).max(128).optional(),
   })
   .strict();
 

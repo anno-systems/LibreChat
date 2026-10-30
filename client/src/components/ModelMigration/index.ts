@@ -1,2 +1,2 @@
-export { default as ConversationModelMigrationNotice } from './ConversationNotice';
+export { default as ChatModelMigrationNotice } from './ChatNotice';
 export { default as AgentModelMigrationNotice } from './AgentNotice';

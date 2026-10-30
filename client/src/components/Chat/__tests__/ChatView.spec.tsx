@@ -21,7 +21,7 @@ jest.mock('~/hooks/AuthContext', () => ({
 }));
 
 /* Fork: the model migration notice has its own tests. */
-jest.mock('~/components/ModelMigration', () => ({ ConversationModelMigrationNotice: () => null }));
+jest.mock('~/components/ModelMigration', () => ({ ChatModelMigrationNotice: () => null }));
 jest.mock('~/data-provider', () => ({
   useGetMessagesByConvoId: () => ({ data: null, isLoading: false, isFetching: false }),
   useProjectQuery: () => ({ data: undefined }),

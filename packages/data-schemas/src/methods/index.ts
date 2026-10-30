@@ -50,6 +50,7 @@ export type {
 } from './platformCatalog';
 export type { TenantUserTarget } from './tenantPurge';
 export {
+  AGENT_NOTICE_WINDOW_MS,
   emptyCounts as emptyMigrationCounts,
   PLATFORM_REDIRECT_SCOPE,
   createModelMigrationMethods,
@@ -64,6 +65,9 @@ export type {
   MigrationAudience,
   MigrateModelResult,
   ModelRedirectInput,
+  RetargetInput,
+  SuccessorEnabled,
+  EnableSuccessorInput,
 } from './modelMigration';
 export type { TenantUsage, TenantUsageDays, TenantUsageDay, TenantUsageModel } from './tenantUsage';
 import type {

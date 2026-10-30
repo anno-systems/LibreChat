@@ -30,5 +30,6 @@ export type {
 } from './handlers';
 export { createCatalogModelCheck, createModelRemovalGuard, successorsSchema } from './guard';
 export type { ModelRemovalGuard, ModelRemovalGuardDeps, RemovalCheck, Successor } from './guard';
-export { createModelMigrationNoticeHandlers } from './notice';
-export type { ModelMigrationNoticeHandlers } from './notice';
+export { createModelMigrationNoticeHandlers, noticeView } from './notice';
+export type { ModelMigrationNoticeHandlers, ModelMigrationNoticeView } from './notice';
+export { createAssignedProviderCheck, createModelLabelLookup } from './labels';

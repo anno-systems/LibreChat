@@ -347,11 +347,21 @@ maps (endpoint, model) to (endpoint, model) and does two things
 
 - **Rewrite, once.** Agents (`provider`, `model`; version history stays history), conversations
   (`endpoint`, `model`, `endpointType`), presets, model spec presets in config documents (tenant,
-  group, role and user, `configVersion` bumped) and model favorites of users are moved to the
-  successor, in batches of `_id`s per kind, scoped to the tenant for a tenant migration. Running
-  the same mapping again changes nothing. Messages keep the model they were written with.
-  Platform agent copies are left to their definition. Merged configs and cached auth documents
-  of changed users are invalidated.
+  group, role and user, `configVersion` bumped) and model favorites of users (a pin of the old
+  model is dropped when the successor is already pinned) are moved to the successor, in batches
+  of `_id`s per kind, scoped to the tenant for a tenant migration. When a redirect already
+  continues from the successor (A→B while B→C exists), documents go straight to the end of the
+  chain, and redirects of the same scope that ended at the old model are pointed there too.
+  Running the same mapping again changes nothing. Messages keep the model they were written
+  with. Platform agent copies are left to their definition. Merged configs and cached auth
+  documents of changed users are invalidated.
+- **Successor enabled (owner's decision).** An operator migration enables the successor for each
+  tenant that had the old model, with the same grants: it is added to the narrowed lists of the
+  tenant's base, group and role documents that offered the old model (a document that does not
+  narrow the successor's endpoint, while the base document does, gets the base list plus the
+  successor), and to the tenant's catalog assignment when the successor's provider is assigned
+  per tenant. Tenants without the old model are not touched. Recorded in `model.migrated`
+  (`successorConfigs`, `successorAssigned`).
 - **Redirect, kept.** The mapping stays as a platform-wide document (scope `platform`, for every
   or listed tenants, or a tenant's id), held in memory and reloaded every 30 seconds per
   replica. Chat requests (`routes/agents/chat.js`), every agent of a run before its model is
@@ -359,15 +369,21 @@ maps (endpoint, model) to (endpoint, model) and does two things
   served config go to the successor. At each step the tenant's redirect wins, then the
   operator's for listed tenants, then the operator's for all; chains are followed and a step
   back to a model already passed ends the chain.
-- **Notice.** A migrated conversation and agent carry `modelMigration: { id, from, to, at }`;
-  the chat shows "Now runs on X instead of Y" once above the composer and the agent builder once
-  to an editor, and each clears it on the server. Conversations of a migrated agent get the
-  notice too. Every migration is recorded as `model.migrated` in each affected tenant's audit
-  chain (and the platform chain for the operator's), with counts per kind.
+- **Notice.** A migrated conversation and agent carry `modelMigration: { id, from, to, at }`, where
+  `from` and `to` hold `endpoint`, `model` and, when known, `label` (the display name given with
+  the migration or a model spec's label, stored at migration time so a retired model keeps its
+  name). The chat shows "Now runs on Mistral Large 3 instead of Mistral Large 2" (the model id
+  without a label) once above the composer. A conversation's notice is its owner's; a migrated
+  agent's notice is shown once to each user, on any chat with the agent (new ones too) and in
+  its builder, for 30 days after the migration. Acknowledgements are rows per (migration, user)
+  in `ModelMigrationSeen`, kept 90 days, so shared agents scale. Every migration is recorded as
+  `model.migrated` in each affected tenant's audit chain (and the platform chain for the
+  operator's), with counts per kind.
 - **Who.** The operator through `/api/platform/model-migrations` (target: a model of the
   catalog); tenant admins through `/api/admin/models/migrations` (`manage:configs`; target: a
   model enabled in the tenant-wide config). Both have a preview with counts per kind and a usage
-  count per model.
+  count per model, over active chats only (neither archived nor temporary); the rewrite moves
+  all of them.
 - **Successor mandatory.** A provider update or tenant assignment that drops a model agents or
   conversations still use is refused with 409 `model_in_use`, unless a redirect covers it or the
   same call names `successors`, which are migrated before the write. A model a platform agent

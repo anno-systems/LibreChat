@@ -1055,11 +1055,7 @@ export default function AgentPanel() {
             !agentQuery.isInitialLoading &&
             activePanel === Panel.builder &&
             agentQuery.data?.id && (
-              <AgentModelMigrationNotice
-                key={agentQuery.data.id}
-                agentId={agentQuery.data.id}
-                notice={agentQuery.data.modelMigration}
-              />
+              <AgentModelMigrationNotice key={agentQuery.data.id} agentId={agentQuery.data.id} />
             )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
             <AgentConfig
