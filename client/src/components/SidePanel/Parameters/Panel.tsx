@@ -7,6 +7,7 @@ import {
   paramSettings,
   getSettingsKeys,
   getEndpointField,
+  getDefaultParamsEndpoint,
   SettingDefinition,
   tConvoUpdateSchema,
   applyModelAwareDefaults,
@@ -51,9 +52,9 @@ export default function Parameters() {
   );
 
   const { parameters, visibleParameters } = useMemo(() => {
-    const customParams = endpointsConfig[provider]?.customParams ?? {};
     const [combinedKey, endpointKey] = getSettingsKeys(endpointType ?? provider, model);
-    const overriddenEndpointKey = customParams.defaultParamsEndpoint ?? endpointKey;
+    const overriddenEndpointKey =
+      getDefaultParamsEndpoint(endpointsConfig, provider, model) ?? endpointKey;
     const dropParamsMap = startupConfig?.endpointsDropParamsMap;
     const dropParamsEntry =
       dropParamsMap?.[provider] ?? dropParamsMap?.[normalizeEndpointName(provider)];

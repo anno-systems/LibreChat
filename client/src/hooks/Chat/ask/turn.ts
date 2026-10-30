@@ -152,7 +152,11 @@ export function buildTurn({
   const isEditOrContinue = isEdited || isContinued;
   const endpoint = conversation?.endpoint;
   const endpointType = getEndpointField(endpointsConfig, endpoint, 'type');
-  const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, endpoint);
+  const defaultParamsEndpoint = getDefaultParamsEndpoint(
+    endpointsConfig,
+    endpoint,
+    conversation?.model,
+  );
   const { latestApprovalMode: latestCodeApprovalMode } = code;
   const { approvalMode: codeApprovalMode, environmentMode: codeEnvironmentMode } = code;
   const codeWorkspaces = code.workspaces;

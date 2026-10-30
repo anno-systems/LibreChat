@@ -11,6 +11,7 @@ import { initializeCustom } from '../custom/initialize';
 import { initializeGoogle } from '../google/initialize';
 import { initializeOpenAI } from '../openai/initialize';
 import { getCustomEndpointConfig } from '~/app/config';
+import { withModelRoute } from '../custom/routes';
 
 /**
  * Type for initialize functions
@@ -195,9 +196,12 @@ export interface ProviderConfigResult {
 export function getProviderConfig({
   provider,
   appConfig,
+  model,
 }: {
   provider: string;
   appConfig?: AppConfig;
+  /** Fork: the requested model, so a custom endpoint's `modelRoutes` entry decides the client. */
+  model?: string | null;
 }): ProviderConfigResult {
   let getOptions = providerConfigMap[provider];
   let overrideProvider = provider;
@@ -207,7 +211,7 @@ export function getProviderConfig({
     overrideProvider = provider.toLowerCase();
     getOptions = providerConfigMap[overrideProvider];
   } else if (!getOptions) {
-    customEndpointConfig = getCustomEndpointConfig({ endpoint: provider, appConfig });
+    customEndpointConfig = getCustomEndpointConfig({ endpoint: provider, appConfig, model });
     if (!customEndpointConfig) {
       throw new Error(`Provider ${provider} not supported`);
     }
@@ -216,7 +220,7 @@ export function getProviderConfig({
   }
 
   if (isKnownCustomProvider(overrideProvider) && !customEndpointConfig) {
-    customEndpointConfig = getCustomEndpointConfig({ endpoint: provider, appConfig });
+    customEndpointConfig = getCustomEndpointConfig({ endpoint: provider, appConfig, model });
     if (!customEndpointConfig && appConfig) {
       /**
        * Case-insensitive fallback for known custom providers only.
@@ -250,7 +254,8 @@ export function getProviderConfig({
           `Provider ${provider} is ambiguous: multiple custom endpoints match case-insensitively (${names}). Rename one or use the exact-case provider value.`,
         );
       }
-      customEndpointConfig = matches[0] && resolveCustomEndpointSecrets(matches[0]);
+      customEndpointConfig =
+        matches[0] && resolveCustomEndpointSecrets(withModelRoute(matches[0], model));
     }
     if (!customEndpointConfig) {
       throw new Error(`Provider ${provider} not supported`);

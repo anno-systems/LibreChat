@@ -281,7 +281,11 @@ const useNavigateToConvo = (index = 0) => {
 
       const models = modelsConfig?.[defaultEndpoint ?? ''] ?? [];
 
-      const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, defaultEndpoint);
+      const defaultParamsEndpoint = getDefaultParamsEndpoint(
+        endpointsConfig,
+        defaultEndpoint,
+        conversation.model,
+      );
       convo = buildDefaultConvo({
         models,
         conversation,

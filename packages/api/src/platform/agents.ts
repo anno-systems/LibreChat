@@ -235,6 +235,7 @@ export function createPlatformAgentService(deps: PlatformAgentServiceDeps): Plat
     const provider = await providerOf(definition.provider);
     if (!provider || !hasModel(provider, definition.model)) return unchanged;
     const endpoint = providerEndpoint(tenantId, provider, [definition.model], decrypt);
+    if (!endpoint) return unchanged;
     const validated = modelsConfig?.[definition.provider] ?? [];
     return {
       appConfig: withRunEndpoint(appConfig, endpoint),

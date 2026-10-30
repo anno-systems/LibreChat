@@ -130,3 +130,17 @@ export function createCatalogModelCheck(deps: {
     return provider?.models.some((model) => model.id === ref.model) ?? false;
   };
 }
+
+/**
+ * Fork: whether a migration target is served. A model of a platform provider without a key
+ * (`keyMissing`) is served to no tenant, so nothing may be migrated to it (`target_not_served`);
+ * every other model (a librechat.yaml endpoint's, a keyed provider's) is.
+ */
+export function createServedTargetCheck(deps: {
+  findPlatformProviders(names: string[]): Promise<Pick<PlatformProvider, 'name' | 'apiKey'>[]>;
+}): (ref: ModelRef) => Promise<boolean> {
+  return async (ref) => {
+    const [provider] = await deps.findPlatformProviders([ref.endpoint]);
+    return !provider || Boolean(provider.apiKey);
+  };
+}

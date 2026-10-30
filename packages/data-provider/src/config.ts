@@ -2348,6 +2348,25 @@ export const endpointSchema = baseEndpointSchema.merge(
     modelLimits: z.record(providerLimitsSchema).optional(),
     /** Fork: display names of models in the model selector, by model id. */
     modelLabels: z.record(z.string().min(1).max(128)).optional(),
+    /**
+     * Fork: how single models are reached, by model id, over the endpoint's own fields: another
+     * base URL, the native Anthropic client (`provider: anthropic`), the OpenAI Responses API
+     * (`addParams.useResponsesApi`) or other rejected request fields (`dropParams`, replacing the
+     * endpoint's). The selector still shows one endpoint; a model without a route uses the
+     * endpoint's fields.
+     */
+    modelRoutes: z
+      .record(
+        z
+          .object({
+            baseURL: z.string().optional(),
+            provider: z.literal(EModelEndpoint.anthropic).optional(),
+            addParams: addParamsSchema.optional(),
+            dropParams: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     /** Static per-model token config: context window and per-million-token rates */
     tokenConfig: z
       .record(
@@ -6086,9 +6105,16 @@ export function resolveEndpointType(
 export function getDefaultParamsEndpoint(
   endpointsConfig: TEndpointsConfig | undefined | null,
   endpoint: string | null | undefined,
+  /** Fork: a model that runs through another API than its endpoint takes that API's set. */
+  model?: string | null,
 ): string | undefined {
   if (!endpointsConfig || !endpoint) {
     return undefined;
   }
-  return endpointsConfig[endpoint]?.customParams?.defaultParamsEndpoint;
+  const config = endpointsConfig[endpoint];
+  const modelParams = model ? config?.modelParamsEndpoints?.[model] : undefined;
+  if (modelParams) {
+    return modelParams === EModelEndpoint.custom ? undefined : modelParams;
+  }
+  return config?.customParams?.defaultParamsEndpoint;
 }

@@ -456,6 +456,27 @@ describe('a run of a platform agent', () => {
     }
   });
 
+  it('adds no endpoint while the provider has no key', async () => {
+    await methods.upsertPlatformAgent(support);
+    const [stored] = await methods.findPlatformProviders(['Mistral Platform']);
+    const { apiKey: _key, ...keyless } = stored;
+    await methods.upsertPlatformProvider(keyless);
+    const agent = {
+      platformAgentId: 'platform_support',
+      provider: 'Mistral Platform',
+      model: 'mistral-small-latest',
+    };
+
+    const result = await service().prepareRun({
+      agent,
+      tenantId: 'acme',
+      appConfig: tenantConfig,
+      modelsConfig: tenantModels,
+    });
+    expect(result.appConfig).toBe(tenantConfig);
+    expect(result.modelsConfig).toBe(tenantModels);
+  });
+
   it("keeps the tenant's own endpoint when it is assigned the provider", () => {
     const assigned = {
       endpoints: { custom: [{ name: 'Mistral Platform', baseURL: 'https://api.mistral.ai/v1' }] },

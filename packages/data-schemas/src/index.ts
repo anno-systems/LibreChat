@@ -78,6 +78,8 @@ export {
   emptyMigrationCounts,
   PLATFORM_REDIRECT_SCOPE,
   createModelMigrationMethods,
+  /* Fork: per-model APIs of platform providers. */
+  CATALOG_APIS,
 } from './methods';
 export {
   PLATFORM_AGENT_LOCKED,

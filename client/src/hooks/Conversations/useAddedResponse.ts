@@ -90,7 +90,11 @@ export default function useAddedResponse(): AddedChatContract {
       }
 
       const models = modelsConfig?.[defaultEndpoint ?? ''] ?? [];
-      const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, defaultEndpoint);
+      const defaultParamsEndpoint = getDefaultParamsEndpoint(
+        endpointsConfig,
+        defaultEndpoint,
+        newConversation.model,
+      );
       newConversation = buildDefaultConvo({
         conversation: newConversation,
         lastConversationSetup: preset as TConversation,

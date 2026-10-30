@@ -48,7 +48,11 @@ const useDefaultConvo = () => {
         }
       }
 
-      const defaultParamsEndpoint = getDefaultParamsEndpoint(endpointsConfig, endpoint);
+      const defaultParamsEndpoint = getDefaultParamsEndpoint(
+        endpointsConfig,
+        endpoint,
+        conversation.model,
+      );
 
       const defaultConvo = buildDefaultConvo({
         conversation: conversation as TConversation,

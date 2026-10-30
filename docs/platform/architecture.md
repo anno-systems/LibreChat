@@ -315,6 +315,67 @@ Owner's decisions on the shape of a platform provider (`packages/data-schemas/sr
   in between wins. During a rolling deploy an older replica still running reads the rewritten
   providers without their models until it stops.
 
+### Model URLs, APIs and keys (2026-10-30)
+
+The owner's models sit on one Azure AI Foundry resource with one key but answer at different
+URLs and through different APIs (Mistral and Mistral Large through Chat Completions, GPT-6.1
+through the Responses API, Claude through the Anthropic Messages API). Owner's decisions
+(`packages/api/src/platform/models.ts`, `params.ts`, `catalog.ts`):
+
+- **The provider is the account** (label, key, location, queue, `allTenants`); **each model has
+  its own `baseURL` and `api`**: `chat` (OpenAI Chat Completions), `responses` (OpenAI Responses
+  API) or `anthropic` (Anthropic Messages API). The model's `baseURL` falls back to the
+  provider's, which is optional now (a model without either is refused, 400
+  `base_url_required`).
+- **Pasted URLs.** The operator pastes what the portal shows. Query and trailing slashes are
+  removed, and a trailing `/chat/completions`, `/responses` or `/messages` is stripped and names
+  the model's `api` when none is given (a model without its own URL takes the API the provider
+  URL's ending named; a URL without such an ending names none, which is served as `chat`).
+  `…/anthropic/v1/messages` is stored as `…/anthropic/v1`; the Anthropic client, which appends
+  `/v1/messages` itself, is given `…/anthropic`.
+- **One endpoint, a route per model** (chosen over one internal endpoint per URL and API, which
+  would have split the provider in the selector and changed the endpoint name that assignments,
+  conversations, agents, model migrations, queues and prices refer to, so moving a model to
+  another API would have needed a migration). The custom endpoint schema has a fork field
+  `modelRoutes` (model id → `baseURL`, `provider: anthropic`, `addParams`, `dropParams`), and
+  every place that builds a request for a model resolves the endpoint with that model
+  (`withModelRoute` through `getCustomEndpointConfig` and `getProviderConfig`, used by
+  `initializeCustom` for chats, titles and activity labels, by `initializeAgent` and by
+  summarization). `responses` is upstream's `useResponsesApi` on the OpenAI client; `anthropic`
+  is upstream's `provider: anthropic` for custom endpoints (native client, key as `x-api-key`,
+  which Azure AI Foundry accepts; the OpenAI APIs take it as a bearer token, which Azure's v1 API
+  accepts too).
+- **Parameters follow the model's API.** `/api/endpoints` names the parameter set of each model
+  routed through another API than its endpoint (`modelParamsEndpoints`, no URLs or keys), and the
+  client's parameter panels, the agent builder and settings parsing take it
+  (`getDefaultParamsEndpoint` with the model), so Claude shows Anthropic's parameters next to
+  Mistral's OpenAI ones in one provider. Before a request leaves, a routed model's settings lose
+  the fields its API does not take (`withoutForeignParams`, from the OpenAI and Anthropic
+  conversation schemas plus raw OpenAI fields): the Anthropic API never gets
+  `frequency_penalty`, `presence_penalty`, `logit_bias`, `n` or other OpenAI-only fields, and the
+  OpenAI APIs never get `topK`, `topP` (Anthropic's spelling), thinking settings or prompt
+  caching. A conversation moved between the provider's models therefore keeps working.
+- **Rejected request fields are built-in rules** per API and model family (`params.ts`), not an
+  operator list: `user` is never sent on the OpenAI APIs (Mistral and other Foundry models reject
+  it), reasoning models (`o1`…`o9`, `gpt-5`, `gpt-6` and later, not `-chat`) get no sampling
+  controls, and the Anthropic API gets no `metadata` (the user id). The token limit field needs
+  no rule: upstream sends `max_completion_tokens`/`max_output_tokens` for `gpt-5` and later, the
+  OpenAI client does it for `o`-series models. A model may override the rules with its own
+  `dropParams` (an advanced field; the operator API shows the rules as `defaultDropParams`). A
+  provider that still has the operator's `dropParams` from before keeps it until the operator
+  sends `dropParams: null`, which the admin app does on every save, so providers move to the
+  rules.
+- **A provider without a key.** A seed creates providers and the owner adds keys in the admin
+  app, so `POST /api/platform/providers` may leave out `apiKey`. Such a provider is listed to the
+  operator with `keyMissing: true`, can be assigned, and is served to no tenant (no endpoint,
+  not in `/api/admin/catalog`, no platform agent run) until a key is set. An update without
+  `apiKey` keeps the stored key, as before. Its models are no migration target: a successor in
+  `successors`, an operator migration or a tenant migration that names one is refused with 400
+  `target_not_served` (a successor on the provider being saved is allowed when that save sets
+  the key).
+- **Migration.** None needed: a stored model without `api` is `chat`, without `baseURL` it uses
+  the provider's, and old documents keep their provider-wide `dropParams`.
+
 ### Catalog lock
 
 Tenant admins are LibreChat admins of their tenant and can call `/api/admin/config` with their

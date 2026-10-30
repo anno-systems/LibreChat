@@ -10,6 +10,7 @@ import {
 import type { TCustomEndpoints, TEndpoint } from 'librechat-data-provider';
 import type { TCustomEndpointsConfig } from '~/types/endpoints';
 import { resolveEndpointProviderId, providerFromBaseURL } from './providers';
+import { modelParamsEndpointsOf } from './routes';
 import { isUserProvided } from '~/utils';
 
 /**
@@ -169,6 +170,13 @@ export function loadCustomEndpointsConfig(
         endpoint;
       /** Fork: display names of the endpoint's models for the model selector. */
       const { modelLabels } = endpoint;
+      /** Fork: the parameter set of models routed through another API (`routes.ts`). */
+      const modelParamsEndpoints = modelParamsEndpointsOf(
+        endpoint,
+        (routed) =>
+          resolveCustomEndpointParameters(routed, extractEnvVariable(routed.baseURL ?? ''))
+            ?.defaultParamsEndpoint,
+      );
 
       const resolvedApiKey = extractEnvVariable(apiKey);
       const resolvedBaseURL = extractEnvVariable(baseURL);
@@ -192,6 +200,7 @@ export function loadCustomEndpointsConfig(
         customParams: resolvedCustomParams,
         modelDisplayLabel,
         ...(modelLabels && { modelLabels }),
+        ...(modelParamsEndpoints && { modelParamsEndpoints }),
         iconURL,
         providerId: resolveEndpointProviderId({
           name,

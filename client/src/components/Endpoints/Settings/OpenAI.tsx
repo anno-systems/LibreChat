@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
-import { presetSettings, getSettingsKeys, applyModelAwareDefaults } from 'librechat-data-provider';
+import {
+  presetSettings,
+  getSettingsKeys,
+  applyModelAwareDefaults,
+  getDefaultParamsEndpoint,
+} from 'librechat-data-provider';
 import type { SettingDefinition } from 'librechat-data-provider';
 import type { TModelSelectProps } from '~/common';
 import { componentMapping } from '~/components/SidePanel/Parameters/components';
@@ -29,7 +34,7 @@ export default function OpenAISettings({
     }
     /** A custom endpoint's own parameter set (e.g. OpenRouter's) decides its model-aware defaults. */
     const paramsKey =
-      endpointsConfig?.[conversation?.endpoint ?? '']?.customParams?.defaultParamsEndpoint ??
+      getDefaultParamsEndpoint(endpointsConfig, conversation?.endpoint, conversation?.model) ??
       endpointKey;
     return {
       col1: applyModelAwareDefaults(

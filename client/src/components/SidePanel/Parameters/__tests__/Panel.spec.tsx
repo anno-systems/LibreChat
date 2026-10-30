@@ -23,6 +23,12 @@ function setup(
       type: EModelEndpoint.custom,
       customParams: { defaultParamsEndpoint: EModelEndpoint.anthropic },
     },
+    /** Fork: one provider whose Claude model runs through the Anthropic API. */
+    foundry: {
+      order: 1,
+      type: EModelEndpoint.custom,
+      modelParamsEndpoints: { 'claude-sonnet-5-5': EModelEndpoint.anthropic },
+    },
   };
   queryClient.setQueryData([QueryKeys.endpoints], endpoints);
   queryClient.setQueryData(startupConfigKey(false), startupConfig);
@@ -123,5 +129,16 @@ describe.each([
       topP: 0.9,
       topK: 40,
     });
+  });
+});
+
+describe('a custom endpoint whose models run through different APIs', () => {
+  it("shows the Anthropic set for a model routed to the Anthropic API, the endpoint's otherwise", () => {
+    const { unmount } = setup('foundry', 'claude-sonnet-5-5');
+    expect(screen.getByRole('switch', { name: 'Thinking' })).toBeInTheDocument();
+    unmount();
+
+    setup('foundry', 'mistral-medium-3-5');
+    expect(screen.queryByRole('switch', { name: 'Thinking' })).not.toBeInTheDocument();
   });
 });

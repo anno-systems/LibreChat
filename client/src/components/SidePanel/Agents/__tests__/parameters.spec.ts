@@ -333,3 +333,31 @@ describe('legacy reasoning control visibility', () => {
     },
   );
 });
+
+describe('resolveAgentParameterSettings — models of one endpoint on different APIs', () => {
+  const endpointsConfig = {
+    foundry: {
+      order: 0,
+      type: EModelEndpoint.custom,
+      modelParamsEndpoints: { 'claude-sonnet-5-5': EModelEndpoint.anthropic },
+    },
+  };
+  const keys = (model: string) =>
+    resolveAgentParameterSettings({
+      endpointsConfig,
+      startupConfig: undefined,
+      model,
+      provider: 'foundry',
+      webSearchAllowed: true,
+    }).visibleParameters.map((param) => param.key);
+
+  it('offers the Anthropic set only for the model routed to the Anthropic API', () => {
+    expect(keys('claude-sonnet-5-5')).toEqual(
+      expect.arrayContaining(['maxOutputTokens', 'thinking']),
+    );
+    expect(keys('claude-sonnet-5-5')).not.toContain('frequency_penalty');
+    expect(keys('mistral-medium-3-5')).toContain('frequency_penalty');
+    expect(keys('mistral-medium-3-5')).not.toContain('maxOutputTokens');
+    expect(keys('mistral-medium-3-5')).not.toContain('thinking');
+  });
+});

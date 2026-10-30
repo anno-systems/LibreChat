@@ -1191,6 +1191,7 @@ function resolveSummarizationProvider(
     const { overrideProvider, customEndpointConfig } = getProviderConfig({
       provider: rawProvider,
       appConfig,
+      model: target.model,
     });
     if (!customEndpointConfig) {
       return {

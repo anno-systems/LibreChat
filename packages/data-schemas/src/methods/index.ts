@@ -13,7 +13,7 @@ import type { FileStorageMethods } from './fileStorage';
 import { createToolApprovalGrantMethods } from './toolApprovalGrant';
 import { createScheduleMCPConsentStorage } from './scheduleConsent';
 export { createScheduleMCPConsentStorage } from './scheduleConsent';
-export { createPlatformCatalogMethods } from './platformCatalog';
+export { createPlatformCatalogMethods, CATALOG_APIS } from './platformCatalog';
 export { createPlatformBannerMethods } from './platformBanner';
 export type { PlatformBanner } from './platformBanner';
 export {
@@ -47,6 +47,7 @@ export type {
   TenantCatalog,
   OwnEndpoint,
   OwnModel,
+  CatalogApi,
   CatalogModel,
   CatalogLocation,
   CatalogAssignment,
