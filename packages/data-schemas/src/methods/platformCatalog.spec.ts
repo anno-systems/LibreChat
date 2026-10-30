@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import type { PlatformProvider } from './platformCatalog';
 import { createPlatformCatalogMethods } from './platformCatalog';
 import { tenantStorage } from '../config/tenantContext';
 
@@ -13,14 +14,13 @@ jest.mock('~/config/winston', () => ({
 let mongoServer: MongoMemoryServer;
 let methods: ReturnType<typeof createPlatformCatalogMethods>;
 
-const mistral = {
+const mistral: PlatformProvider = {
   name: 'Mistral Platform',
   label: 'Mistral',
   baseURL: 'https://api.mistral.ai/v1',
   apiKey: 'v3:encrypted',
-  models: ['small', 'large'],
-  region: 'EU (Paris)',
-  country: 'FR',
+  models: [{ id: 'small', label: 'Mistral Small' }, { id: 'large' }],
+  location: { type: 'country', code: 'FR' },
 };
 
 beforeAll(async () => {
@@ -47,18 +47,29 @@ describe('platform providers', () => {
     await methods.upsertPlatformProvider(mistral);
     const updated = await methods.upsertPlatformProvider({
       ...mistral,
-      models: ['small'],
-      region: undefined,
-      country: undefined,
+      models: [{ id: 'small', location: { type: 'eu' } }],
+      location: undefined,
     });
 
-    expect(updated).toMatchObject({ name: 'Mistral Platform', models: ['small'] });
-    expect(updated.region).toBeUndefined();
-    expect(updated.country).toBeUndefined();
+    expect(updated).toMatchObject({
+      name: 'Mistral Platform',
+      models: [{ id: 'small', location: { type: 'eu' } }],
+    });
+    expect(updated.location).toBeUndefined();
     expect(await methods.listPlatformProviders()).toHaveLength(1);
     expect(await methods.findPlatformProviders(['Mistral Platform', 'Other'])).toHaveLength(1);
     expect(await methods.deletePlatformProvider('Mistral Platform')).toBe(true);
     expect(await methods.deletePlatformProvider('Mistral Platform')).toBe(false);
+  });
+
+  it('creates a provider only under a free name', async () => {
+    const created = await methods.createPlatformProvider(mistral);
+    expect(created).toEqual({ ok: true, value: expect.objectContaining({ name: mistral.name }) });
+    expect(await methods.createPlatformProvider({ ...mistral, label: 'Other' })).toEqual({
+      ok: false,
+      error: { code: 'name_taken' },
+    });
+    expect((await methods.findPlatformProviders([mistral.name]))[0].label).toBe('Mistral');
   });
 
   it('keeps an empty drop list apart from none and clears it on an update without one', async () => {
@@ -75,19 +86,18 @@ describe('platform providers', () => {
     expect(cleared).not.toHaveProperty('dropParams');
   });
 
-  it('stores queue limits with only the fields set and clears them on an update without', async () => {
+  it('stores limits per model and queue settings with only the fields set', async () => {
     const limited = await methods.upsertPlatformProvider({
       ...mistral,
-      limits: { concurrency: 3, maxWaitSeconds: 60 },
+      models: [{ id: 'small', limits: { concurrency: 3 } }, { id: 'large' }],
+      queue: { maxWaitSeconds: 60 },
     });
-    expect(limited.limits).toEqual({ concurrency: 3, maxWaitSeconds: 60 });
-
-    await methods.upsertPlatformProvider({ ...mistral, limits: { tokensPerMinute: 50_000 } });
-    const [replaced] = await methods.findPlatformProviders([mistral.name]);
-    expect(replaced.limits).toEqual({ tokensPerMinute: 50_000 });
+    expect(limited.models).toEqual([{ id: 'small', limits: { concurrency: 3 } }, { id: 'large' }]);
+    expect(limited.queue).toEqual({ maxWaitSeconds: 60 });
 
     const cleared = await methods.upsertPlatformProvider(mistral);
-    expect(cleared).not.toHaveProperty('limits');
+    expect(cleared).not.toHaveProperty('queue');
+    expect(cleared.models.every((model) => model.limits == null)).toBe(true);
   });
 
   it('stores the all-tenants flag and finds those providers with the named ones', async () => {
@@ -139,12 +149,27 @@ describe('tenant catalogs', () => {
       byok: true,
       providers: [{ name: 'Mistral Platform', models: ['small'] }],
     });
-    const own = { name: 'Own', baseURL: 'https://llm.a.example/v1', apiKey: 'k', models: ['x'] };
+    const own = {
+      name: 'Own',
+      baseURL: 'https://llm.a.example/v1',
+      apiKey: 'k',
+      models: [{ id: 'x' }],
+    };
 
     await methods.upsertOwnEndpoint('tenant-a', own);
-    const replaced = await methods.upsertOwnEndpoint('tenant-a', { ...own, models: ['y'] });
+    const replaced = await methods.upsertOwnEndpoint('tenant-a', {
+      ...own,
+      location: { type: 'global' },
+      models: [{ id: 'y', label: 'Why', location: { type: 'country', code: 'DE' } }],
+    });
 
-    expect(replaced.own).toEqual([{ ...own, models: ['y'] }]);
+    expect(replaced.own).toEqual([
+      {
+        ...own,
+        location: { type: 'global' },
+        models: [{ id: 'y', label: 'Why', location: { type: 'country', code: 'DE' } }],
+      },
+    ]);
     const dropping = await methods.upsertOwnEndpoint('tenant-a', { ...own, dropParams: ['user'] });
     expect(dropping.own[0].dropParams).toEqual(['user']);
     expect((await methods.upsertOwnEndpoint('tenant-a', own)).own[0]).not.toHaveProperty(
@@ -162,11 +187,100 @@ describe('tenant catalogs', () => {
       name: 'Own',
       baseURL: 'https://llm.a.example/v1',
       apiKey: 'k',
-      models: ['x'],
+      models: [{ id: 'x' }],
     });
 
     const catalog = await methods.setTenantAssignments('tenant-a', { byok: true, providers: [] });
 
     expect(catalog.own).toHaveLength(1);
+  });
+});
+
+describe('documents of the old shape', () => {
+  const legacy = {
+    name: 'Legacy',
+    label: 'Legacy',
+    baseURL: 'https://api.example/v1',
+    apiKey: 'v3:encrypted',
+    models: ['small', 'large'],
+    region: 'EU (Paris)',
+    country: 'fr',
+    limits: { concurrency: 2, tokensPerMinute: 5000, maxWaitSeconds: 60, pauseSeconds: 5 },
+    allTenants: false,
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
+  };
+  const legacyCatalog = {
+    tenantId: 'tenant-a',
+    byok: true,
+    providers: [{ name: 'Legacy', models: ['small'] }],
+    own: [{ name: 'Own', baseURL: 'https://llm.a.example/v1', apiKey: 'k', models: ['x', 'y'] }],
+    updatedAt: new Date('2026-10-01T00:00:00Z'),
+  };
+  const expected: PlatformProvider = {
+    name: 'Legacy',
+    label: 'Legacy',
+    baseURL: 'https://api.example/v1',
+    apiKey: 'v3:encrypted',
+    models: [
+      { id: 'small', limits: { concurrency: 2, tokensPerMinute: 5000 } },
+      { id: 'large', limits: { concurrency: 2, tokensPerMinute: 5000 } },
+    ],
+    location: { type: 'country', code: 'FR' },
+    allTenants: false,
+    queue: { maxWaitSeconds: 60, pauseSeconds: 5 },
+  };
+
+  /** Written as an older replica stores them, past the schema. */
+  async function insertLegacy() {
+    await mongoose.models.PlatformProvider.collection.insertOne({ ...legacy });
+    await mongoose.models.TenantCatalog.collection.insertOne({ ...legacyCatalog });
+  }
+
+  it('reads them in the new shape before they are migrated', async () => {
+    await insertLegacy();
+    const [provider] = await methods.findPlatformProviders(['Legacy']);
+    expect(provider).toMatchObject(expected);
+    expect(provider).not.toHaveProperty('region');
+    expect(provider).not.toHaveProperty('limits');
+    expect((await methods.getTenantCatalog('tenant-a'))?.own[0].models).toEqual([
+      { id: 'x' },
+      { id: 'y' },
+    ]);
+  });
+
+  it('migrates them once, idempotently, and leaves new documents alone', async () => {
+    await insertLegacy();
+    await methods.upsertPlatformProvider(mistral);
+
+    expect(await methods.migratePlatformCatalog()).toEqual({ providers: 1, tenants: 1 });
+    expect(await methods.migratePlatformCatalog()).toEqual({ providers: 0, tenants: 0 });
+
+    const raw = await mongoose.models.PlatformProvider.collection.findOne({ name: 'Legacy' });
+    expect(raw).not.toHaveProperty('region');
+    expect(raw).not.toHaveProperty('country');
+    expect(raw).not.toHaveProperty('limits');
+    expect(raw?.models).toEqual(expected.models);
+    expect(raw?.location).toEqual({ type: 'country', code: 'FR' });
+    expect(raw?.queue).toEqual({ maxWaitSeconds: 60, pauseSeconds: 5 });
+    expect((await methods.findPlatformProviders(['Legacy']))[0]).toMatchObject(expected);
+
+    const catalog = await mongoose.models.TenantCatalog.collection.findOne({
+      tenantId: 'tenant-a',
+    });
+    expect(catalog?.own[0].models).toEqual([{ id: 'x' }, { id: 'y' }]);
+    expect(catalog?.providers).toEqual([{ name: 'Legacy', models: ['small'] }]);
+  });
+
+  it('drops the old fields when an unmigrated provider is saved', async () => {
+    await insertLegacy();
+    const [provider] = await methods.findPlatformProviders(['Legacy']);
+    await methods.upsertPlatformProvider(provider);
+    const raw = await mongoose.models.PlatformProvider.collection.findOne({ name: 'Legacy' });
+    expect(raw).not.toHaveProperty('country');
+    expect(raw).not.toHaveProperty('limits');
+    expect(raw?.models[0]).toEqual({
+      id: 'small',
+      limits: { concurrency: 2, tokensPerMinute: 5000 },
+    });
   });
 });

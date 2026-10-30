@@ -40,6 +40,7 @@ const mcpPricing = createMcpPricingHandlers({
 
 router.use(requirePlatformToken(process.env.PLATFORM_API_TOKEN));
 router.get('/providers', handlers.listProviders);
+router.post('/providers', handlers.postProvider);
 router.put('/providers/:name', handlers.putProvider);
 router.delete('/providers/:name', handlers.deleteProvider);
 router.get('/tenants/:tenantId/catalog', handlers.getTenantCatalog);

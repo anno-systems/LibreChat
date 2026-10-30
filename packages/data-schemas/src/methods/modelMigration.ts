@@ -85,8 +85,21 @@ export interface ModelRedirectInput {
   createdBy?: string;
 }
 
-/** Whose documents a query or rewrite reaches. */
-export type MigrationAudience = { tenantId: string } | { tenantIds: string[] } | { all: true };
+/**
+ * Whose documents a query or rewrite reaches. A tenant audience may leave out users (a migration
+ * scoped by `exceptGroups`): their agents (by `author`), conversations, presets and favorites are
+ * neither counted nor rewritten, and config documents are not touched at all, because their model
+ * specs apply to the left-out users too.
+ */
+export type MigrationAudience =
+  | { tenantId: string; exceptUsers?: string[] }
+  | { tenantIds: string[] }
+  | { all: true };
+
+/** The users of a tenant who are members of any of the listed groups (ids of `User`). */
+export type GroupMembersResult =
+  | { ok: true; userIds: string[] }
+  | { ok: false; error: { code: 'unknown_group'; groupIds: string[] } };
 
 /** A model whose use is counted; `agentProviders` are the agent `provider` values that mean the endpoint. */
 export interface UsageQuery extends ModelRef {
@@ -139,6 +152,11 @@ export interface ModelMigrationMethods {
   recordModelMigrationRun(redirectId: string, counts: MigrationCounts, at?: Date): Promise<void>;
   /** Reloads the in-memory copy. */
   loadModelRedirects(): Promise<void>;
+  /**
+   * The users of `tenantId` in any of `groupIds` (group `memberIds` hold a user's
+   * `idOnTheSource`, else its id). Ids that name no group of the tenant fail as `unknown_group`.
+   */
+  findGroupMemberUsers(tenantId: string, groupIds: string[]): Promise<GroupMembersResult>;
   /** Every redirect, from the in-memory copy; starts a reload when it is stale. */
   getModelRedirects(): ModelRedirect[];
   countModelUsage(models: UsageQuery[], audience: MigrationAudience): Promise<ModelUsage[]>;
@@ -231,6 +249,7 @@ const modelRedirectSchema = new Schema<StoredRedirect>(
 );
 
 const DEFAULT_BATCH = 500;
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 export function emptyCounts(): MigrationCounts {
   return {
@@ -285,6 +304,10 @@ function audienceFilter(audience: MigrationAudience): Record<string, unknown> {
   if ('tenantIds' in audience) return { tenantId: { $in: audience.tenantIds } };
   return {};
 }
+
+/** Whether the audience leaves out users, so config documents stay as they are. */
+const isScoped = (audience: MigrationAudience) =>
+  'exceptUsers' in audience && audience.exceptUsers != null;
 
 interface Row {
   _id: unknown;
@@ -343,8 +366,25 @@ export function createModelMigrationMethods(
     return redirects;
   }
 
+  /**
+   * Leaves out the documents the audience's excepted users own. `$nor` keeps the `_id` key free
+   * for the batch cursor of `rewrite`.
+   */
+  function exceptOwners(
+    audience: MigrationAudience,
+    field: 'author' | 'user' | '_id',
+  ): Record<string, unknown> {
+    if (!('exceptUsers' in audience) || !audience.exceptUsers?.length) return {};
+    const ids =
+      field === 'user'
+        ? audience.exceptUsers
+        : audience.exceptUsers.map((id) => new mongoose.Types.ObjectId(id));
+    return { $nor: [{ [field]: { $in: ids } }] };
+  }
+
   const agentMatch = (from: ModelRef, agentProviders: string[], audience: MigrationAudience) => ({
     ...audienceFilter(audience),
+    ...exceptOwners(audience, 'author'),
     provider: { $in: agentProviders.length > 0 ? agentProviders : [from.endpoint] },
     model: from.model,
     /* A platform agent's copy follows its definition, which only the operator changes. */
@@ -352,6 +392,7 @@ export function createModelMigrationMethods(
   });
   const convoMatch = (from: ModelRef, audience: MigrationAudience) => ({
     ...audienceFilter(audience),
+    ...exceptOwners(audience, 'user'),
     endpoint: from.endpoint,
     model: from.model,
   });
@@ -365,6 +406,7 @@ export function createModelMigrationMethods(
   });
   const favoriteMatch = (from: ModelRef, audience: MigrationAudience) => ({
     ...audienceFilter(audience),
+    ...exceptOwners(audience, '_id'),
     favorites: { $elemMatch: { endpoint: from.endpoint, model: from.model } },
   });
 
@@ -551,6 +593,44 @@ export function createModelMigrationMethods(
     return changed;
   }
 
+  async function findGroupMemberUsers(
+    tenantId: string,
+    groupIds: string[],
+  ): Promise<GroupMembersResult> {
+    const requested = [...new Set(groupIds)];
+    const valid = requested.filter((id) => OBJECT_ID.test(id));
+    return inAudience({ tenantId }, async () => {
+      const Group = model('Group');
+      const User = model('User');
+      const groups =
+        Group && valid.length > 0
+          ? await Group.find({ tenantId, _id: { $in: valid } })
+              .select('_id memberIds')
+              .lean<Array<{ _id: unknown; memberIds?: string[] }>>()
+          : [];
+      const found = new Set(groups.map((group) => String(group._id)));
+      const unknown = requested.filter((id) => !found.has(id.toLowerCase()));
+      if (unknown.length > 0)
+        return { ok: false, error: { code: 'unknown_group', groupIds: unknown } };
+      const memberIds = [...new Set(groups.flatMap((group) => group.memberIds ?? []))];
+      if (!User || memberIds.length === 0) return { ok: true, userIds: [] };
+      /* As `getUserPrincipals` decides membership: by `idOnTheSource`, else by the user's id. */
+      const rawIds = memberIds.filter((id) => OBJECT_ID.test(id));
+      const users = await User.find({
+        tenantId,
+        $or: [
+          { idOnTheSource: { $in: memberIds } },
+          ...(rawIds.length > 0
+            ? [{ _id: { $in: rawIds }, idOnTheSource: { $in: [null, ''] } }]
+            : []),
+        ],
+      } as FilterQuery<Record<string, unknown>>)
+        .select('_id')
+        .lean<Row[]>();
+      return { ok: true, userIds: users.map((user) => String(user._id)) };
+    });
+  }
+
   async function migrateModelUsage(input: MigrateModelInput): Promise<MigrateModelResult> {
     const { from, to, audience, migrationId } = input;
     const batchSize = input.batchSize ?? DEFAULT_BATCH;
@@ -645,27 +725,31 @@ export function createModelMigrationMethods(
       } else if (endpointChanged) {
         specUnset['overrides.modelSpecs.list.$[spec].preset.endpointType'] = 1;
       }
-      await rewrite(
-        'Config',
-        specMatch(from, audience),
-        { ...withUnset(specSet, specUnset), $inc: { configVersion: 1 } },
-        batchSize,
-        (rows) => {
-          tally('modelSpecs', rows);
-          rows.forEach((row) => configTenants.add(row.tenantId ?? ''));
-        },
-        {
-          timestamps: true,
-          arrayFilters: [
-            { 'spec.preset.endpoint': from.endpoint, 'spec.preset.model': from.model },
-          ],
-        },
-      );
+      /* Model specs apply to every user of the document, the left-out ones too. */
+      if (!isScoped(audience)) {
+        await rewrite(
+          'Config',
+          specMatch(from, audience),
+          { ...withUnset(specSet, specUnset), $inc: { configVersion: 1 } },
+          batchSize,
+          (rows) => {
+            tally('modelSpecs', rows);
+            rows.forEach((row) => configTenants.add(row.tenantId ?? ''));
+          },
+          {
+            timestamps: true,
+            arrayFilters: [
+              { 'spec.preset.endpoint': from.endpoint, 'spec.preset.model': from.model },
+            ],
+          },
+        );
+      }
       /* A user who already pinned the successor keeps that pin, not a duplicate. */
       await rewrite(
         'User',
         {
           ...audienceFilter(audience),
+          ...exceptOwners(audience, '_id'),
           $and: [
             { favorites: { $elemMatch: { endpoint: from.endpoint, model: from.model } } },
             { favorites: { $elemMatch: { endpoint: to.endpoint, model: to.model } } },
@@ -746,6 +830,7 @@ export function createModelMigrationMethods(
 
     loadModelRedirects,
     getModelRedirects,
+    findGroupMemberUsers,
 
     async countModelUsage(models, audience) {
       return inAudience(audience, () =>
@@ -789,7 +874,7 @@ export function createModelMigrationMethods(
         const [conversations, presets, modelSpecs, favorites] = await Promise.all([
           count('Conversation', { ...convoMatch(from, audience), ...active }),
           count('Preset', convoMatch(from, audience)),
-          count('Config', specMatch(from, audience)),
+          isScoped(audience) ? 0 : count('Config', specMatch(from, audience)),
           count('User', favoriteMatch(from, audience)),
         ]);
         return {

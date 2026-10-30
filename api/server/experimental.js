@@ -88,6 +88,7 @@ const {
   loadPlatformPricing,
   loadMcpPricing,
   loadModelRedirects,
+  migratePlatformCatalog,
 } = require('~/models');
 const { checkMigrations } = require('./services/start/migration');
 const initializeMCPs = require('./services/initializeMCPs');
@@ -503,6 +504,10 @@ if (cluster.isMaster) {
     await loadMcpPricing();
     /* Fork: model redirects, held in memory for every chat request (modelMigration.ts). */
     await loadModelRedirects();
+    /* Fork: catalog documents of the old shape, read as new until rewritten (platformCatalog.ts). */
+    migratePlatformCatalog().catch((err) => {
+      logger.error('[migratePlatformCatalog] Catalog migration failed:', err);
+    });
 
     /* Mirrors `server/index.js`; `runAsSystem` for tenant-isolated File. */
     runAsSystem(sweepOrphanedPreviews).catch((err) => {

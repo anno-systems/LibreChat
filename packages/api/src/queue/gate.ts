@@ -55,10 +55,11 @@ function abortReason(signal: AbortSignal): unknown {
 }
 
 /**
- * The provider gate (fork-only): strict first-come-first-served admission per provider, global
- * across tenants because the queues are keyed by provider only. Waiting is event-driven (the
- * store's change notifications) with timed re-checks for window expiry, pauses, the deadline and
- * the status refresh, so a shared store whose notifications can be lost still makes progress.
+ * The provider gate (fork-only): strict first-come-first-served admission per queue, global
+ * across tenants because the queues are keyed by endpoint and model only (`queueKey`, passed as
+ * `provider`). Waiting is event-driven (the store's change notifications) with timed re-checks
+ * for window expiry, pauses, the deadline and the status refresh, so a shared store whose
+ * notifications can be lost still makes progress.
  */
 export function createProviderGate(deps: ProviderGateDeps): ProviderGate {
   const { store } = deps;

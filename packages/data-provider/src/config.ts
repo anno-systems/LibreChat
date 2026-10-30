@@ -2339,8 +2339,15 @@ export const endpointSchema = baseEndpointSchema.merge(
       .optional(),
     directEndpoint: z.boolean().optional(),
     titleMessageRole: z.enum(['system', 'user', 'assistant']).optional(),
-    /** Fork: limits whose excess waits in the provider's queue instead of failing (`queue.ts`). */
+    /**
+     * Fork: limits whose excess waits in a queue instead of failing (`queue.ts`), for every model
+     * of the endpoint; each model has its own queue.
+     */
     limits: providerLimitsSchema.optional(),
+    /** Fork: limits of single models, over `limits`; a model with neither has no queue. */
+    modelLimits: z.record(providerLimitsSchema).optional(),
+    /** Fork: display names of models in the model selector, by model id. */
+    modelLabels: z.record(z.string().min(1).max(128)).optional(),
     /** Static per-model token config: context window and per-million-token rates */
     tokenConfig: z
       .record(

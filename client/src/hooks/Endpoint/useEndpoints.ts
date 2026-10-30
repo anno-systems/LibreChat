@@ -213,6 +213,10 @@ export const useEndpoints = ({
           name: model,
           isGlobal: false,
         }));
+        const modelNames = endpointsConfig?.[ep]?.modelLabels;
+        if (modelNames) {
+          result.modelNames = modelNames;
+        }
       }
 
       acc.push(result);

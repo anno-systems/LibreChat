@@ -1,19 +1,27 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { logger } from '@librechat/data-schemas';
-import { providerLimitsSchema } from 'librechat-data-provider';
+import { locationSchema, queueSettingsSchema } from 'librechat-data-provider';
 import type {
   AppConfig,
+  CatalogModel,
   AuditActorInput,
-  CatalogAssignment,
-  PlatformCatalogMethods,
   PlatformProvider,
+  CatalogAssignment,
   RecordAuditEntryInput,
+  PlatformCatalogMethods,
 } from '@librechat/data-schemas';
 import type { NextFunction, Request, Response } from 'express';
 import type { ModelRemovalGuard, Successor } from '~/migration/guard';
 import type { RecordAuditEntry } from '~/admin/audit';
 import type { ServerRequest } from '~/types/http';
+import {
+  hasModel,
+  uniqueSlug,
+  ownModelsSchema,
+  tenantModelView,
+  providerModelsSchema,
+} from './models';
 import { createAdminAuditEmitter, recordSystemAuditEntry } from '~/admin/audit';
 import { createCatalogModelCheck, successorsSchema } from '~/migration/guard';
 import { getSafeErrorMetadata } from '~/utils/errors';
@@ -38,9 +46,11 @@ export interface PlatformCatalogHandlerDeps {
     | 'listPlatformProviders'
     | 'findPlatformProviders'
     | 'findCatalogProviders'
+    | 'createPlatformProvider'
     | 'upsertPlatformProvider'
     | 'deletePlatformProvider'
     | 'tenantsUsingProvider'
+    | 'listOwnEndpointNames'
     | 'getTenantCatalog'
     | 'setTenantAssignments'
     | 'upsertOwnEndpoint'
@@ -71,8 +81,11 @@ const TENANT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const MODEL = z.string().trim().min(1).max(128);
 const MAX_MODELS = 100;
 const MAX_ASSIGNMENTS = 50;
+/** Attempts at a generated provider name when concurrent creates take the same one. */
+const MAX_CREATE_ATTEMPTS = 5;
 const MAX_OWN_ENDPOINTS = 10;
 
+/** Model ids of a tenant assignment. */
 const modelsSchema = z
   .array(MODEL)
   .min(1)
@@ -95,27 +108,31 @@ const httpURL = z
 
 const providerInputSchema = z
   .object({
+    /** The display name; can change at any time, unlike `name`. */
     label: z.string().trim().min(1).max(64),
     baseURL: httpURL,
     /** Omitted on an update: the stored key stays. */
     apiKey: z.string().trim().min(1).max(4096).optional(),
-    models: modelsSchema,
-    region: z.string().trim().max(64).optional(),
-    /** ISO 3166-1 alpha-2 code of the hosting country. */
-    country: z
-      .string()
-      .regex(/^[A-Za-z]{2}$/)
-      .transform((code) => code.toUpperCase())
-      .optional(),
+    /** `{ id, label?, location?, limits? }` per model; a model with limits gets its own queue. */
+    models: providerModelsSchema,
+    /** Default location of the models; required (`location_required`), checked after parsing. */
+    location: locationSchema.optional(),
     dropParams: dropParamsSchema,
     /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
     allTenants: z.boolean().optional(),
-    /** Fork: the provider's queue limits; omitted removes them (no queue). */
-    limits: providerLimitsSchema.optional(),
+    /** Maximum wait and pause after a 429 of every model's queue; omitted removes them. */
+    queue: queueSettingsSchema.optional(),
     /** Successors of dropped models, migrated before the update (`migration/guard.ts`). */
     successors: successorsSchema,
   })
   .strict();
+
+/** A create may name the provider; otherwise the name is derived from the label. */
+const providerCreateSchema = providerInputSchema.extend({
+  name: z.string().regex(NAME).optional(),
+});
+
+type ProviderInput = z.infer<typeof providerInputSchema>;
 
 const tenantCatalogInputSchema = z
   .object({
@@ -132,10 +149,17 @@ const ownEndpointInputSchema = z
   .object({
     baseURL: httpURL.refine((value) => new URL(value).protocol === 'https:', 'must be https'),
     apiKey: z.string().trim().min(1).max(4096).optional(),
-    models: modelsSchema,
+    /** `{ id, label?, location? }` per model; own endpoints have no queue. */
+    models: ownModelsSchema,
+    /** Default location of the models; omitted removes it. */
+    location: locationSchema.optional(),
     dropParams: dropParamsSchema,
   })
   .strict();
+
+function modelIds(provider: PlatformProvider): string[] {
+  return provider.models.map((model) => model.id);
+}
 
 /** Like the admin config API's previews: the last four characters of a long key only. */
 function preview(encrypted: string, decrypt: (value: string) => string): string {
@@ -211,6 +235,7 @@ type AdminHandler = (req: ServerRequest, res: Response) => Promise<Response>;
 
 export interface PlatformCatalogHandlers {
   listProviders: OperatorHandler;
+  postProvider: OperatorHandler;
   putProvider: OperatorHandler;
   deleteProvider: OperatorHandler;
   getTenantCatalog: OperatorHandler;
@@ -283,12 +308,18 @@ export function createPlatformCatalogHandlers(
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-  async function takenNames(): Promise<Set<string>> {
-    const [yaml, providers] = await Promise.all([
+  /**
+   * Lower-cased names a new endpoint may not take: `librechat.yaml`'s and the providers'. A new
+   * provider may not take any tenant's own endpoint name either (`ownEndpoints`), since it can be
+   * assigned to that tenant or offered to all.
+   */
+  async function takenNames(options?: { ownEndpoints?: boolean }): Promise<Set<string>> {
+    const [yaml, providers, own] = await Promise.all([
       yamlEndpointNames(),
       catalog.listPlatformProviders(),
+      options?.ownEndpoints ? catalog.listOwnEndpointNames() : Promise.resolve([]),
     ]);
-    return new Set([...yaml, ...providers.map((p) => p.name)].map((n) => n.toLowerCase()));
+    return new Set([...yaml, ...providers.map((p) => p.name), ...own].map((n) => n.toLowerCase()));
   }
 
   function providerView(provider: PlatformProvider, tenants?: string[]) {
@@ -296,15 +327,95 @@ export function createPlatformCatalogHandlers(
       name: provider.name,
       label: provider.label,
       baseURL: provider.baseURL,
+      ...(provider.location && { location: provider.location }),
       models: provider.models,
-      ...(provider.region && { region: provider.region }),
-      ...(provider.country && { country: provider.country }),
       ...(provider.dropParams && { dropParams: provider.dropParams }),
       allTenants: provider.allTenants === true,
-      ...(provider.limits && { limits: provider.limits }),
+      ...(provider.queue && { queue: provider.queue }),
       apiKeyPreview: preview(provider.apiKey, decrypt),
       ...(tenants && { tenants }),
     };
+  }
+
+  /**
+   * Successors on the provider being written carry its model labels (the new models' for a
+   * target), so migration notices show display names; labels the caller gave win.
+   */
+  function labelledSuccessors(
+    name: string,
+    successors: Successor[],
+    before: CatalogModel[],
+    after: CatalogModel[],
+  ): Successor[] {
+    const labelOf = (models: CatalogModel[], ref: Successor['from']) =>
+      ref.label ??
+      (ref.endpoint === name ? models.find((m) => m.id === ref.model)?.label : undefined);
+    return successors.map(({ from, to }) => {
+      const fromLabel = labelOf(before, from);
+      const toLabel = labelOf(after, to);
+      return {
+        from: fromLabel ? { ...from, label: fromLabel } : from,
+        to: toLabel ? { ...to, label: toLabel } : to,
+      };
+    });
+  }
+
+  /**
+   * Writes a provider if the model guard allows it: `existing` is the stored provider of an
+   * update, absent for a create. Answers the request, except for a create whose name another
+   * provider took meanwhile (`name_taken`), which the caller answers or retries.
+   */
+  async function saveProvider(
+    req: Request,
+    res: Response,
+    name: string,
+    existing: PlatformProvider | undefined,
+    input: ProviderInput,
+  ): Promise<Response | 'name_taken'> {
+    const { apiKey, allTenants, successors = [], ...fields } = input;
+    /** Required on every write; a provider migrated without one keeps working until saved. */
+    if (!fields.location) return res.status(400).json({ error: 'location_required' });
+    if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
+    const kept = new Set(fields.models.map((model) => model.id));
+    const allowed = await guardRemoval(req, res, {
+      removed: (existing?.models ?? [])
+        .filter((model) => !kept.has(model.id))
+        .map((model) => ({ endpoint: name, model: model.id })),
+      scope: { platform: true },
+      successors: labelledSuccessors(name, successors, existing?.models ?? [], fields.models),
+      isTarget: async (ref) => (ref.endpoint === name ? kept.has(ref.model) : isCatalogModel(ref)),
+    });
+    if (!allowed) return res;
+    const provider: PlatformProvider = {
+      name,
+      ...fields,
+      allTenants: allTenants ?? existing?.allTenants === true,
+      apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
+    };
+    let saved: PlatformProvider;
+    if (existing) {
+      saved = await catalog.upsertPlatformProvider(provider);
+    } else {
+      const created = await catalog.createPlatformProvider(provider);
+      if (!created.ok) return 'name_taken';
+      saved = created.value;
+    }
+    await deps.invalidate();
+    await auditOperator(req, {
+      action: 'catalog.provider_updated',
+      outcome: 'success',
+      severity: 'info',
+      tenantId: undefined,
+      target: { type: 'provider', id: name, name: saved.label },
+      metadata: {
+        created: !existing,
+        keyChanged: Boolean(apiKey),
+        models: saved.models.length,
+        allTenants: saved.allTenants === true,
+        queued: saved.models.some((model) => model.limits != null),
+      },
+    });
+    return res.status(existing ? 200 : 201).json({ provider: providerView(saved) });
   }
 
   /** GET /api/platform/providers */
@@ -318,7 +429,43 @@ export function createPlatformCatalogHandlers(
     }
   }
 
-  /** PUT /api/platform/providers/:name */
+  /**
+   * POST /api/platform/providers: creates a provider. Its name (the fixed endpoint id) is the
+   * caller's `name`, or else derived from the label: a slug unique among providers and
+   * `librechat.yaml` endpoints, with `-2`, `-3` on a collision.
+   */
+  async function postProvider(req: Request, res: Response) {
+    try {
+      const parsed = providerCreateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: 'invalid_provider' });
+      const { name: given, ...input } = parsed.data;
+      if (given) {
+        if ((await takenNames({ ownEndpoints: true })).has(given.toLowerCase())) {
+          return res.status(409).json({ error: 'name_taken' });
+        }
+        const saved = await saveProvider(req, res, given, undefined, input);
+        return saved === 'name_taken' ? res.status(409).json({ error: 'name_taken' }) : saved;
+      }
+      /** A concurrent create can take the slug between the check and the insert; try the next. */
+      const tried = new Set<string>();
+      for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
+        const taken = new Set([...(await takenNames({ ownEndpoints: true })), ...tried]);
+        const name = uniqueSlug(input.label, taken);
+        if (!name) break;
+        tried.add(name);
+        const saved = await saveProvider(req, res, name, undefined, input);
+        if (saved !== 'name_taken') return saved;
+      }
+      return res.status(409).json({ error: 'name_taken' });
+    } catch (error) {
+      return fail(res, 'provider create', error);
+    }
+  }
+
+  /**
+   * PUT /api/platform/providers/:name: updates a provider (the name never changes); creates one
+   * under that exact name when none has it, as before `POST`.
+   */
   async function putProvider(req: Request, res: Response) {
     try {
       const name = String((req.params as { name?: string }).name ?? '');
@@ -327,47 +474,11 @@ export function createPlatformCatalogHandlers(
         return res.status(400).json({ error: 'invalid_provider' });
       }
       const [existing] = await catalog.findPlatformProviders([name]);
-      if (!existing) {
-        const yaml = (await yamlEndpointNames()).map((n) => n.toLowerCase());
-        if (yaml.includes(name.toLowerCase())) {
-          return res.status(409).json({ error: 'name_taken' });
-        }
+      if (!existing && (await takenNames({ ownEndpoints: true })).has(name.toLowerCase())) {
+        return res.status(409).json({ error: 'name_taken' });
       }
-      const { apiKey, allTenants, successors = [], ...fields } = parsed.data;
-      if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
-      const kept = new Set(fields.models);
-      const allowed = await guardRemoval(req, res, {
-        removed: (existing?.models ?? [])
-          .filter((model) => !kept.has(model))
-          .map((model) => ({ endpoint: name, model })),
-        scope: { platform: true },
-        successors,
-        isTarget: async (ref) =>
-          ref.endpoint === name ? kept.has(ref.model) : isCatalogModel(ref),
-      });
-      if (!allowed) return res;
-      const saved = await catalog.upsertPlatformProvider({
-        name,
-        ...fields,
-        allTenants: allTenants ?? existing?.allTenants === true,
-        apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
-      });
-      await deps.invalidate();
-      await auditOperator(req, {
-        action: 'catalog.provider_updated',
-        outcome: 'success',
-        severity: 'info',
-        tenantId: undefined,
-        target: { type: 'provider', id: name, name: saved.label },
-        metadata: {
-          created: !existing,
-          keyChanged: Boolean(apiKey),
-          models: saved.models.length,
-          allTenants: saved.allTenants === true,
-          queued: saved.limits != null,
-        },
-      });
-      return res.status(existing ? 200 : 201).json({ provider: providerView(saved) });
+      const saved = await saveProvider(req, res, name, existing, parsed.data);
+      return saved === 'name_taken' ? res.status(409).json({ error: 'name_taken' }) : saved;
     } catch (error) {
       return fail(res, 'provider update', error);
     }
@@ -426,7 +537,12 @@ export function createPlatformCatalogHandlers(
       return res.json({
         byok: stored?.byok ?? false,
         providers: stored?.providers ?? [],
-        own: (stored?.own ?? []).map(({ name, baseURL, models }) => ({ name, baseURL, models })),
+        own: (stored?.own ?? []).map(({ name, baseURL, location, models }) => ({
+          name,
+          baseURL,
+          ...(location && { location }),
+          models,
+        })),
       });
     } catch (error) {
       return fail(res, 'tenant catalog read', error);
@@ -446,7 +562,7 @@ export function createPlatformCatalogHandlers(
         return res.status(400).json({ error: 'invalid_catalog' });
       }
       const known = new Map(
-        (await catalog.findPlatformProviders(names)).map((p) => [p.name, new Set(p.models)]),
+        (await catalog.findPlatformProviders(names)).map((p) => [p.name, new Set(modelIds(p))]),
       );
       const outside = providers.some(
         (p) => !known.has(p.name) || p.models.some((m) => !known.get(p.name)!.has(m)),
@@ -491,7 +607,7 @@ export function createPlatformCatalogHandlers(
       ).map((p) => [p.name, p]),
     );
     const forAll = (name: string, model: string) =>
-      stored.get(name)?.allTenants === true && stored.get(name)!.models.includes(model);
+      stored.get(name)?.allTenants === true && hasModel(stored.get(name)!, model);
     const removed = previous.flatMap((p) =>
       p.models
         .filter((model) => !assigned.get(p.name)?.has(model) && !forAll(p.name, model))
@@ -505,7 +621,7 @@ export function createPlatformCatalogHandlers(
         if (assigned.get(ref.endpoint)?.has(ref.model)) return true;
         const provider =
           stored.get(ref.endpoint) ?? (await catalog.findPlatformProviders([ref.endpoint]))[0];
-        if (provider) return provider.allTenants === true && provider.models.includes(ref.model);
+        if (provider) return provider.allTenants === true && hasModel(provider, ref.model);
         return isCatalogModel(ref);
       },
     });
@@ -534,25 +650,30 @@ export function createPlatformCatalogHandlers(
         (stored?.providers ?? []).map((p) => p.name),
       );
       const byName = new Map(providers.map((p) => [p.name, p]));
-      const view = (provider: PlatformProvider, models: string[]) => ({
-        name: provider.name,
-        label: provider.label,
-        ...(provider.region && { region: provider.region }),
-        ...(provider.country && { country: provider.country }),
-        models,
-        allTenants: provider.allTenants === true,
-      });
+      /** Each model with its display name and effective location; limits stay the operator's. */
+      const view = (provider: PlatformProvider, ids: string[]) => {
+        const listed = new Set(ids);
+        return {
+          name: provider.name,
+          label: provider.label,
+          models: provider.models
+            .filter((model) => listed.has(model.id))
+            .map((model) => tenantModelView(model, provider)),
+          allTenants: provider.allTenants === true,
+        };
+      };
       const assigned = (stored?.providers ?? [])
         .filter((p) => byName.has(p.name) && !byName.get(p.name)!.allTenants)
         .map((p) => view(byName.get(p.name)!, p.models));
-      const forAll = providers.filter((p) => p.allTenants).map((p) => view(p, p.models));
+      const forAll = providers.filter((p) => p.allTenants).map((p) => view(p, modelIds(p)));
       return res.json({
         byok: stored?.byok ?? false,
         providers: [...assigned, ...forAll],
         own: (stored?.own ?? []).map((own) => ({
           name: own.name,
           baseURL: own.baseURL,
-          models: own.models,
+          ...(own.location && { location: own.location }),
+          models: own.models.map((model) => tenantModelView(model, own)),
           ...(own.dropParams && { dropParams: own.dropParams }),
           apiKeyPreview: preview(own.apiKey, decrypt),
         })),
@@ -583,7 +704,7 @@ export function createPlatformCatalogHandlers(
           return res.status(409).json({ error: 'name_taken' });
         }
       }
-      const { apiKey, baseURL, models, dropParams } = parsed.data;
+      const { apiKey, baseURL, models, location, dropParams } = parsed.data;
       if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
       if (!(await isAllowedTenantURL(baseURL))) {
         return res.status(400).json({ error: 'url_not_allowed' });
@@ -592,6 +713,7 @@ export function createPlatformCatalogHandlers(
         name,
         baseURL,
         models,
+        ...(location && { location }),
         ...(dropParams && { dropParams }),
         apiKey: apiKey ? encrypt(apiKey) : existing!.apiKey,
       });
@@ -603,9 +725,13 @@ export function createPlatformCatalogHandlers(
         target: { type: 'endpoint', id: name },
         metadata: { created: !existing, keyChanged: Boolean(apiKey), models: models.length },
       });
-      return res
-        .status(existing ? 200 : 201)
-        .json({ name, baseURL, models, ...(dropParams && { dropParams }) });
+      return res.status(existing ? 200 : 201).json({
+        name,
+        baseURL,
+        ...(location && { location }),
+        models: models.map((model) => tenantModelView(model, { location })),
+        ...(dropParams && { dropParams }),
+      });
     } catch (error) {
       return fail(res, 'own endpoint update', error);
     }
@@ -635,6 +761,7 @@ export function createPlatformCatalogHandlers(
 
   return {
     listProviders,
+    postProvider,
     putProvider,
     deleteProvider,
     getTenantCatalog,

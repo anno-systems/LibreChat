@@ -378,3 +378,15 @@ describe('hasCustomModels', () => {
     expect(hasCustomModels(undefined)).toBe(false);
   });
 });
+
+describe('loadCustomEndpointsConfig – model labels (fork)', () => {
+  it('serves the model display names and leaves them out when none are set', () => {
+    const config = loadCustomEndpointsConfig([
+      { ...baseEndpoint, name: 'Labelled', modelLabels: { 'claude-sonnet-4-5': 'Sonnet' } },
+      { ...baseEndpoint, name: 'Plain' },
+    ] as unknown as TCustomEndpoints);
+
+    expect(config?.Labelled?.modelLabels).toEqual({ 'claude-sonnet-4-5': 'Sonnet' });
+    expect(config?.Plain).not.toHaveProperty('modelLabels');
+  });
+});

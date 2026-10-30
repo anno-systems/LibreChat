@@ -7,7 +7,8 @@ import {
   summarizeTurnUsage,
   hasStreamedContent,
   runProviderQueuedTurn,
-  resolveProviderLimits,
+  resolveModelLimits,
+  queueKey,
 } from './turn';
 import { ProviderQueueTimeoutError, getProviderQueueErrorText } from './errors';
 import { createMemoryQueueStore } from './memory';
@@ -28,9 +29,11 @@ function rateLimitError(retryAfter?: string) {
   });
 }
 
-function setup(limits: TProviderLimits = { concurrency: 1 }) {
+function setup(
+  limits: TProviderLimits = { concurrency: 1 },
+  appConfig: AppConfig = configWith(limits),
+) {
   const gate = createProviderGate({ store: createMemoryQueueStore() });
-  const appConfig = configWith(limits);
   const turn = (
     run: () => Promise<string>,
     extra: {
@@ -39,12 +42,14 @@ function setup(limits: TProviderLimits = { concurrency: 1 }) {
       statuses?: TQueueStatusEvent[];
       signal?: AbortSignal;
       retryRateLimited?: boolean;
+      model?: string;
     } = {},
   ) =>
     runProviderQueuedTurn({
       gate,
       appConfig,
       endpoint: ENDPOINT,
+      model: extra.model ?? 'large',
       signal: extra.signal ?? new AbortController().signal,
       run,
       promptTokens: () => 10,
@@ -299,9 +304,44 @@ describe('runProviderQueuedTurn', () => {
 describe('queue helpers', () => {
   it('reads limits from the matching custom endpoint, case-insensitively for mixed names', () => {
     const limits = { concurrency: 3 };
-    expect(resolveProviderLimits(configWith(limits), ENDPOINT)).toEqual(limits);
-    expect(resolveProviderLimits(configWith(limits), 'other')).toBeUndefined();
-    expect(resolveProviderLimits(undefined, ENDPOINT)).toBeUndefined();
+    expect(resolveModelLimits(configWith(limits), ENDPOINT, 'large')).toEqual(limits);
+    expect(resolveModelLimits(configWith(limits), 'other', 'large')).toBeUndefined();
+    expect(resolveModelLimits(undefined, ENDPOINT, 'large')).toBeUndefined();
+  });
+
+  it("puts a model's own limits over the endpoint's and leaves models without any unqueued", () => {
+    const appConfig = {
+      endpoints: {
+        custom: [
+          {
+            name: ENDPOINT,
+            modelLimits: {
+              large: { concurrency: 1, maxWaitSeconds: 30 },
+              small: { requestsPerMinute: 60 },
+            },
+          },
+          {
+            name: 'Shared',
+            limits: { concurrency: 4, pauseSeconds: 5 },
+            modelLimits: { a: { concurrency: 2 } },
+          },
+        ],
+      },
+    } as unknown as AppConfig;
+    expect(resolveModelLimits(appConfig, ENDPOINT, 'large')).toEqual({
+      concurrency: 1,
+      maxWaitSeconds: 30,
+    });
+    expect(resolveModelLimits(appConfig, ENDPOINT, 'other')).toBeUndefined();
+    expect(resolveModelLimits(appConfig, 'Shared', 'a')).toEqual({
+      concurrency: 2,
+      pauseSeconds: 5,
+    });
+    expect(resolveModelLimits(appConfig, 'Shared', 'b')).toEqual({
+      concurrency: 4,
+      pauseSeconds: 5,
+    });
+    expect(queueKey(ENDPOINT, 'large')).not.toBe(queueKey(ENDPOINT, 'small'));
   });
 
   it('sums prompt token counts and usage rows', () => {
@@ -323,5 +363,58 @@ describe('queue helpers', () => {
     expect(prose).toMatch(/overloaded/);
     expect(JSON.parse(payload)).toEqual({ type: ErrorTypes.QUEUE_TIMEOUT });
     expect(QueueEvents.ON_QUEUE_STATUS).toBe('on_queue_status');
+  });
+});
+
+describe('queues per model', () => {
+  it('queues two models of one provider independently', async () => {
+    const appConfig = {
+      endpoints: {
+        custom: [
+          {
+            name: ENDPOINT,
+            modelLimits: { large: { concurrency: 1 }, small: { concurrency: 1 } },
+          },
+        ],
+      },
+    } as unknown as AppConfig;
+    const { turn } = setup(undefined, appConfig);
+    const first = pending();
+    const large = turn(first.run, { model: 'large' });
+    await flush();
+
+    const statuses: TQueueStatusEvent[] = [];
+    let secondRan = false;
+    const secondLarge = turn(
+      async () => {
+        secondRan = true;
+        return 'large-2';
+      },
+      { model: 'large', statuses },
+    );
+    const small = turn(async () => 'small', { model: 'small' });
+    await flush();
+
+    /** The other model runs at once; the same model waits for the first turn's slot. */
+    await expect(small).resolves.toBe('small');
+    expect(secondRan).toBe(false);
+    expect(statuses[0]).toMatchObject({ queued: true, position: 1, reason: 'provider_busy' });
+
+    first.finish('large-1');
+    await expect(large).resolves.toBe('large-1');
+    await expect(secondLarge).resolves.toBe('large-2');
+  });
+
+  it('runs a model without limits directly while another model of the provider is full', async () => {
+    const appConfig = {
+      endpoints: { custom: [{ name: ENDPOINT, modelLimits: { large: { concurrency: 1 } } }] },
+    } as unknown as AppConfig;
+    const { turn } = setup(undefined, appConfig);
+    const first = pending();
+    const large = turn(first.run, { model: 'large' });
+    await flush();
+    await expect(turn(async () => 'free', { model: 'unlimited' })).resolves.toBe('free');
+    first.finish('done');
+    await expect(large).resolves.toBe('done');
   });
 });

@@ -88,10 +88,20 @@ const provider = {
   label: 'Mistral',
   baseURL: 'https://api.mistral.ai/v1',
   apiKey: KEY,
-  models: ['small', 'large'],
-  region: 'EU (Paris)',
-  country: 'fr',
+  models: [
+    { id: 'small', label: 'Mistral Small' },
+    { id: 'large', location: { type: 'eu' } },
+  ],
+  location: { type: 'country', code: 'fr' },
 };
+
+/** What tenant admins see of the provider's models: labels and effective locations. */
+const smallView = {
+  id: 'small',
+  label: 'Mistral Small',
+  location: { type: 'country', code: 'FR' },
+};
+const largeView = { id: 'large', location: { type: 'eu' } };
 
 async function call(
   handler: (req: never, res: Response) => Promise<unknown>,
@@ -160,7 +170,7 @@ describe('operator API', () => {
     expect(updated.statusCode).toBe(200);
     const [stored] = await methods.findPlatformProviders(['Mistral Platform']);
     expect(stored.apiKey).toBe(`enc:${KEY}`);
-    expect(stored.models).toEqual(['small']);
+    expect(stored.models).toEqual([{ id: 'small' }]);
   });
 
   it('stores the request fields a provider rejects and shows them to the operator', async () => {
@@ -181,41 +191,42 @@ describe('operator API', () => {
     ]);
   });
 
-  it('stores queue limits, shows them to the operator and removes them when left out', async () => {
+  it('stores limits per model and queue settings, and removes them when left out', async () => {
     const { handlers } = setup();
-    const limits = {
-      concurrency: 4,
-      requestsPerMinute: 60,
-      tokensPerMinute: 200_000,
-      maxWaitSeconds: 90,
-    };
+    const models = [
+      { id: 'small', limits: { concurrency: 4, requestsPerMinute: 60 } },
+      { id: 'large', limits: {} },
+    ];
+    const queue = { maxWaitSeconds: 90, pauseSeconds: 5 };
 
     const created = await call(
       handlers.putProvider,
-      operatorReq({ name: 'Mistral Platform' }, { ...provider, limits }),
+      operatorReq({ name: 'Mistral Platform' }, { ...provider, models, queue }),
     );
     const listed = await call(handlers.listProviders, operatorReq({}));
     expect(created.statusCode).toBe(201);
-    expect(listed.body?.providers).toEqual([expect.objectContaining({ limits })]);
+    /** Empty limits are no limits: that model has no queue. */
+    expect(listed.body?.providers).toEqual([
+      expect.objectContaining({ models: [models[0], { id: 'large' }], queue }),
+    ]);
 
     const { apiKey: _key, ...update } = provider;
     await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, update));
     const [stored] = await methods.findPlatformProviders(['Mistral Platform']);
-    expect(stored.limits).toBeUndefined();
+    expect(stored.queue).toBeUndefined();
+    expect(stored.models.some((model) => model.limits)).toBe(false);
   });
 
-  it('refuses limits outside their bounds or with unknown fields', async () => {
+  it('refuses limits and queue settings outside their bounds or with unknown fields', async () => {
     const { handlers } = setup();
-    for (const limits of [
-      { concurrency: 0 },
-      { requestsPerMinute: 1.5 },
-      { maxWaitSeconds: 901 },
-      { burst: 3 },
-    ]) {
-      const res = await call(
-        handlers.putProvider,
-        operatorReq({ name: 'Mistral Platform' }, { ...provider, limits }),
-      );
+    const bodies = [
+      ...[{ concurrency: 0 }, { requestsPerMinute: 1.5 }, { maxWaitSeconds: 60 }, { burst: 3 }].map(
+        (limits) => ({ ...provider, models: [{ id: 'small', limits }] }),
+      ),
+      ...[{ maxWaitSeconds: 901 }, { concurrency: 3 }].map((queue) => ({ ...provider, queue })),
+    ];
+    for (const body of bodies) {
+      const res = await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, body));
       expect(res.statusCode).toBe(400);
     }
   });
@@ -232,6 +243,14 @@ describe('operator API', () => {
       [{ name: 'X' }, { ...provider, models: [] }, 400],
       [{ name: 'X' }, { ...provider, extra: true }, 400],
       [{ name: 'X' }, { ...provider, dropParams: ['User Id'] }, 400],
+      [{ name: 'X' }, { ...provider, models: ['a', { id: 'a' }] }, 400],
+      [{ name: 'X' }, { ...provider, models: [{ id: 'a', extra: 1 }] }, 400],
+      [{ name: 'X' }, { ...provider, location: { type: 'country', code: 'FRA' } }, 400],
+      [{ name: 'X' }, { ...provider, location: { type: 'moon' } }, 400],
+      /** The fields before model objects are gone. */
+      [{ name: 'X' }, { ...provider, country: 'FR' }, 400],
+      [{ name: 'X' }, { ...provider, region: 'EU' }, 400],
+      [{ name: 'X' }, { ...provider, limits: { concurrency: 1 } }, 400],
     ] as const;
     for (const [params, body, status] of cases) {
       expect((await call(handlers.putProvider, operatorReq(params, body))).statusCode).toBe(status);
@@ -368,7 +387,10 @@ describe('providers offered to all tenants', () => {
     await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));
     await call(
       handlers.putProvider,
-      operatorReq({ name: 'Everyone' }, { ...provider, region: undefined, allTenants: true }),
+      operatorReq(
+        { name: 'Everyone' },
+        { ...provider, location: { type: 'global' }, allTenants: true },
+      ),
     );
     await methods.setTenantAssignments('tenant-a', {
       byok: false,
@@ -381,36 +403,17 @@ describe('providers offered to all tenants', () => {
     const assigned = await call(handlers.getOwnCatalog, adminReq({}));
     const withoutCatalog = await call(handlers.getOwnCatalog, adminReq({}, {}, 'tenant-b'));
 
+    const everyone = {
+      name: 'Everyone',
+      label: 'Mistral',
+      models: [{ ...smallView, location: { type: 'global' } }, largeView],
+      allTenants: true,
+    };
     expect(assigned.body?.providers).toEqual([
-      {
-        name: 'Mistral Platform',
-        label: 'Mistral',
-        region: 'EU (Paris)',
-        country: 'FR',
-        models: ['small'],
-        allTenants: false,
-      },
-      {
-        name: 'Everyone',
-        label: 'Mistral',
-        country: 'FR',
-        models: ['small', 'large'],
-        allTenants: true,
-      },
+      { name: 'Mistral Platform', label: 'Mistral', models: [smallView], allTenants: false },
+      everyone,
     ]);
-    expect(withoutCatalog.body).toEqual({
-      byok: false,
-      providers: [
-        {
-          name: 'Everyone',
-          label: 'Mistral',
-          country: 'FR',
-          models: ['small', 'large'],
-          allTenants: true,
-        },
-      ],
-      own: [],
-    });
+    expect(withoutCatalog.body).toEqual({ byok: false, providers: [everyone], own: [] });
   });
 });
 
@@ -439,18 +442,13 @@ describe('tenant admin API', () => {
     expect(res.body).toEqual({
       byok: false,
       providers: [
-        {
-          name: 'Mistral Platform',
-          label: 'Mistral',
-          region: 'EU (Paris)',
-          country: 'FR',
-          models: ['small'],
-          allTenants: false,
-        },
+        { name: 'Mistral Platform', label: 'Mistral', models: [smallView], allTenants: false },
       ],
       own: [],
     });
     expect(JSON.stringify(res.body)).not.toContain('api.mistral.ai');
+    /** Queue limits are the operator's. */
+    expect(JSON.stringify(res.body)).not.toContain('limits');
   });
 
   it('refuses own endpoints until the operator enables BYOK', async () => {
@@ -469,14 +467,33 @@ describe('tenant admin API', () => {
     const { apiKey: _key, ...withoutKey } = own;
     const updated = await call(
       handlers.putOwnEndpoint,
-      adminReq({ name: 'Own' }, { ...withoutKey, models: ['m', 'n'] }),
+      adminReq(
+        { name: 'Own' },
+        {
+          ...withoutKey,
+          location: { type: 'eu' },
+          models: ['m', { id: 'n', label: 'Model N', location: { type: 'country', code: 'de' } }],
+        },
+      ),
     );
     const listed = await call(handlers.getOwnCatalog, adminReq({}));
 
     expect(created.statusCode).toBe(201);
+    expect(created.body).toEqual({ name: 'Own', baseURL: own.baseURL, models: [{ id: 'm' }] });
     expect(updated.statusCode).toBe(200);
+    const models = [
+      { id: 'm', location: { type: 'eu' } },
+      { id: 'n', label: 'Model N', location: { type: 'country', code: 'DE' } },
+    ];
+    expect(updated.body).toMatchObject({ location: { type: 'eu' }, models });
     expect(listed.body?.own).toEqual([
-      { name: 'Own', baseURL: own.baseURL, models: ['m', 'n'], apiKeyPreview: '...6789' },
+      {
+        name: 'Own',
+        baseURL: own.baseURL,
+        location: { type: 'eu' },
+        models,
+        apiKeyPreview: '...6789',
+      },
     ]);
     const dropping = await call(
       handlers.putOwnEndpoint,
@@ -511,10 +528,265 @@ describe('tenant admin API', () => {
       [{ name: 'Own' }, { ...own, baseURL: 'http://llm.a.example/v1' }, 400],
       [{ name: 'Own' }, { ...own, baseURL: 'https://169.254.169.254/v1' }, 400],
       [{ name: 'Own' }, withoutKey, 400],
+      [{ name: 'Own' }, { ...own, models: [{ id: 'm', limits: { concurrency: 1 } }] }, 400],
     ] as const;
     for (const [params, body, status] of cases) {
       expect((await call(handlers.putOwnEndpoint, adminReq(params, body))).statusCode).toBe(status);
     }
     expect((await methods.getTenantCatalog('tenant-a'))?.own).toEqual([]);
+  });
+});
+
+describe('creating providers', () => {
+  const { name: _name, ...body } = { name: '', ...provider };
+
+  it('derives the name from the label, unique among providers and YAML endpoints', async () => {
+    const { deps } = setup();
+    const handlers = createPlatformCatalogHandlers({
+      ...deps,
+      getBaseConfig: async () =>
+        ({
+          config: { endpoints: { custom: [{ name: 'Mistral EU' }, { name: 'Mistral' }] } },
+        }) as unknown as AppConfig,
+    });
+    const named = async (label: string) => {
+      const res = await call(handlers.postProvider, operatorReq({}, { ...body, label }));
+      expect(res.statusCode).toBe(201);
+      return (res.body?.provider as { name: string }).name;
+    };
+
+    expect(await named('Mistral EU')).toBe('mistral-eu');
+    expect(await named('Mistral')).toBe('mistral-2');
+    expect(await named('Mistral')).toBe('mistral-3');
+    expect(await named('mistral!')).toBe('mistral-4');
+    expect(await named('Ärzte Größe')).toBe('arzte-grosse');
+    expect(await named('★')).toBe('provider');
+  });
+
+  it('keeps an explicit name for API clients and refuses a taken one', async () => {
+    const { handlers } = setup();
+    const created = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...body, name: 'Mistral Platform' }),
+    );
+    const again = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...body, name: 'mistral platform' }),
+    );
+    const yaml = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...body, name: 'Mistral EU' }),
+    );
+    const bad = await call(handlers.postProvider, operatorReq({}, { ...body, name: 'Bad/Name' }));
+    const keyless = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...body, apiKey: undefined }),
+    );
+
+    expect(created.statusCode).toBe(201);
+    expect(created.body?.provider).toMatchObject({ name: 'Mistral Platform' });
+    expect(again.body).toEqual({ error: 'name_taken' });
+    expect(yaml.body).toEqual({ error: 'name_taken' });
+    expect(bad.statusCode).toBe(400);
+    expect(keyless.body).toEqual({ error: 'api_key_required' });
+  });
+
+  it('keeps the name when the label changes', async () => {
+    const { handlers } = setup();
+    const created = await call(handlers.postProvider, operatorReq({}, body));
+    const name = (created.body?.provider as { name: string }).name;
+    const { apiKey: _key, ...update } = body;
+
+    const renamed = await call(
+      handlers.putProvider,
+      operatorReq({ name }, { ...update, label: 'Mistral (Paris)' }),
+    );
+
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.body?.provider).toMatchObject({ name: 'mistral', label: 'Mistral (Paris)' });
+    expect((await methods.listPlatformProviders()).map((p) => p.name)).toEqual(['mistral']);
+  });
+
+  it('takes the next suffix when a concurrent create took the name', async () => {
+    const { deps } = setup();
+    let raced = false;
+    const handlers = createPlatformCatalogHandlers({
+      ...deps,
+      catalog: {
+        ...methods,
+        createPlatformProvider: async (input) => {
+          if (!raced) {
+            raced = true;
+            await methods.createPlatformProvider({ ...input, label: 'Other' });
+          }
+          return methods.createPlatformProvider(input);
+        },
+      },
+    });
+
+    const res = await call(handlers.postProvider, operatorReq({}, body));
+
+    expect(res.body?.provider).toMatchObject({ name: 'mistral-2', label: 'Mistral' });
+  });
+});
+
+describe('successors with model objects', () => {
+  it('finds dropped models by id and labels successors with the model labels', async () => {
+    const { deps } = setup();
+    const migrate = jest.fn(async () => true);
+    const check = jest.fn(async () => ({ ok: true as const }));
+    const handlers = createPlatformCatalogHandlers({ ...deps, modelGuard: { check, migrate } });
+    await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));
+    const { apiKey: _key, ...update } = provider;
+
+    const res = await call(
+      handlers.putProvider,
+      operatorReq(
+        { name: 'Mistral Platform' },
+        {
+          ...update,
+          models: [{ id: 'small-2', label: 'Mistral Small 2' }, provider.models[1]],
+          successors: [
+            {
+              from: { endpoint: 'Mistral Platform', model: 'small' },
+              to: { endpoint: 'Mistral Platform', model: 'small-2' },
+            },
+          ],
+        },
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    const successors = [
+      {
+        from: { endpoint: 'Mistral Platform', model: 'small', label: 'Mistral Small' },
+        to: { endpoint: 'Mistral Platform', model: 'small-2', label: 'Mistral Small 2' },
+      },
+    ];
+    expect(check).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        removed: [{ endpoint: 'Mistral Platform', model: 'small' }],
+        successors,
+      }),
+    );
+    expect(migrate).toHaveBeenCalledWith(expect.anything(), { platform: true }, successors);
+  });
+
+  it('refuses the update when the guard finds a dropped model in use', async () => {
+    const { deps } = setup();
+    const handlers = createPlatformCatalogHandlers({
+      ...deps,
+      modelGuard: {
+        check: async ({ removed }) =>
+          removed.length > 0
+            ? {
+                ok: false,
+                status: 409,
+                body: {
+                  error: 'model_in_use',
+                  models: removed.map((ref) => ({ ...ref, agents: 1, conversations: 0 })),
+                },
+              }
+            : { ok: true },
+        migrate: async () => true,
+      },
+    });
+    await call(handlers.putProvider, operatorReq({ name: 'Mistral Platform' }, provider));
+    const { apiKey: _key, ...update } = provider;
+
+    const relabelled = await call(
+      handlers.putProvider,
+      operatorReq(
+        { name: 'Mistral Platform' },
+        { ...update, models: [{ id: 'small', label: 'Renamed' }, 'large'] },
+      ),
+    );
+    const dropped = await call(
+      handlers.putProvider,
+      operatorReq({ name: 'Mistral Platform' }, { ...update, models: ['large'] }),
+    );
+
+    /** A new label or location is no removal. */
+    expect(relabelled.statusCode).toBe(200);
+    expect(dropped.statusCode).toBe(409);
+    expect(dropped.body).toEqual({
+      error: 'model_in_use',
+      models: [{ endpoint: 'Mistral Platform', model: 'small', agents: 1, conversations: 0 }],
+    });
+  });
+});
+
+describe('provider location and names (owner decisions)', () => {
+  const { location: _location, ...withoutLocation } = provider;
+
+  it('requires a location on create and update, and lists a migrated provider without one', async () => {
+    const { handlers } = setup();
+    const posted = await call(handlers.postProvider, operatorReq({}, withoutLocation));
+    const put = await call(handlers.putProvider, operatorReq({ name: 'New' }, withoutLocation));
+    expect(posted.statusCode).toBe(400);
+    expect(posted.body).toEqual({ error: 'location_required' });
+    expect(put.body).toEqual({ error: 'location_required' });
+    expect(await methods.listPlatformProviders()).toEqual([]);
+
+    /** As the startup migration leaves a provider that had no `country`. */
+    await methods.upsertPlatformProvider({
+      name: 'Migrated',
+      label: 'Migrated',
+      baseURL: provider.baseURL,
+      apiKey: `enc:${KEY}`,
+      models: [{ id: 'small' }],
+    });
+    const listed = await call(handlers.listProviders, operatorReq({}));
+    expect(listed.body?.providers).toEqual([
+      expect.not.objectContaining({ location: expect.anything() }),
+    ]);
+    await methods.setTenantAssignments('tenant-a', {
+      byok: false,
+      providers: [{ name: 'Migrated', models: ['small'] }],
+    });
+    const tenant = await call(handlers.getOwnCatalog, adminReq({}));
+    expect(tenant.body?.providers).toEqual([
+      { name: 'Migrated', label: 'Migrated', models: [{ id: 'small' }], allTenants: false },
+    ]);
+
+    const { apiKey: _key, ...update } = withoutLocation;
+    const saved = await call(handlers.putProvider, operatorReq({ name: 'Migrated' }, update));
+    expect(saved.body).toEqual({ error: 'location_required' });
+  });
+
+  it("keeps a new provider's name off every tenant's own endpoint names", async () => {
+    const { handlers } = setup();
+    await methods.setTenantAssignments('tenant-b', { byok: true, providers: [] });
+    await methods.upsertOwnEndpoint('tenant-b', {
+      name: 'Mistral',
+      baseURL: 'https://llm.b.example/v1',
+      apiKey: 'enc:k',
+      models: [{ id: 'm' }],
+    });
+
+    const generated = await call(handlers.postProvider, operatorReq({}, provider));
+    const explicit = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...provider, name: 'MISTRAL' }),
+    );
+    const put = await call(handlers.putProvider, operatorReq({ name: 'mistral' }, provider));
+
+    expect(generated.body?.provider).toMatchObject({ name: 'mistral-2' });
+    expect(explicit.body).toEqual({ error: 'name_taken' });
+    expect(put.body).toEqual({ error: 'name_taken' });
+  });
+
+  it('lets a tenant leave out the location of its own endpoint', async () => {
+    const { handlers } = setup();
+    await methods.setTenantAssignments('tenant-a', { byok: true, providers: [] });
+    const res = await call(
+      handlers.putOwnEndpoint,
+      adminReq(
+        { name: 'Own' },
+        { baseURL: 'https://llm.a.example/v1', apiKey: 'sk-tenant-key-0123456789', models: ['m'] },
+      ),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(res.body).not.toHaveProperty('location');
   });
 });

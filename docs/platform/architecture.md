@@ -275,7 +275,45 @@ active with `ADMIN_CONFIG_CATALOG_LOCK=true` (2026-10-20):
 - LibreChat adds the tenant's endpoints to the base config before the tenant's documents are
   applied, reloading them at most every 30 seconds, so the existing narrowing and the per-group
   documents work on them unchanged. Keys never leave the server: `/api/endpoints`,
-  `/api/models` and `/api/config` show names and models only.
+  `/api/models` and `/api/config` show names, models and model labels only.
+
+### Catalog models (2026-10-30)
+
+Owner's decisions on the shape of a platform provider (`packages/data-schemas/src/methods/platformCatalog.ts`,
+`packages/api/src/platform/models.ts`):
+
+- **One display name.** `label` is the only user-facing name and can change at any time. The id
+  (`name`, the endpoint name everything else refers to) is fixed at creation: `POST
+  /api/platform/providers` derives it from the label as a slug (`Mistral (Paris)` →
+  `mistral-paris`) unique, case-insensitively, among providers, `librechat.yaml` endpoints and
+  every tenant's own endpoints (a provider may later reach that tenant), appending `-2`, `-3` on
+  a collision; API clients may still pass an explicit `name`, checked the same way. A tenant's
+  own endpoint in turn may not take a provider's or a YAML endpoint's name. `PUT /providers/:name` updates (and,
+  for older clients, still creates under an exact name).
+- **Models are objects**: `{ id, label?, location?, limits? }`. `id` is the API model name;
+  `label` is shown in the model selector (the endpoint's `modelLabels`, which the client reads
+  for custom endpoints) and in migration notices.
+- **Location** replaces `region` (dropped) and `country`: `{ type: 'country', code }` (ISO
+  3166-1 alpha-2), `{ type: 'eu' }` or `{ type: 'global' }`. The provider's default is required
+  on every write (400 `location_required`; a provider migrated without a `country` is served
+  without one until its next save, where the admin app asks for it), a model may override it, and tenant admins get the effective location per model in
+  `/api/admin/catalog` (flag, EU badge or globe in the admin app). A tenant's own (BYOK)
+  endpoints take the same model and location shape, without limits, and may leave the location
+  out.
+- **Limits per model** (see [Provider limits](#provider-limits-and-the-wait-queue-2026-10-26)):
+  the provider-wide limits are gone; the queue settings (`queue.maxWaitSeconds`,
+  `queue.pauseSeconds`) stay on the provider because they describe how a user waits, not a
+  capacity.
+- **Migration.** Documents of the older shape (string models, `region`, `country`, provider-wide
+  `limits`) are read in the new shape everywhere, and an idempotent pass at startup
+  (`migratePlatformCatalog`) rewrites them: string models become `{ id }`, `country` becomes a
+  country location, `region` is dropped, and the provider's limits are copied to each model
+  (which multiplies capacity, accepted by the owner) with `maxWaitSeconds`/`pauseSeconds` moved
+  to `queue`. The collections are small (tens of providers, one catalog per tenant), so one pass
+  is cheap, and reads stay reads: a lazy write-back would turn the 30-second catalog reload of
+  every tenant into writes. A write only applies to the document as read, so an operator's save
+  in between wins. During a rolling deploy an older replica still running reads the rewritten
+  providers without their models until it stops.
 
 ### Catalog lock
 
@@ -389,6 +427,20 @@ maps (endpoint, model) to (endpoint, model) and does two things
   same call names `successors`, which are migrated before the write. A model a platform agent
   runs on cannot be dropped (`model_used_by_platform_agents`). For tenant admins the admin app
   asks for a successor before saving a narrowing, using the usage count.
+- **Restricted to groups (owner's decision).** A tenant admin may restrict a model from everyone
+  to some groups; users outside them lose it, members keep it. The admin's migration, preview
+  and usage count (`/api/admin/models/migrations`, `…/migrations/preview`, `…/usage`) take
+  `exceptGroups` (1–100 group ids of the caller's tenant; any other id is 400 `unknown_group`
+  with the offending `groupIds`). Members are resolved at run time from the groups' `memberIds`
+  the way `getUserPrincipals` does (a user's `idOnTheSource`, else its id). The rewrite then
+  covers only what non-members own: agents by `author`, conversations and presets by `user`,
+  favorites by user. Model specs in config documents are not touched, because the config
+  applies to the members too, and no redirect is stored, because the old model stays valid for
+  them. `migration.id` is still an `mm_` id, which names the run in notices and the audit
+  (`model.migrated` with `exceptGroups`, `exceptedUsers`, `redirect: false`) but no redirect;
+  the response carries `exceptGroups`. Accepted for now: an agent authored by a member but
+  shared with the whole tenant is not rewritten, so users outside the groups fail on it until
+  its author moves it; membership changes after the run are not followed.
 
 ## Admin app
 
@@ -585,14 +637,18 @@ tenant and server. The operator sets it in the operator area's Prices page
 With a few hundred users across several companies, the providers' token and request limits will
 be reached. A turn over a limit waits instead of failing (`packages/api/src/queue/`):
 
-- **Limits per provider, set by the operator.** `limits` on a platform provider (operator API and
-  the admin app's catalog form) or on a `librechat.yaml` custom endpoint: `concurrency` (turns
-  running at once), `requestsPerMinute`, `tokensPerMinute`, `maxWaitSeconds` (default 120) and
-  `pauseSeconds` (pause after a 429 without `Retry-After`, default 10). No `limits`, no queue
-  (upstream's behaviour); `limits: {}` only adds the 429 retry. Tenants cannot set them: the
-  catalog lock refuses every endpoint field but the models, and a tenant's own (BYOK) endpoints
-  never get them.
-- **One queue per provider for every tenant, strictly first come, first served.** Only the head
+- **Limits per model, set by the operator** (per provider until 2026-10-30, see [Catalog
+  models](#catalog-models-2026-10-30)). Each model of a platform provider may have `limits`:
+  `concurrency` (turns running at once), `requestsPerMinute`, `tokensPerMinute`; the provider's
+  `queue` holds `maxWaitSeconds` (default 120) and `pauseSeconds` (pause after a 429 without
+  `Retry-After`, default 10) for all its models. A model without limits has no queue (upstream's
+  behaviour). A `librechat.yaml` custom endpoint sets `modelLimits.<model>` over `limits`, which
+  applies to each of its models separately; there `limits: {}` only adds the 429 retry. Tenants
+  cannot set them: the catalog lock refuses every endpoint field but the models, and a tenant's
+  own (BYOK) endpoints never get them.
+- **One queue per model for every tenant, strictly first come, first served.** Queues are keyed
+  by (endpoint, model), so two models of one provider never wait for each other, and a 429 pauses
+  only that model's queue. Only the head
   of a queue can be admitted. The unit is the turn: it holds one slot for its whole run, sub-agents
   and tool loops included, and is charged one request plus its estimated prompt tokens at
   admission; when it ends, the 60-second window holds what it actually used (all model calls and
@@ -879,7 +935,8 @@ LibreChat already supports it, and the fork only adds the agent-aware delete bel
 - Hosting: STACKIT region EU01 (Schwarz Digits, data centres in Germany) for all platform
   components and backups. The off-site backup copy stays in the EU (see
   [Backups](#backups)).
-- Models: only EU-region endpoints in the catalog; region shown per model in the admin app. Open
+- Models: only EU-region endpoints in the catalog; the location (a country, the EU or global) is
+  shown per model in the admin app (see [Catalog models](#catalog-models-2026-10-30)). Open
   models can run in Germany on STACKIT AI Model Serving (OpenAI-compatible, the same bill).
 - File search: embeddings computed on the platform's own machines (see
   [File search](#file-search-rag)); the vectors stay in the platform's database.
@@ -1120,8 +1177,12 @@ Decided:
   tenant admin's explicit consent per subscription, a month charged once at the accepted price,
   and a priced server off for tenants without a subscription; `support` is always free (see [MCP
   server prices](#mcp-server-prices-2026-10-27)).
-- Provider limits (2026-10-26): operator-set limits per provider with a fair first-come
-  first-served wait queue shared by all tenants, counted per turn, a 429 retry before any content
+- Catalog models (2026-10-30): one display name per provider with an id derived from it at
+  creation, models as objects with a label, a location (country, EU or global; the provider's by
+  default) and limits per model, and the old documents migrated at startup (see [Catalog
+  models](#catalog-models-2026-10-30)).
+- Provider limits (2026-10-26): operator-set limits per provider (per model since 2026-10-30)
+  with a fair first-come first-served wait queue shared by all tenants, counted per turn, a 429 retry before any content
   and a two-minute default wait (see [Provider limits and the wait
   queue](#provider-limits-and-the-wait-queue-2026-10-26)).
 - Web search (2026-10-20): one Serper account for all tenants behind the search gateway
@@ -1135,8 +1196,9 @@ Decided:
 - Model migration (2026-10-30): a mapping from an old to a new model is a kept redirect plus a
   one-time rewrite of agents, conversations, presets, model specs and favorites, with a one-time
   notice to users; the operator migrates for all or listed tenants, tenant admins within their
-  tenant, and the operator API refuses to drop a model in use without a successor (see [Model
-  migration](#model-migration-2026-10-30)).
+  tenant, and the operator API refuses to drop a model in use without a successor; a tenant
+  migration with `exceptGroups` (a model restricted to groups) moves only non-members and keeps
+  no redirect (see [Model migration](#model-migration-2026-10-30)).
 
 Open:
 
@@ -1152,4 +1214,4 @@ Open:
   KVM-capable host is the fallback.
 - Plans: which providers and limits a plan includes, on top of the per-tenant assignment.
 - Object storage for branding images, once inline data URLs are too small.
-- Region and price per catalog model for the admin app.
+- Price per catalog model for the admin app (the location per model is done).

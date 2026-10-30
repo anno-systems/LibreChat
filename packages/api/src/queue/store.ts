@@ -1,9 +1,10 @@
 import type { TProviderLimits, TQueueReason } from 'librechat-data-provider';
 
 /**
- * State of the provider queues (fork-only). One queue per provider, shared by every tenant of
- * the deployment. The gate (`gate.ts`) waits and decides when to ask again; the store keeps the
- * queue order, the admitted turns and the 60-second window, and decides admission atomically.
+ * State of the provider queues (fork-only). One queue per endpoint and model (`queueKey`, which
+ * the store calls `provider`), shared by every tenant of the deployment. The gate (`gate.ts`)
+ * waits and decides when to ask again; the store keeps the queue order, the admitted turns and
+ * the 60-second window, and decides admission atomically.
  *
  * The in-memory store (`memory.ts`) serves one process. Several replicas need a shared store
  * (Redis: the queue as a list, the window as a sorted set, `tryAdmit` as one Lua script, change

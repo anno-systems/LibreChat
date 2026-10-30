@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { logger, emptyMigrationCounts, PLATFORM_REDIRECT_SCOPE } from '@librechat/data-schemas';
 import type {
   ModelRef,
@@ -29,6 +30,7 @@ export type MigrationStore = Pick<
   | 'getModelRedirects'
   | 'enableSuccessor'
   | 'retargetModelRedirects'
+  | 'findGroupMemberUsers'
 >;
 
 /** An audit event, recorded with the caller's actor and request context. */
@@ -52,8 +54,27 @@ export interface ModelMigrationServiceDeps {
   isAssignedProvider?(endpoint: string): Promise<boolean>;
 }
 
-/** Who a migration is for: the operator's (`platform`) or one tenant's. */
-export type MigrationScope = { tenantId: string } | { platform: true; tenantIds?: string[] };
+/**
+ * Users of a tenant a migration leaves out: the members of `groupIds` (resolved to `userIds`),
+ * who keep the old model because it stays enabled for those groups.
+ */
+export interface MigrationExcept {
+  groupIds: string[];
+  userIds: string[];
+}
+
+/**
+ * Who a migration is for: the operator's (`platform`) or one tenant's. A tenant scope with
+ * `except` is a scoped migration: it rewrites only what other users own, leaves config documents
+ * alone and stores no redirect, since the old model stays valid for the excepted groups.
+ */
+export type MigrationScope =
+  | { tenantId: string; except?: MigrationExcept }
+  | { platform: true; tenantIds?: string[] };
+
+export type ScopeOutcome =
+  | { ok: true; scope: MigrationScope }
+  | { ok: false; error: { code: 'unknown_group'; groupIds: string[] } };
 
 export interface MigrationRun {
   scope: MigrationScope;
@@ -66,6 +87,10 @@ export interface MigrationRun {
 }
 
 export interface MigrationView {
+  /**
+   * The redirect's id, which notices carry too. A scoped migration (`exceptGroups`) stores no
+   * redirect; its id (same `mm_` form) only names the run in notices and the audit log.
+   */
   id: string;
   scope: 'platform' | 'tenant';
   tenantIds?: string[];
@@ -80,6 +105,8 @@ export interface MigrationView {
   counts: MigrationCounts;
   /** Operator migrations: tenants whose config documents or assignment gained the successor. */
   successorEnabled?: Record<string, SuccessorEnabled>;
+  /** Scoped migrations: the groups whose members were left out; no redirect was stored. */
+  exceptGroups?: string[];
 }
 
 export type MigrationOutcome =
@@ -100,7 +127,11 @@ function groupOf(groups: RewriteGroup[], tenantId: string): RewriteGroup {
 }
 
 export function audienceOf(scope: MigrationScope): MigrationAudience {
-  if ('tenantId' in scope) return { tenantId: scope.tenantId };
+  if ('tenantId' in scope) {
+    return scope.except
+      ? { tenantId: scope.tenantId, exceptUsers: scope.except.userIds }
+      : { tenantId: scope.tenantId };
+  }
   return scope.tenantIds ? { tenantIds: scope.tenantIds } : { all: true };
 }
 
@@ -148,6 +179,8 @@ export interface ModelMigrationService {
    * tenant or for every tenant.
    */
   hasRedirect(scope: MigrationScope, ref: ModelRef): boolean;
+  /** A tenant's scope, leaving out the members of `exceptGroups` when given. */
+  tenantScope(tenantId: string, exceptGroups?: string[]): Promise<ScopeOutcome>;
 }
 
 export function createModelMigrationService(
@@ -182,7 +215,7 @@ export function createModelMigrationService(
     const redirects = store.getModelRedirects();
     const end = (tenantId?: string) => resolveModelRedirect(redirects, tenantId, to)?.to ?? to;
     if ('tenantId' in scope) {
-      return [{ audience: { tenantId: scope.tenantId }, to: end(scope.tenantId) }];
+      return [{ audience: audienceOf(scope), to: end(scope.tenantId) }];
     }
     if (!scope.tenantIds) return [{ audience: { all: true }, to: end() }];
     const groups = new Map<string, RewriteGroup & { tenantIds: string[] }>();
@@ -215,13 +248,18 @@ export function createModelMigrationService(
     ]);
     const scopeName = tenantId ?? PLATFORM_REDIRECT_SCOPE;
     const listed = 'platform' in scope ? scope.tenantIds : undefined;
-    const redirect = await store.upsertModelRedirect({
-      scope: scopeName,
-      ...(listed && { tenantIds: listed }),
-      from,
-      to,
-      createdBy: input.createdBy,
-    });
+    const except = 'tenantId' in scope ? scope.except : undefined;
+    /* The old model stays valid for the excepted groups, so a scoped migration redirects nothing. */
+    const redirect = except
+      ? null
+      : await store.upsertModelRedirect({
+          scope: scopeName,
+          ...(listed && { tenantIds: listed }),
+          from,
+          to,
+          createdBy: input.createdBy,
+        });
+    const migrationId = redirect?.redirectId ?? `mm_${randomUUID()}`;
     const at = new Date();
     const counts = emptyMigrationCounts();
     const byTenant: Record<string, MigrationCounts> = {};
@@ -233,7 +271,7 @@ export function createModelMigrationService(
       const target = sameRef(group.to, to) ? to : await labelled(group.to, tenantId);
       group.to = target;
       const result = await store.migrateModelUsage({
-        migrationId: redirect.redirectId,
+        migrationId,
         from,
         to: target,
         agentProviders: agentProvidersFor(from.endpoint),
@@ -264,14 +302,16 @@ export function createModelMigrationService(
         }
       }
     }
-    /* Redirects that ended at the old model now end where its documents went. */
-    await store.retargetModelRedirects({
-      scope: scopeName,
-      ...(listed && { tenantIds: listed }),
-      from,
-      to: groups[0].to,
-    });
-    await store.recordModelMigrationRun(redirect.redirectId, counts, at);
+    if (redirect) {
+      /* Redirects that ended at the old model now end where its documents went. */
+      await store.retargetModelRedirects({
+        scope: scopeName,
+        ...(listed && { tenantIds: listed }),
+        from,
+        to: groups[0].to,
+      });
+      await store.recordModelMigrationRun(redirect.redirectId, counts, at);
+    }
     await invalidate([...configTenants], [...userIds]);
 
     const event = (
@@ -287,11 +327,16 @@ export function createModelMigrationService(
         tenantId: forTenant,
         target: { type: 'model', id: `${from.endpoint}/${from.model}` },
         metadata: {
-          migrationId: redirect.redirectId,
+          migrationId,
           to: `${to.endpoint}/${to.model}`,
           ...(!sameRef(target, to) && { rewrittenTo: `${target.endpoint}/${target.model}` }),
           scope: tenantId ? 'tenant' : 'platform',
           ...tenantCounts,
+          ...(except && {
+            exceptGroups: except.groupIds.join(','),
+            exceptedUsers: except.userIds.length,
+            redirect: false,
+          }),
           ...(change && {
             successorConfigs: change.configs,
             successorAssigned: change.assignment,
@@ -312,15 +357,16 @@ export function createModelMigrationService(
     return {
       ok: true,
       migration: {
-        id: redirect.redirectId,
+        id: migrationId,
         scope: tenantId ? 'tenant' : 'platform',
-        ...(redirect.tenantIds && { tenantIds: redirect.tenantIds }),
+        ...(redirect?.tenantIds && { tenantIds: redirect.tenantIds }),
         from,
         to,
         rewrittenTo: groups[0].to,
         at: at.toISOString(),
         counts,
         ...(!tenantId && { successorEnabled: enabled }),
+        ...(except && { exceptGroups: except.groupIds }),
       },
     };
   }
@@ -335,9 +381,18 @@ export function createModelMigrationService(
     );
   }
 
+  async function tenantScope(tenantId: string, exceptGroups?: string[]): Promise<ScopeOutcome> {
+    if (!exceptGroups?.length) return { ok: true, scope: { tenantId } };
+    const groupIds = [...new Set(exceptGroups)];
+    const members = await store.findGroupMemberUsers(tenantId, groupIds);
+    if (!members.ok) return members;
+    return { ok: true, scope: { tenantId, except: { groupIds, userIds: members.userIds } } };
+  }
+
   return {
     run,
     hasRedirect,
+    tenantScope,
     preview: (scope, from) =>
       store.previewModelMigration(from, agentProvidersFor(from.endpoint), audienceOf(scope)),
     usage: (scope, models) =>

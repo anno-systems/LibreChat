@@ -187,11 +187,20 @@ const provider = {
   baseURL: 'https://api.mistral.ai/v1',
   apiKey: 'sk-0123456789abcdef',
   models: ['large', 'large-2'],
+  location: { type: 'eu' as const },
 };
+
+/** Catalog models of the given ids. */
+const ids = (models: string[]) => models.map((id) => ({ id }));
 
 describe('operator migrations', () => {
   it('migrates every tenant, records each tenant and the platform, and refuses bad targets', async () => {
-    await catalog.upsertPlatformProvider({ name: 'Mistral', ...provider, apiKey: 'enc:x' });
+    await catalog.upsertPlatformProvider({
+      name: 'Mistral',
+      ...provider,
+      models: ids(provider.models),
+      apiKey: 'enc:x',
+    });
     await seedChat('acme');
     await seedChat('globex');
     const { operator, audits } = setup();
@@ -230,7 +239,12 @@ describe('operator migrations', () => {
   });
 
   it('migrates listed tenants only', async () => {
-    await catalog.upsertPlatformProvider({ name: 'Mistral', ...provider, apiKey: 'enc:x' });
+    await catalog.upsertPlatformProvider({
+      name: 'Mistral',
+      ...provider,
+      models: ids(provider.models),
+      apiKey: 'enc:x',
+    });
     await seedChat('acme');
     await seedChat('globex');
     const { operator } = setup();
@@ -288,7 +302,9 @@ describe('model removal guard', () => {
     );
     expect(accepted.statusCode).toBe(200);
     expect(await agentModel('acme')).toBe('large-2');
-    expect((await catalog.findPlatformProviders(['Mistral']))[0].models).toEqual(['large-2']);
+    expect((await catalog.findPlatformProviders(['Mistral']))[0].models).toEqual([
+      { id: 'large-2' },
+    ]);
     const redirects = await call(operator.listRedirects, operatorReq());
     expect(redirects.body?.redirects).toEqual([
       expect.objectContaining({
@@ -370,7 +386,7 @@ describe('operator migration extras', () => {
     await catalog.upsertPlatformProvider({
       name: 'Mistral',
       ...provider,
-      models: ['small', 'large', 'large-2', 'large-3'],
+      models: ids(['small', 'large', 'large-2', 'large-3']),
       apiKey: 'enc:x',
     });
     await seedChat('acme', { endpoint: 'Mistral', model: 'small' });
@@ -453,7 +469,12 @@ describe('notice handlers', () => {
   it('answers labels and acknowledges an agent notice per user', async () => {
     await seedChat('acme');
     const { operator } = setup();
-    await catalog.upsertPlatformProvider({ name: 'Mistral', ...provider, apiKey: 'enc:x' });
+    await catalog.upsertPlatformProvider({
+      name: 'Mistral',
+      ...provider,
+      models: ids(provider.models),
+      apiKey: 'enc:x',
+    });
     await call(operator.migrate, operatorReq({ from: LARGE, to: LARGE2 }));
     const notices = createModelMigrationNoticeHandlers(store);
     const userReq = (id: string) =>

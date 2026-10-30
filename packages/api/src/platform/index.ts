@@ -5,6 +5,8 @@ export {
   withTenantEndpoints,
 } from './catalog';
 export type { TenantEndpointLoader, TenantEndpointLoaderDeps } from './catalog';
+export { hasModel, slugOf, uniqueSlug, tenantModelView } from './models';
+export type { TenantModelView } from './models';
 export {
   createOperatorAudit,
   createPlatformCatalogHandlers,

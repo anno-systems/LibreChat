@@ -805,6 +805,7 @@ class AgentClient extends BaseClient {
       gate: providerGate,
       appConfig: this.options.req?.config,
       endpoint: this.options.agent?.endpoint,
+      model: this.model,
       signal,
       usage: () => this.collectedUsage,
       content: () => this.contentParts,

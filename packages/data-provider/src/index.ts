@@ -6,6 +6,8 @@ export * from './branding';
 export * from './config';
 export * from './footer';
 export * from './queue';
+/* Fork: where catalog models process data. */
+export * from './location';
 export * from './theme';
 export * from './themes';
 export * from './langchain';

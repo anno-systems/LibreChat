@@ -9,7 +9,7 @@ const provider: PlatformProvider = {
   label: 'Mistral',
   baseURL: 'https://api.mistral.ai/v1',
   apiKey: 'enc:operator-key',
-  models: ['small', 'medium', 'large'],
+  models: [{ id: 'small', label: 'Mistral Small' }, { id: 'medium' }, { id: 'large' }],
 };
 
 const catalog: TenantCatalog = {
@@ -20,7 +20,12 @@ const catalog: TenantCatalog = {
     { name: 'Deleted', models: ['x'] },
   ],
   own: [
-    { name: 'Own', baseURL: 'https://llm.a.example/v1', apiKey: 'enc:tenant-key', models: ['m'] },
+    {
+      name: 'Own',
+      baseURL: 'https://llm.a.example/v1',
+      apiKey: 'enc:tenant-key',
+      models: [{ id: 'm', label: 'Mine' }],
+    },
   ],
 };
 
@@ -57,17 +62,43 @@ describe('catalogEndpoints', () => {
     expect(endpoints.map((e) => e.dropParams)).toEqual([['user', 'stop'], []]);
   });
 
-  it("carries a platform provider's queue limits to its endpoint, never to a tenant's own", () => {
-    const limits = { concurrency: 2, maxWaitSeconds: 60 };
+  it("gives each limited model of a platform provider its queue, never a tenant's own", () => {
     const [platform, own] = catalogEndpoints(
       'tenant-a',
       catalog,
-      [{ ...provider, limits }],
+      [
+        {
+          ...provider,
+          models: [
+            { id: 'small', limits: { concurrency: 2 } },
+            { id: 'large', limits: { tokensPerMinute: 1000 } },
+            { id: 'medium', limits: { concurrency: 9 } },
+          ],
+          queue: { maxWaitSeconds: 60 },
+        },
+      ],
       decrypt,
     );
 
-    expect(platform).toEqual(expect.objectContaining({ limits }));
-    expect(own).not.toHaveProperty('limits');
+    /** Only assigned models, each with the provider's queue settings. */
+    expect(platform).toEqual(
+      expect.objectContaining({
+        modelLimits: {
+          small: { concurrency: 2, maxWaitSeconds: 60 },
+          large: { tokensPerMinute: 1000, maxWaitSeconds: 60 },
+        },
+      }),
+    );
+    expect(platform).not.toHaveProperty('limits');
+    expect(own).not.toHaveProperty('modelLimits');
+  });
+
+  it('leaves models without limits unqueued and names labelled models', () => {
+    const [platform, own] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
+
+    expect(platform).not.toHaveProperty('modelLimits');
+    expect(platform).toEqual(expect.objectContaining({ modelLabels: { small: 'Mistral Small' } }));
+    expect(own).toEqual(expect.objectContaining({ modelLabels: { m: 'Mine' } }));
   });
 
   it('leaves out the tenant endpoints without BYOK and assignments without models', () => {
@@ -86,7 +117,7 @@ describe('catalogEndpoints', () => {
       ...provider,
       name: 'Everyone',
       label: 'For all',
-      models: ['a', 'b'],
+      models: [{ id: 'a' }, { id: 'b' }],
       allTenants: true,
     };
     const assigned = catalogEndpoints(
