@@ -17,7 +17,7 @@ const API_SUFFIXES: ReadonlyArray<readonly [string, CatalogApi]> = [
   ['/messages', 'anthropic'],
 ];
 
-export const catalogApiSchema = z.enum(['chat', 'responses', 'anthropic']);
+export const catalogApiSchema: z.ZodType<CatalogApi> = z.enum(['chat', 'responses', 'anthropic']);
 
 /**
  * A pasted URL as a base URL: query, fragment and trailing slashes removed, and a trailing
@@ -40,7 +40,7 @@ export function normaliseBaseURL(url: string): { baseURL: string; api?: CatalogA
 }
 
 /** An http(s) URL as an operator pastes it, before `normaliseBaseURL`. */
-export const pastedURLSchema = z
+export const pastedURLSchema: z.ZodType<string> = z
   .string()
   .trim()
   .max(2048)
@@ -48,7 +48,7 @@ export const pastedURLSchema = z
   .refine((value) => /^https?:$/.test(new URL(value).protocol), 'must be http or https');
 
 /** Request fields a model rejects, e.g. `user`; an advanced override of the built-in rules. */
-export const dropParamsSchema = z
+export const dropParamsSchema: z.ZodType<string[], z.ZodTypeDef, string[]> = z
   .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/))
   .max(32)
   .transform((params) => [...new Set(params)]);
