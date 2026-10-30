@@ -3,6 +3,8 @@ export * from './azure';
 export * from './bedrock';
 export * from './balance';
 export * from './branding';
+/* Fork: kinds of the platform operator's banners. */
+export * from './banners';
 export * from './config';
 export * from './footer';
 export * from './queue';

@@ -62,6 +62,7 @@ describe('platform banner handlers', () => {
       tenantIds: ['tenant-a'],
       isPublic: false,
       persistable: true,
+      kind: 'info',
     });
     const list = mockRes();
     await handlers.listBanners(req(''), list);
@@ -91,6 +92,7 @@ describe('platform banner handlers', () => {
       'ok',
       { message: 'x', displayFrom: '2026-10-23T18:00:00Z', type: 'popup' },
     ],
+    ['an unknown kind', 'ok', { message: 'x', displayFrom: '2026-10-23T18:00:00Z', kind: 'party' }],
     [
       'a bad tenant id',
       'ok',
@@ -109,6 +111,24 @@ describe('platform banner handlers', () => {
     expect(res.statusCode).toBe(400);
     expect(store.upsertPlatformBanner).not.toHaveBeenCalled();
   });
+});
+
+describe('platform banner kinds', () => {
+  it.each(['info', 'maintenance', 'warning', 'outage'] as const)(
+    'stores the kind %s',
+    async (kind) => {
+      const { handlers, stored } = setup();
+      const res = mockRes();
+
+      await handlers.putBanner(
+        req('notice', { message: 'x', displayFrom: '2026-10-23T18:00:00Z', kind }),
+        res,
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(stored.get('notice')?.kind).toBe(kind);
+    },
+  );
 });
 
 describe('banner resolver', () => {
@@ -137,6 +157,19 @@ describe('banner resolver', () => {
     expect((await resolve({ id: 'u1' }, 'tenant-a'))?.bannerId).toBe('platform');
     // Signed out, a platform banner that is not public stays hidden.
     expect((await resolve(undefined, 'tenant-a'))?.bannerId).toBe('own');
+  });
+
+  it('passes the platform banner kind on, as info when it has none, and none for the tenant', async () => {
+    const shown = (banner: PlatformBanner, ownBanner: ShownBanner | null = null) =>
+      createBannerResolver({
+        getBanner: async () => ownBanner,
+        findActivePlatformBanner: async () => banner,
+      })({ id: 'u1' }, 'tenant-a');
+
+    expect((await shown({ ...platform, kind: 'outage' }))?.kind).toBe('outage');
+    expect((await shown(platform))?.kind).toBe('info');
+    const later = { ...own, displayFrom: new Date('2026-10-30T00:00:00Z') };
+    expect((await shown({ ...platform, kind: 'warning' }, later))?.kind).toBeUndefined();
   });
 
   it('asks for the platform banner of the given tenant, and shows nothing without any', async () => {

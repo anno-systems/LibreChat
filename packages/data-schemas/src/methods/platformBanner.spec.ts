@@ -84,4 +84,40 @@ describe('platform banners', () => {
     expect((await methods.findActivePlatformBanner(undefined, now))?.bannerId).toBe('all');
     expect(await methods.findActivePlatformBanner('tenant-a', day(5))).toBeNull();
   });
+
+  it('stores a kind, defaults it to info and reads a banner saved without one as info', async () => {
+    const base = { message: 'Notice', displayFrom: day(20), isPublic: false, persistable: false };
+    const outage = await methods.upsertPlatformBanner({
+      ...base,
+      bannerId: 'down',
+      kind: 'outage',
+    });
+    expect(outage.kind).toBe('outage');
+
+    const plain = await methods.upsertPlatformBanner({ ...base, bannerId: 'plain' });
+    expect(plain.kind).toBe('info');
+
+    const reset = await methods.upsertPlatformBanner({ ...base, bannerId: 'down' });
+    expect(reset.kind).toBe('info');
+
+    await mongoose.models.PlatformBanner.collection.insertOne({
+      ...base,
+      bannerId: 'legacy',
+      displayFrom: day(25),
+    });
+    expect((await methods.findActivePlatformBanner(undefined, day(26)))?.kind).toBe('info');
+  });
+
+  it('refuses a kind outside the list', async () => {
+    await expect(
+      methods.upsertPlatformBanner({
+        bannerId: 'odd',
+        message: 'Notice',
+        displayFrom: day(20),
+        isPublic: false,
+        persistable: false,
+        kind: 'party' as never,
+      }),
+    ).rejects.toThrow();
+  });
 });
