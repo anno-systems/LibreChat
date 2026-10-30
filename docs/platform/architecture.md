@@ -285,17 +285,21 @@ Owner's decisions on the shape of a platform provider (`packages/data-schemas/sr
 - **One display name.** `label` is the only user-facing name and can change at any time. The id
   (`name`, the endpoint name everything else refers to) is fixed at creation: `POST
   /api/platform/providers` derives it from the label as a slug (`Mistral (Paris)` →
-  `mistral-paris`) unique among providers and `librechat.yaml` endpoints, appending `-2`, `-3` on
-  a collision; API clients may still pass an explicit `name`. `PUT /providers/:name` updates (and,
+  `mistral-paris`) unique, case-insensitively, among providers, `librechat.yaml` endpoints and
+  every tenant's own endpoints (a provider may later reach that tenant), appending `-2`, `-3` on
+  a collision; API clients may still pass an explicit `name`, checked the same way. A tenant's
+  own endpoint in turn may not take a provider's or a YAML endpoint's name. `PUT /providers/:name` updates (and,
   for older clients, still creates under an exact name).
 - **Models are objects**: `{ id, label?, location?, limits? }`. `id` is the API model name;
   `label` is shown in the model selector (the endpoint's `modelLabels`, which the client reads
   for custom endpoints) and in migration notices.
 - **Location** replaces `region` (dropped) and `country`: `{ type: 'country', code }` (ISO
-  3166-1 alpha-2), `{ type: 'eu' }` or `{ type: 'global' }`. The provider has a default, a model
-  may override it, and tenant admins get the effective location per model in
+  3166-1 alpha-2), `{ type: 'eu' }` or `{ type: 'global' }`. The provider's default is required
+  on every write (400 `location_required`; a provider migrated without a `country` is served
+  without one until its next save, where the admin app asks for it), a model may override it, and tenant admins get the effective location per model in
   `/api/admin/catalog` (flag, EU badge or globe in the admin app). A tenant's own (BYOK)
-  endpoints take the same model and location shape, without limits.
+  endpoints take the same model and location shape, without limits, and may leave the location
+  out.
 - **Limits per model** (see [Provider limits](#provider-limits-and-the-wait-queue-2026-10-26)):
   the provider-wide limits are gone; the queue settings (`queue.maxWaitSeconds`,
   `queue.pauseSeconds`) stay on the provider because they describe how a user waits, not a

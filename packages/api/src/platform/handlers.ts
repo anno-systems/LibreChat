@@ -50,6 +50,7 @@ export interface PlatformCatalogHandlerDeps {
     | 'upsertPlatformProvider'
     | 'deletePlatformProvider'
     | 'tenantsUsingProvider'
+    | 'listOwnEndpointNames'
     | 'getTenantCatalog'
     | 'setTenantAssignments'
     | 'upsertOwnEndpoint'
@@ -114,7 +115,7 @@ const providerInputSchema = z
     apiKey: z.string().trim().min(1).max(4096).optional(),
     /** `{ id, label?, location?, limits? }` per model; a model with limits gets its own queue. */
     models: providerModelsSchema,
-    /** Default location of the models; omitted removes it. */
+    /** Default location of the models; required (`location_required`), checked after parsing. */
     location: locationSchema.optional(),
     dropParams: dropParamsSchema,
     /** Offered to every tenant with all its models; omitted on an update: the stored value stays. */
@@ -307,12 +308,18 @@ export function createPlatformCatalogHandlers(
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-  async function takenNames(): Promise<Set<string>> {
-    const [yaml, providers] = await Promise.all([
+  /**
+   * Lower-cased names a new endpoint may not take: `librechat.yaml`'s and the providers'. A new
+   * provider may not take any tenant's own endpoint name either (`ownEndpoints`), since it can be
+   * assigned to that tenant or offered to all.
+   */
+  async function takenNames(options?: { ownEndpoints?: boolean }): Promise<Set<string>> {
+    const [yaml, providers, own] = await Promise.all([
       yamlEndpointNames(),
       catalog.listPlatformProviders(),
+      options?.ownEndpoints ? catalog.listOwnEndpointNames() : Promise.resolve([]),
     ]);
-    return new Set([...yaml, ...providers.map((p) => p.name)].map((n) => n.toLowerCase()));
+    return new Set([...yaml, ...providers.map((p) => p.name), ...own].map((n) => n.toLowerCase()));
   }
 
   function providerView(provider: PlatformProvider, tenants?: string[]) {
@@ -366,6 +373,8 @@ export function createPlatformCatalogHandlers(
     input: ProviderInput,
   ): Promise<Response | 'name_taken'> {
     const { apiKey, allTenants, successors = [], ...fields } = input;
+    /** Required on every write; a provider migrated without one keeps working until saved. */
+    if (!fields.location) return res.status(400).json({ error: 'location_required' });
     if (!existing && !apiKey) return res.status(400).json({ error: 'api_key_required' });
     const kept = new Set(fields.models.map((model) => model.id));
     const allowed = await guardRemoval(req, res, {
@@ -431,7 +440,7 @@ export function createPlatformCatalogHandlers(
       if (!parsed.success) return res.status(400).json({ error: 'invalid_provider' });
       const { name: given, ...input } = parsed.data;
       if (given) {
-        if ((await takenNames()).has(given.toLowerCase())) {
+        if ((await takenNames({ ownEndpoints: true })).has(given.toLowerCase())) {
           return res.status(409).json({ error: 'name_taken' });
         }
         const saved = await saveProvider(req, res, given, undefined, input);
@@ -440,7 +449,7 @@ export function createPlatformCatalogHandlers(
       /** A concurrent create can take the slug between the check and the insert; try the next. */
       const tried = new Set<string>();
       for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
-        const taken = new Set([...(await takenNames()), ...tried]);
+        const taken = new Set([...(await takenNames({ ownEndpoints: true })), ...tried]);
         const name = uniqueSlug(input.label, taken);
         if (!name) break;
         tried.add(name);
@@ -465,11 +474,8 @@ export function createPlatformCatalogHandlers(
         return res.status(400).json({ error: 'invalid_provider' });
       }
       const [existing] = await catalog.findPlatformProviders([name]);
-      if (!existing) {
-        const yaml = (await yamlEndpointNames()).map((n) => n.toLowerCase());
-        if (yaml.includes(name.toLowerCase())) {
-          return res.status(409).json({ error: 'name_taken' });
-        }
+      if (!existing && (await takenNames({ ownEndpoints: true })).has(name.toLowerCase())) {
+        return res.status(409).json({ error: 'name_taken' });
       }
       const saved = await saveProvider(req, res, name, existing, parsed.data);
       return saved === 'name_taken' ? res.status(409).json({ error: 'name_taken' }) : saved;

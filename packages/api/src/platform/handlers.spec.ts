@@ -715,3 +715,78 @@ describe('successors with model objects', () => {
     });
   });
 });
+
+describe('provider location and names (owner decisions)', () => {
+  const { location: _location, ...withoutLocation } = provider;
+
+  it('requires a location on create and update, and lists a migrated provider without one', async () => {
+    const { handlers } = setup();
+    const posted = await call(handlers.postProvider, operatorReq({}, withoutLocation));
+    const put = await call(handlers.putProvider, operatorReq({ name: 'New' }, withoutLocation));
+    expect(posted.statusCode).toBe(400);
+    expect(posted.body).toEqual({ error: 'location_required' });
+    expect(put.body).toEqual({ error: 'location_required' });
+    expect(await methods.listPlatformProviders()).toEqual([]);
+
+    /** As the startup migration leaves a provider that had no `country`. */
+    await methods.upsertPlatformProvider({
+      name: 'Migrated',
+      label: 'Migrated',
+      baseURL: provider.baseURL,
+      apiKey: `enc:${KEY}`,
+      models: [{ id: 'small' }],
+    });
+    const listed = await call(handlers.listProviders, operatorReq({}));
+    expect(listed.body?.providers).toEqual([
+      expect.not.objectContaining({ location: expect.anything() }),
+    ]);
+    await methods.setTenantAssignments('tenant-a', {
+      byok: false,
+      providers: [{ name: 'Migrated', models: ['small'] }],
+    });
+    const tenant = await call(handlers.getOwnCatalog, adminReq({}));
+    expect(tenant.body?.providers).toEqual([
+      { name: 'Migrated', label: 'Migrated', models: [{ id: 'small' }], allTenants: false },
+    ]);
+
+    const { apiKey: _key, ...update } = withoutLocation;
+    const saved = await call(handlers.putProvider, operatorReq({ name: 'Migrated' }, update));
+    expect(saved.body).toEqual({ error: 'location_required' });
+  });
+
+  it("keeps a new provider's name off every tenant's own endpoint names", async () => {
+    const { handlers } = setup();
+    await methods.setTenantAssignments('tenant-b', { byok: true, providers: [] });
+    await methods.upsertOwnEndpoint('tenant-b', {
+      name: 'Mistral',
+      baseURL: 'https://llm.b.example/v1',
+      apiKey: 'enc:k',
+      models: [{ id: 'm' }],
+    });
+
+    const generated = await call(handlers.postProvider, operatorReq({}, provider));
+    const explicit = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...provider, name: 'MISTRAL' }),
+    );
+    const put = await call(handlers.putProvider, operatorReq({ name: 'mistral' }, provider));
+
+    expect(generated.body?.provider).toMatchObject({ name: 'mistral-2' });
+    expect(explicit.body).toEqual({ error: 'name_taken' });
+    expect(put.body).toEqual({ error: 'name_taken' });
+  });
+
+  it('lets a tenant leave out the location of its own endpoint', async () => {
+    const { handlers } = setup();
+    await methods.setTenantAssignments('tenant-a', { byok: true, providers: [] });
+    const res = await call(
+      handlers.putOwnEndpoint,
+      adminReq(
+        { name: 'Own' },
+        { baseURL: 'https://llm.a.example/v1', apiKey: 'sk-tenant-key-0123456789', models: ['m'] },
+      ),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(res.body).not.toHaveProperty('location');
+  });
+});

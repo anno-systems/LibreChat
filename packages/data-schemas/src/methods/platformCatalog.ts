@@ -101,6 +101,8 @@ export interface PlatformCatalogMethods {
   deletePlatformProvider(name: string): Promise<boolean>;
   /** The tenants a provider is assigned to. */
   tenantsUsingProvider(name: string): Promise<string[]>;
+  /** The names of every tenant's own endpoints, across tenants. */
+  listOwnEndpointNames(): Promise<string[]>;
   /** Null when the operator never set the tenant's catalog. */
   getTenantCatalog(tenantId: string): Promise<TenantCatalog | null>;
   setTenantAssignments(
@@ -452,6 +454,13 @@ export function createPlatformCatalogMethods(
           >(),
       );
       return docs.map((doc) => doc.tenantId).sort();
+    },
+
+    async listOwnEndpointNames() {
+      const names = await runAsSystem(
+        async () => await Catalog.distinct('own.name', { 'own.0': { $exists: true } }),
+      );
+      return (names as unknown[]).filter((name): name is string => typeof name === 'string');
     },
 
     async getTenantCatalog(tenantId) {

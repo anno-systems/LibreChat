@@ -187,6 +187,7 @@ const provider = {
   baseURL: 'https://api.mistral.ai/v1',
   apiKey: 'sk-0123456789abcdef',
   models: ['large', 'large-2'],
+  location: { type: 'eu' as const },
 };
 
 /** Catalog models of the given ids. */
