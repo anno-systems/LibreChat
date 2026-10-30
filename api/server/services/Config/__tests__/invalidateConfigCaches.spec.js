@@ -12,6 +12,8 @@ jest.mock('~/server/services/start/tools', () => ({
 }));
 
 jest.mock('../loadCustomConfig', () => jest.fn().mockResolvedValue({}));
+/* Fork: model redirects (`services/Config/modelRedirector.js`). */
+jest.mock('../modelRedirector', () => ({ redirectModelSpecs: (appConfig) => appConfig }));
 
 jest.mock('@librechat/data-schemas', () => {
   return {

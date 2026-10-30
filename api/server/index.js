@@ -85,6 +85,7 @@ const {
   recordAuditEntry,
   loadPlatformPricing,
   loadMcpPricing,
+  loadModelRedirects,
 } = require('~/models');
 const initializeOAuthReconnectManager = require('./services/initializeOAuthReconnectManager');
 const { capabilityContextMiddleware } = require('./middleware/roles/capabilities');
@@ -245,6 +246,8 @@ const startServer = async () => {
   await loadPlatformPricing();
   /* Fork: MCP server prices and active subscriptions, held in memory (mcpPricing.ts). */
   await loadMcpPricing();
+  /* Fork: model redirects, held in memory for every chat request (modelMigration.ts). */
+  await loadModelRedirects();
   /* Recover stuck `status: 'pending'` records from a crash mid-render.
    * `runAsSystem` is required — `File` is tenant-isolated and strict
    * mode rejects unscoped queries. Lazy sweep in the preview endpoint
@@ -481,6 +484,8 @@ const startServer = async () => {
   app.use('/api/admin/mcp-subscriptions', routes.adminMcpSubscriptions);
   /* Fork: the tenant's chat usage for the admin dashboard. */
   app.use('/api/admin/usage', routes.adminUsage);
+  /* Fork: model migrations and redirects within the tenant. */
+  app.use('/api/admin/models', routes.adminModels);
   app.use('/api/platform/mcp', routes.platformMcp);
   app.use('/api/platform', routes.platform);
   app.use('/api/actions', routes.actions);
@@ -489,6 +494,8 @@ const startServer = async () => {
   app.use('/api/user', routes.user);
   app.use('/api/search', routes.search);
   app.use('/api/messages', routes.messages);
+  /* Fork: model migration notices of conversations and agents, ahead of their routers. */
+  app.use('/api', routes.modelMigration);
   app.use('/api/convos', routes.convos);
   app.use('/api/pull-requests', preAuthTenantMiddleware, routes.pullRequests);
   app.use('/api/traces', routes.traces);

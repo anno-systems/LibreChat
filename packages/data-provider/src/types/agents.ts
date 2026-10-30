@@ -9,6 +9,7 @@ import type {
 import type { TAttachment, TPlugin, AgentProvider, MemoryScope, SkillsScope } from 'src/schemas';
 import type { TTokenUsageEvent, TContextUsageEvent, TPendingSteer } from './runs';
 import type { StatefulCodeEnvironment } from '../stateful-code';
+import type { TModelMigrationNotice } from './modelMigration';
 import type { SummaryContentPart } from './content';
 import type { TFile } from './files';
 import { StepTypes, ContentTypes, ToolCallTypes } from './runs';
@@ -1161,6 +1162,8 @@ export type Agent = {
   /** Fork: set on a tenant's copy of a platform agent, which only the platform operator
    * changes; the builder treats it as read-only. */
   platformAgentId?: string;
+  /** Fork: the model migration an editor has not seen yet (editor view only). */
+  modelMigration?: TModelMigrationNotice;
   version?: number;
   category?: string;
   support_contact?: SupportContact;

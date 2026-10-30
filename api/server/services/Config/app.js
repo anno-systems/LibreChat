@@ -21,6 +21,7 @@ const loadCustomConfig = require('./loadCustomConfig');
 const getLogStores = require('~/cache/getLogStores');
 const paths = require('~/config/paths');
 const db = require('~/models');
+const { redirectModelSpecs } = require('./modelRedirector');
 
 let codeEnvironmentRegistry;
 
@@ -69,7 +70,9 @@ const appConfigService = createAppConfigService({
   loadTenantEndpoints: tenantEndpoints.load,
   overrideEnvAllowlist: process.env.CONFIG_OVERRIDE_ENV_ALLOWLIST,
   rederiveEndpoints: isEnabled(process.env.CONFIG_REDERIVE_ENDPOINTS),
-  augmentConfig: ({ appConfig, baseConfig, principals, options }) => {
+  augmentConfig: ({ appConfig: merged, baseConfig, principals, options }) => {
+    /** Fork: model specs whose model was migrated name its successor. */
+    const appConfig = redirectModelSpecs(merged, options.tenantId);
     if (!options.userId) return appConfig;
     return mergeAccessibleCodeEnvironments({
       appConfig,

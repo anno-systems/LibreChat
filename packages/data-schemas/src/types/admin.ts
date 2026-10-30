@@ -1348,6 +1348,13 @@ export const AUDIT_ACTIONS = [
   /** Fork: the operator deleted a tenant and all of its data; platform chain, target
    * `{ type: 'tenant', id }`, metadata the counts. */
   'tenant.purged',
+  /** Fork: a model migration (`methods/modelMigration.ts`): a redirect from one model to
+   * another was saved and what used the old model rewritten. Recorded in each tenant's chain
+   * whose documents changed or that made it, and in the platform chain for the operator's.
+   * Target `{ type: 'model', id: '<endpoint>/<model>' }` (the old model), metadata the new model
+   * and the counts per kind. A deleted redirect is `model.redirect_deleted`. */
+  'model.migrated',
+  'model.redirect_deleted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -1406,6 +1413,8 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'mcp_server.subscribed': 'mcp',
   'mcp_server.unsubscribed': 'mcp',
   'tenant.purged': 'user',
+  'model.migrated': 'config',
+  'model.redirect_deleted': 'config',
 };
 
 /** Result of the audited operation. Kept first-class instead of being encoded

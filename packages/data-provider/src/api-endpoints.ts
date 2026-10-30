@@ -157,6 +157,12 @@ export const conversations = (params: q.ConversationListParams) => {
 };
 
 export const conversationById = (id: string) => `${conversationsRoot}/${id}`;
+/** Fork: a conversation's model migration notice. */
+export const conversationModelMigration = (id: string) =>
+  `${conversationsRoot}/${encodeURIComponent(id)}/model-migration`;
+/** Fork: an agent's model migration notice. */
+export const agentModelMigration = (id: string) =>
+  `${BASE_URL}/api/agents/${encodeURIComponent(id)}/model-migration`;
 
 export const parentSubagents = (parentConversationId: string) =>
   `${conversationsRoot}/${encodeURIComponent(parentConversationId)}/subagents`;

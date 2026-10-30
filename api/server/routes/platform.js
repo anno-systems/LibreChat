@@ -10,6 +10,7 @@ const {
 const handlers = require('~/server/services/Config/platformCatalog');
 const { deleteTenant } = require('~/server/services/platformTenants');
 const platformAgents = require('~/server/services/platformAgents');
+const { operator: modelMigrations } = require('~/server/services/modelMigration');
 const { getAppConfig } = require('~/server/services/Config');
 const db = require('~/models');
 
@@ -59,5 +60,10 @@ router.get('/agents', platformAgents.handlers.listAgents);
 router.get('/agents/tools', platformAgents.handlers.listTools);
 router.put('/agents/:id', platformAgents.handlers.putAgent);
 router.delete('/agents/:id', platformAgents.handlers.deleteAgent);
+router.get('/model-redirects', modelMigrations.listRedirects);
+router.delete('/model-redirects/:id', modelMigrations.deleteRedirect);
+router.post('/model-migrations/preview', modelMigrations.preview);
+router.post('/model-migrations', modelMigrations.migrate);
+router.post('/model-usage', modelMigrations.usage);
 
 module.exports = router;

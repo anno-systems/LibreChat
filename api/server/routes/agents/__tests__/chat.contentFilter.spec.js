@@ -41,6 +41,10 @@ jest.mock('~/server/services/Endpoints/agents', () => ({
   initializeClient: jest.fn(),
 }));
 jest.mock('~/server/controllers/agents/request', () => jest.fn());
+/* Fork: model redirects (`services/Config/modelRedirector.js`). */
+jest.mock('~/server/services/Config/modelRedirector', () => ({
+  redirectRequest: (_req, _res, next) => next(),
+}));
 jest.mock('~/server/controllers/agents/resume', () => jest.fn());
 jest.mock('~/server/services/Endpoints/agents/title', () => jest.fn());
 jest.mock('~/models', () => ({

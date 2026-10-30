@@ -9,6 +9,7 @@ import type {
   AgentGitIdentity,
   AgentInstructionsPrompt,
 } from 'librechat-data-provider';
+import type { ModelMigrationNotice } from '~/schema/modelMigration';
 
 export interface ISupportContact {
   name?: string;
@@ -67,6 +68,8 @@ export interface IAgent extends Omit<Document, 'model'> {
   subagents?: AgentSubagentsConfig;
   /** Memory partition: 'agent' isolates memories per (user, agent); default shared pool */
   memory_scope?: MemoryScope;
+  /** Fork: the model migration that last changed `provider`/`model` (`methods/modelMigration.ts`). */
+  modelMigration?: ModelMigrationNotice;
   /** Fork: set on a tenant's copy of a platform agent (`methods/platformAgent.ts`), which only
    * the platform operator changes. */
   platformAgentId?: string;

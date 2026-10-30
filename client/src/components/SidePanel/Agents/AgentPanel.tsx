@@ -41,6 +41,7 @@ import {
 } from '~/utils';
 import { pruneAgentModelParameters, resolveAgentParameterSettings } from './parameters';
 import { useResourcePermissions } from '~/hooks/useResourcePermissions';
+import { AgentModelMigrationNotice } from '~/components/ModelMigration';
 import { useSelectAgent, useLocalize, useAuthContext } from '~/hooks';
 import { useAgentPanelContext } from '~/Providers/AgentPanelContext';
 import { resolveCapabilityTools } from './Tools/items/capabilities';
@@ -1050,6 +1051,12 @@ export default function AgentPanel() {
               setActivePanel={setActivePanel}
             />
           )}
+          {canEditAgent &&
+            !agentQuery.isInitialLoading &&
+            activePanel === Panel.builder &&
+            agentQuery.data?.id && (
+              <AgentModelMigrationNotice key={agentQuery.data.id} agentId={agentQuery.data.id} />
+            )}
           {canEditAgent && !agentQuery.isInitialLoading && activePanel === Panel.builder && (
             <AgentConfig
               instructionsPromptStatus={instructionsPromptStatus}

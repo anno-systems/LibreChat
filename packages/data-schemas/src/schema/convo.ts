@@ -13,6 +13,7 @@ import {
   MAX_AGENT_EVENT_ACTOR_SUMMARY_LENGTH,
   MAX_AGENT_EVENT_ACTOR_TOOL_NAME_LENGTH,
 } from '~/types/convo';
+import { modelMigrationNoticeSchema } from './modelMigration';
 import { agentFadingContextDefinition } from './fading';
 import { conversationPreset } from './defaults';
 import { IConversation } from '~/types';
@@ -70,6 +71,9 @@ const convoSchema: Schema<IConversation> = new Schema(
      *  carries the value read when its tool was created and applies only while it still matches,
      *  so moving away and back cannot revive an older report. Server-written only. */
     codeAttachmentEpoch: { type: Number, default: undefined, select: false },
+    /** Fork: the model migration that last changed `endpoint`/`model` (or the conversation's
+     *  agent), until the owner saw the notice; read through `getConversationModelMigration`. */
+    modelMigration: { type: modelMigrationNoticeSchema, default: undefined, select: false },
     agent_id: {
       type: String,
     },
@@ -443,6 +447,9 @@ convoSchema.index({ tenantId: 1, isTemporary: 1, createdAt: -1, _id: -1 });
  * to the mutable agent field only for legacy rows where the primary field is absent. */
 convoSchema.index({ tenantId: 1, isTemporary: 1, initial_agent_id: 1, createdAt: -1, _id: -1 });
 convoSchema.index({ tenantId: 1, isTemporary: 1, agent_id: 1, createdAt: -1, _id: -1 });
+/** Fork: model migrations count and rewrite chats per model, and per agent (`methods/modelMigration.ts`). */
+convoSchema.index({ tenantId: 1, endpoint: 1, model: 1 });
+convoSchema.index({ tenantId: 1, agent_id: 1 });
 convoSchema.index({ user: 1, _id: 1 });
 convoSchema.index({ user: 1, chatProjectId: 1, updatedAt: -1, _id: -1 });
 convoSchema.index({ user: 1, chatProjectId: 1, createdAt: -1, _id: -1 });

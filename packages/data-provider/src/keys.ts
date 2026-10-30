@@ -13,6 +13,10 @@ export enum QueryKeys {
   pinnedConversations = 'pinnedConversations',
   searchConversations = 'searchConversations',
   conversation = 'conversation',
+  /* Fork: a conversation's unseen model migration notice */
+  conversationModelMigration = 'conversationModelMigration',
+  /* Fork: an agent's model migration notice for the caller */
+  agentModelMigration = 'agentModelMigration',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
   langfuseSessionLink = 'langfuseSessionLink',
@@ -213,4 +217,7 @@ export enum MutationKeys {
   convoUnread = 'convoUnread',
   connectPullRequestAccount = 'connectPullRequestAccount',
   disconnectPullRequestAccount = 'disconnectPullRequestAccount',
+  /* Fork: model migration notices marked as seen */
+  clearConversationModelMigration = 'clearConversationModelMigration',
+  clearAgentModelMigration = 'clearAgentModelMigration',
 }

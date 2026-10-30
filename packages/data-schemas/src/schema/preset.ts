@@ -92,5 +92,7 @@ const presetSchema: Schema<IPreset> = new Schema(
 );
 
 presetSchema.index({ presetId: 1, tenantId: 1 }, { unique: true });
+/** Fork: model migrations rewrite presets per model (`methods/modelMigration.ts`). */
+presetSchema.index({ tenantId: 1, endpoint: 1, model: 1 });
 
 export default presetSchema;

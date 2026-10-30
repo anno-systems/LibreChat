@@ -15,6 +15,8 @@ export * from './Schedules';
 export * from './Subagents';
 export * from './BackgroundTasks';
 export * from './PullRequest';
+/* Fork: model migration notices */
+export * from './ModelMigration';
 export * from './Tools';
 export * from './Traces';
 export * from './connection';

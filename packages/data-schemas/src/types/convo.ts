@@ -6,6 +6,7 @@ import type {
 } from 'librechat-data-provider';
 import type { Document, Types } from 'mongoose';
 import type { ICompactionSemanticIndexProjection } from './compaction';
+import type { ModelMigrationNotice } from '~/schema/modelMigration';
 
 export const MAX_AGENT_EVENT_ACTOR_SKILLS = 64;
 export const MAX_AGENT_EVENT_ACTOR_DISCOVERED_TOOLS = 128;
@@ -309,6 +310,8 @@ export interface IConversation extends Document {
   laneGitSeq?: number;
   /** Moves and detaches of the workspace; fences lane reports from an earlier attachment. */
   codeAttachmentEpoch?: number;
+  /** Fork: the model migration not yet seen by the owner; excluded from ordinary reads. */
+  modelMigration?: ModelMigrationNotice;
   /** Immutable primary persisted-agent attribution for Insights. */
   initial_agent_id?: string | null;
   subagentThread?: TSubagentThreadLineage;
