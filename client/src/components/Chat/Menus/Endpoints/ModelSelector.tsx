@@ -13,6 +13,7 @@ import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcut
 import { ModelSelectorChatProvider } from './ModelSelectorChatContext';
 import { getSelectedIcon, getDisplayValue } from './utils';
 import { CustomMenu as Menu } from './CustomMenu';
+import { isVendorGrouped } from './vendors';
 import DialogManager from './DialogManager';
 import { useLocalize } from '~/hooks';
 
@@ -53,6 +54,19 @@ function ModelSelectorContent() {
       }),
     [mappedEndpoints, selectedValues, modelSpecs, endpointsConfig, agentsMap],
   );
+  /**
+   * Fork: specs whose group names a vendor-grouped endpoint get a group of their own, headed by
+   * the endpoint's label instead of its internal name.
+   */
+  const { ungroupedEndpoints, groupedLabels } = useMemo(() => {
+    const endpoints = mappedEndpoints ?? [];
+    return {
+      ungroupedEndpoints: endpoints.filter((endpoint) => !isVendorGrouped(endpoint)),
+      groupedLabels: Object.fromEntries(
+        endpoints.filter(isVendorGrouped).map((endpoint) => [endpoint.value, endpoint.label]),
+      ),
+    };
+  }, [mappedEndpoints]);
   const selectedDisplayValue = useMemo(
     () =>
       getDisplayValue({
@@ -115,7 +129,7 @@ function ModelSelectorContent() {
             {/* Render endpoints (will include grouped specs matching endpoint names) */}
             {renderEndpoints(mappedEndpoints ?? [])}
             {/* Render custom groups (specs with group field not matching any endpoint) */}
-            {renderCustomGroups(modelSpecs || [], mappedEndpoints ?? [])}
+            {renderCustomGroups(modelSpecs || [], ungroupedEndpoints, groupedLabels)}
           </>
         )}
       </Menu>

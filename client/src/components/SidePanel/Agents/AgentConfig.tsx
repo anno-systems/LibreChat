@@ -3,6 +3,7 @@ import { Controller, useWatch, useFormContext } from 'react-hook-form';
 import type { InstructionsPromptStatus } from './Instructions';
 import type { AgentForm } from '~/common';
 import { ResolvedProviderIcon } from '~/components/Endpoints/ResolvedProviderIcon';
+import { modelLabelFor } from '~/components/Chat/Menus/Endpoints/vendors';
 import AgentCategorySelector from './AgentCategorySelector';
 import { useLocalize, useAgentCapabilities } from '~/hooks';
 import { useAgentFileEntries } from './Tools/hooks';
@@ -41,6 +42,10 @@ export default function AgentConfig({
   const { contextFiles } = useAgentFileEntries();
 
   const providerValue = typeof provider === 'string' ? provider : provider?.value;
+  /** Fork: the model's label as the model selector shows it, not its id. */
+  const modelLabel = model
+    ? modelLabelFor(String(providerValue ?? ''), model, endpointsConfig?.[providerValue ?? ''])
+    : '';
   const { provider: providerId, imageURL } = useProviderIcon({
     endpoint: providerValue as string,
     endpointsConfig,
@@ -117,7 +122,7 @@ export default function AgentConfig({
             id="provider"
             type="button"
             onClick={() => setActivePanel(Panel.model)}
-            title={model || undefined}
+            title={modelLabel || undefined}
             className={cn(
               'border-border-control bg-surface-secondary text-text-primary hover:bg-surface-tertiary focus-visible:ring-ring-primary relative flex h-9 w-full min-w-0 items-center overflow-hidden rounded-lg border text-sm font-medium transition-colors focus:outline-hidden focus-visible:ring-2',
               model != null && model ? 'px-1' : 'px-3',
@@ -134,9 +139,7 @@ export default function AgentConfig({
                   />
                 </div>
               )}
-              <span className="truncate">
-                {model != null && model ? model : localize('com_ui_select_model')}
-              </span>
+              <span className="truncate">{modelLabel || localize('com_ui_select_model')}</span>
             </div>
           </button>
         </div>

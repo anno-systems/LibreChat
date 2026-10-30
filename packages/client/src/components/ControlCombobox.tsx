@@ -68,6 +68,8 @@ interface ControlComboboxProps {
 }
 
 const ROW_HEIGHT = 36;
+/** Fork: rows with a description line. */
+const TWO_LINE_ROW_HEIGHT = 48;
 
 function ControlCombobox({
   selectedValue,
@@ -112,6 +114,7 @@ function ControlCombobox({
     value: option.value as string | undefined,
     label: option.label,
     icon: option.icon,
+    description: option.description,
   });
 
   const combobox = Ariakit.useComboboxStore({
@@ -148,7 +151,7 @@ function ControlCombobox({
 
   const matches = useMemo(() => {
     const filteredItems = matchSorter(items, searchValue, {
-      keys: ['value', 'label'],
+      keys: ['value', 'label', 'description'],
       baseSort: (a, b) => (a.index < b.index ? -1 : 1),
     });
     const mapped = filteredItems.map(getItem);
@@ -304,10 +307,13 @@ function ControlCombobox({
             <SelectRenderer
               store={select}
               items={matches}
-              itemSize={ROW_HEIGHT * remScale}
+              itemSize={
+                (items.some((item) => item.description) ? TWO_LINE_ROW_HEIGHT : ROW_HEIGHT) *
+                remScale
+              }
               overscan={5}
             >
-              {({ value, icon, label, ...item }) => (
+              {({ value, icon, label, description, ...item }) => (
                 <Ariakit.ComboboxItem
                   key={item.id}
                   {...item}
@@ -321,7 +327,14 @@ function ControlCombobox({
                   {icon != null && iconSide === 'left' && (
                     <div className={optionIconClassName}>{icon}</div>
                   )}
-                  <span className="grow truncate text-start">{label}</span>
+                  {description ? (
+                    <span className="flex min-w-0 grow flex-col text-start">
+                      <span className="truncate">{label}</span>
+                      <span className="text-text-secondary truncate text-xs">{description}</span>
+                    </span>
+                  ) : (
+                    <span className="grow truncate text-start">{label}</span>
+                  )}
                   {icon != null && iconSide === 'right' && (
                     <div className={optionIconClassName}>{icon}</div>
                   )}

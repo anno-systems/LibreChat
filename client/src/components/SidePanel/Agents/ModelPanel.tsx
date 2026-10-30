@@ -18,6 +18,7 @@ import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { useModelReasoning } from '~/hooks/Endpoint/useModelReasoning';
 import Sections from '~/components/SidePanel/Parameters/Sections';
 import { useLocalize, useHasAccess } from '~/hooks';
+import useAgentModelChoices from './vendorChoices';
 import { useLiveAnnouncer } from '~/Providers';
 import { Panel } from '~/common';
 import { cn } from '~/utils';
@@ -58,16 +59,28 @@ export default function ModelPanel({
         : (providerOption as StringOption | undefined)?.value;
     return value ?? '';
   }, [providerOption]);
-  const models = useMemo(
-    () => (provider ? (modelsData[resolveModelCatalogKey(provider, modelsData)] ?? []) : []),
-    [modelsData, provider],
-  );
   const modelsPending = !modelsReady && !modelsError;
   const selectionDisabled = !modelsReady || modelsError;
 
   const { data: endpointsConfig = {} } = useGetEndpointsQuery();
   const { data: startupConfig } = useGetStartupConfig();
   const { modelReasoning } = useModelReasoning(endpointsConfig, provider, model ?? '');
+  /** Fork: vendor groups, as in the model selector; the form still stores provider and model. */
+  const choices = useAgentModelChoices({
+    providers,
+    modelsData,
+    endpointsConfig,
+    provider,
+    model: model ?? '',
+  });
+  const rememberChoice = (nextProvider: string, nextModel: string) => {
+    localStorage.setItem(LocalStorageKeys.LAST_AGENT_PROVIDER, nextProvider);
+    if (nextModel) {
+      localStorage.setItem(LocalStorageKeys.LAST_AGENT_MODEL, nextModel);
+    } else {
+      localStorage.removeItem(LocalStorageKeys.LAST_AGENT_MODEL);
+    }
+  };
 
   const bedrockRegions = useMemo(() => {
     return endpointsConfig?.[provider]?.availableRegions ?? [];
@@ -177,10 +190,6 @@ export default function ModelPanel({
             control={control}
             rules={{ required: true, minLength: 1 }}
             render={({ field, fieldState: { error } }) => {
-              const value =
-                typeof field.value === 'string'
-                  ? field.value
-                  : ((field.value as StringOption)?.value ?? '');
               const display =
                 typeof field.value === 'string'
                   ? field.value
@@ -190,29 +199,30 @@ export default function ModelPanel({
                 <>
                   <ControlCombobox
                     selectId="provider"
-                    selectedValue={value}
-                    displayValue={alternateName[display] ?? display}
+                    selectedValue={choices.providerKey}
+                    displayValue={
+                      provider ? choices.providerDisplay : (alternateName[display] ?? display)
+                    }
                     selectPlaceholder={localize('com_ui_select_provider')}
                     searchPlaceholder={localize('com_ui_select_search_provider')}
                     setValue={(value) => {
-                      if (value === provider) {
+                      if (value === choices.providerKey) {
+                        return;
+                      }
+                      const grouped = choices.chooseProvider(value);
+                      if (grouped) {
+                        field.onChange(grouped.provider);
+                        setValue('model', grouped.model);
+                        rememberChoice(grouped.provider, grouped.model);
                         return;
                       }
                       const nextModel =
                         modelsData[resolveModelCatalogKey(value, modelsData)]?.[0] ?? '';
                       field.onChange(value);
                       setValue('model', nextModel);
-                      localStorage.setItem(LocalStorageKeys.LAST_AGENT_PROVIDER, value);
-                      if (nextModel) {
-                        localStorage.setItem(LocalStorageKeys.LAST_AGENT_MODEL, nextModel);
-                      } else {
-                        localStorage.removeItem(LocalStorageKeys.LAST_AGENT_MODEL);
-                      }
+                      rememberChoice(value, nextModel);
                     }}
-                    items={providers.map((provider) => ({
-                      label: typeof provider === 'string' ? provider : provider.label,
-                      value: typeof provider === 'string' ? provider : provider.value,
-                    }))}
+                    items={choices.providerItems}
                     className={cn(error ? 'border-border-destructive border-2' : '')}
                     ariaLabel={localize('com_ui_provider')}
                     disabled={selectionDisabled}
@@ -250,22 +260,24 @@ export default function ModelPanel({
                 <>
                   <ControlCombobox
                     selectId="model"
-                    selectedValue={field.value || ''}
+                    selectedValue={field.value ? choices.modelKey : ''}
+                    displayValue={field.value ? choices.modelDisplay : ''}
                     selectPlaceholder={localize(getModelPlaceholderKey(modelsPending, provider))}
                     searchPlaceholder={localize('com_ui_select_model')}
                     setValue={(value) => {
-                      field.onChange(value);
-                      localStorage.setItem(LocalStorageKeys.LAST_AGENT_PROVIDER, provider);
-                      if (value) {
-                        localStorage.setItem(LocalStorageKeys.LAST_AGENT_MODEL, value);
-                      } else {
-                        localStorage.removeItem(LocalStorageKeys.LAST_AGENT_MODEL);
+                      const entry = choices.chooseModel(value);
+                      if (entry) {
+                        if (entry.provider !== provider) {
+                          setValue('provider', entry.provider);
+                        }
+                        field.onChange(entry.model);
+                        rememberChoice(entry.provider, entry.model);
+                        return;
                       }
+                      field.onChange(value);
+                      rememberChoice(provider, value);
                     }}
-                    items={models.map((model) => ({
-                      label: model,
-                      value: model,
-                    }))}
+                    items={choices.modelItems}
                     disabled={!provider || selectionDisabled}
                     className={cn(
                       'disabled:opacity-50',

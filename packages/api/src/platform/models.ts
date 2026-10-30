@@ -1,13 +1,21 @@
 import { z } from 'zod';
-import { locationSchema, modelLimitsSchema, effectiveLocation } from 'librechat-data-provider';
+import {
+  vendorOf,
+  locationSchema,
+  vendorIdSchema,
+  modelLimitsSchema,
+  suggestModelLabel,
+  effectiveLocation,
+} from 'librechat-data-provider';
 import type { CatalogApi, CatalogModel, OwnModel } from '@librechat/data-schemas';
-import type { TLocation } from 'librechat-data-provider';
+import type { TLocation, VendorId } from 'librechat-data-provider';
 
 /**
  * Catalog models as the operator and tenant admin APIs take them (fork-only): `{ id, label?,
- * location?, limits?, api?, baseURL?, dropParams? }` for platform providers, `{ id, label?,
- * location? }` for a tenant's own endpoints, or a bare id for API clients of the earlier shape.
- * Ids must be unique within a provider.
+ * vendor?, location?, limits?, api?, baseURL?, dropParams? }` for platform providers, `{ id,
+ * label?, vendor?, location? }` for a tenant's own endpoints, or a bare id for API clients of the
+ * earlier shape. Ids must be unique within a provider. A model without `vendor` is detected from
+ * its id (`detectVendor`); responses always carry `vendor` and the read-only `suggestedLabel`.
  */
 
 /** Path endings of the request URL each API is called at, as operators paste them. */
@@ -64,6 +72,8 @@ const providerModelSchema = z.union([
     .object({
       id: MODEL_ID,
       label: LABEL.optional(),
+      /** Absent: detected from the id. */
+      vendor: vendorIdSchema.optional(),
       location: locationSchema.optional(),
       /** Limits of the model's own queue; absent or empty means no queue. */
       limits: modelLimitsSchema.optional(),
@@ -89,7 +99,14 @@ const providerModelSchema = z.union([
 
 const ownModelSchema = z.union([
   MODEL_ID.transform((id): OwnModel => ({ id })),
-  z.object({ id: MODEL_ID, label: LABEL.optional(), location: locationSchema.optional() }).strict(),
+  z
+    .object({
+      id: MODEL_ID,
+      label: LABEL.optional(),
+      vendor: vendorIdSchema.optional(),
+      location: locationSchema.optional(),
+    })
+    .strict(),
 ]);
 
 /** Whether a provider lists the model id. */
@@ -113,8 +130,21 @@ export const ownModelsSchema: z.ZodType<OwnModel[], z.ZodTypeDef, unknown> = z
   .max(MAX_MODELS)
   .refine(uniqueIds, 'model ids must be unique');
 
-/** A model as tenant admins see it: its display name and its effective location. */
-export interface TenantModelView {
+/**
+ * What every model view adds: the vendor (stored, else detected) and the display name derived
+ * from the id (`suggestedLabel`, read-only), which an admin app shows as the label's placeholder.
+ */
+export interface ModelPresentation {
+  vendor: VendorId;
+  suggestedLabel: string;
+}
+
+export function modelPresentation(model: Pick<OwnModel, 'id' | 'vendor'>): ModelPresentation {
+  return { vendor: vendorOf(model), suggestedLabel: suggestModelLabel(model.id) };
+}
+
+/** A model as tenant admins see it: its display name, vendor and effective location. */
+export interface TenantModelView extends ModelPresentation {
   id: string;
   label?: string;
   location?: TLocation;
@@ -125,6 +155,7 @@ export function tenantModelView(model: OwnModel, owner: { location?: TLocation }
   return {
     id: model.id,
     ...(model.label && { label: model.label }),
+    ...modelPresentation(model),
     ...(location && { location }),
   };
 }

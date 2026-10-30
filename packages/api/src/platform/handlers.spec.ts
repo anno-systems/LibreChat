@@ -95,13 +95,23 @@ const provider = {
   location: { type: 'country', code: 'fr' },
 };
 
-/** What tenant admins see of the provider's models: labels and effective locations. */
+/**
+ * What tenant admins see of the provider's models: labels, vendors (detected without one), the
+ * names derived from the ids and effective locations.
+ */
 const smallView = {
   id: 'small',
   label: 'Mistral Small',
+  vendor: 'other',
+  suggestedLabel: 'Small',
   location: { type: 'country', code: 'FR' },
 };
-const largeView = { id: 'large', location: { type: 'eu' } };
+const largeView = {
+  id: 'large',
+  vendor: 'other',
+  suggestedLabel: 'Large',
+  location: { type: 'eu' },
+};
 
 async function call(
   handler: (req: never, res: Response) => Promise<unknown>,
@@ -210,8 +220,8 @@ describe('operator API', () => {
     expect(listed.body?.providers).toEqual([
       expect.objectContaining({
         models: [
-          { ...models[0], ...rules },
-          { id: 'large', ...rules },
+          { ...models[0], vendor: 'other', suggestedLabel: 'Small', ...rules },
+          { id: 'large', vendor: 'other', suggestedLabel: 'Large', ...rules },
         ],
         queue,
       }),
@@ -484,11 +494,21 @@ describe('tenant admin API', () => {
     const listed = await call(handlers.getOwnCatalog, adminReq({}));
 
     expect(created.statusCode).toBe(201);
-    expect(created.body).toEqual({ name: 'Own', baseURL: own.baseURL, models: [{ id: 'm' }] });
+    expect(created.body).toEqual({
+      name: 'Own',
+      baseURL: own.baseURL,
+      models: [{ id: 'm', vendor: 'other', suggestedLabel: 'M' }],
+    });
     expect(updated.statusCode).toBe(200);
     const models = [
-      { id: 'm', location: { type: 'eu' } },
-      { id: 'n', label: 'Model N', location: { type: 'country', code: 'DE' } },
+      { id: 'm', vendor: 'other', suggestedLabel: 'M', location: { type: 'eu' } },
+      {
+        id: 'n',
+        label: 'Model N',
+        vendor: 'other',
+        suggestedLabel: 'N',
+        location: { type: 'country', code: 'DE' },
+      },
     ];
     expect(updated.body).toMatchObject({ location: { type: 'eu' }, models });
     expect(listed.body?.own).toEqual([
@@ -753,7 +773,12 @@ describe('provider location and names (owner decisions)', () => {
     });
     const tenant = await call(handlers.getOwnCatalog, adminReq({}));
     expect(tenant.body?.providers).toEqual([
-      { name: 'Migrated', label: 'Migrated', models: [{ id: 'small' }], allTenants: false },
+      {
+        name: 'Migrated',
+        label: 'Migrated',
+        models: [{ id: 'small', vendor: 'other', suggestedLabel: 'Small' }],
+        allTenants: false,
+      },
     ]);
 
     const { apiKey: _key, ...update } = withoutLocation;
@@ -950,6 +975,54 @@ describe('per-model URLs and APIs, providers without a key (owner decisions)', (
     expect((await methods.findPlatformProviders(['legacy']))[0].dropParams).toBeUndefined();
   });
 
+  it("detects each model's vendor, keeps the operator's override and derives display names", async () => {
+    const { handlers } = setup();
+    const res = await call(
+      handlers.postProvider,
+      operatorReq(
+        {},
+        {
+          ...provider,
+          label: 'Azure',
+          location: { type: 'global' },
+          models: [
+            'mistral-medium-3-5',
+            { id: 'Mistral-Large-3', label: 'Mistral Large' },
+            { id: 'gpt-6.1-terra', api: 'responses' },
+            { id: 'claude-sonnet-5-5', api: 'anthropic' },
+            { id: 'house-model', vendor: 'mistral' },
+          ],
+        },
+      ),
+    );
+    const refused = await call(
+      handlers.postProvider,
+      operatorReq({}, { ...provider, label: 'Bad', models: [{ id: 'x', vendor: 'acme' }] }),
+    );
+
+    expect(res.statusCode).toBe(201);
+    const models = (res.body?.provider as { models: Record<string, unknown>[] }).models;
+    expect(
+      models.map(({ id, label, vendor, suggestedLabel }) => [id, label, vendor, suggestedLabel]),
+    ).toEqual([
+      ['mistral-medium-3-5', undefined, 'mistral', 'Mistral Medium 3.5'],
+      ['Mistral-Large-3', 'Mistral Large', 'mistral', 'Mistral Large 3'],
+      ['gpt-6.1-terra', undefined, 'openai', 'GPT-6.1 Terra'],
+      ['claude-sonnet-5-5', undefined, 'anthropic', 'Claude Sonnet 5.5'],
+      ['house-model', undefined, 'mistral', 'House Model'],
+    ]);
+    /** Only the operator's override is stored; the rest stays detected. */
+    const [stored] = await methods.findPlatformProviders(['azure']);
+    expect(stored.models.map((model) => model.vendor)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'mistral',
+    ]);
+    expect(refused.statusCode).toBe(400);
+  });
+
   it('stores a per-model override of the rules and shows the rules beside it', async () => {
     const { handlers } = setup();
     const res = await call(
@@ -963,6 +1036,8 @@ describe('per-model URLs and APIs, providers without a key (owner decisions)', (
     expect((res.body?.provider as { models: unknown[] }).models).toEqual([
       {
         id: 'gpt-6.1-terra',
+        vendor: 'openai',
+        suggestedLabel: 'GPT-6.1 Terra',
         api: 'responses',
         dropParams: ['stop'],
         defaultDropParams: expect.arrayContaining(['user', 'temperature', 'topP']),

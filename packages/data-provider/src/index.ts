@@ -8,6 +8,8 @@ export * from './footer';
 export * from './queue';
 /* Fork: where catalog models process data. */
 export * from './location';
+/* Fork: who makes a catalog model, and its derived display name. */
+export * from './vendors';
 export * from './theme';
 export * from './themes';
 export * from './langchain';

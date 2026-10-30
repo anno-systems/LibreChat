@@ -12,7 +12,9 @@ import { filterModels, shouldRenderEndpointOption } from '../utils';
 import { useModelSelectorContext } from '../ModelSelectorContext';
 import VirtualizedModelList from './VirtualizedModelList';
 import { useFavorites, useLocalize } from '~/hooks';
+import { VendorGroupItem } from './VendorGroup';
 import { ModelSpecItem } from './ModelSpecItem';
+import { selectorItems } from '../vendors';
 import { cn } from '~/utils';
 
 interface EndpointItemProps {
@@ -360,12 +362,17 @@ export function EndpointItem({ endpoint, endpointIndex }: EndpointItemProps) {
   }
 }
 
+/** Fork: catalog endpoints' models appear in vendor groups where the first one stood. */
 export function renderEndpoints(mappedEndpoints: Endpoint[]) {
-  return mappedEndpoints.map((endpoint, index) => (
-    <EndpointItem
-      endpoint={endpoint}
-      endpointIndex={index}
-      key={`endpoint-${endpoint.value}-${index}`}
-    />
-  ));
+  return selectorItems(mappedEndpoints).map((item, index) =>
+    item.kind === 'vendor' ? (
+      <VendorGroupItem group={item} key={item.key} />
+    ) : (
+      <EndpointItem
+        endpoint={item.endpoint}
+        endpointIndex={index}
+        key={`endpoint-${item.endpoint.value}-${index}`}
+      />
+    ),
+  );
 }

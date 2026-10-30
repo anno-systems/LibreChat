@@ -21,6 +21,7 @@ import {
   pastedURLSchema,
   ownModelsSchema,
   tenantModelView,
+  modelPresentation,
   dropParamsSchema,
   normaliseBaseURL,
   providerModelsSchema,
@@ -384,6 +385,7 @@ export function createPlatformCatalogHandlers(
       ...(provider.location && { location: provider.location }),
       models: provider.models.map((model) => ({
         ...model,
+        ...modelPresentation(model),
         api: apiOf(model),
         defaultDropParams: defaultDropParams(apiOf(model), model.id),
       })),

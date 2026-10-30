@@ -16,11 +16,11 @@ describe('createModelLabelLookup', () => {
   );
   const labelOf = createModelLabelLookup({ getConfig: async () => config, findPlatformProviders });
 
-  it('takes a model spec label, then the endpoint model label, then the catalog label', async () => {
+  it('takes a model spec label, then the endpoint model label, then the catalog label or the name derived from the id', async () => {
     expect(await labelOf({ endpoint: 'Mistral', model: 'large' })).toBe('Spec Large');
     expect(await labelOf({ endpoint: 'Mistral', model: 'small' })).toBe('Mistral Small');
     expect(await labelOf({ endpoint: 'Catalog', model: 'medium' })).toBe('Catalog Medium');
-    expect(await labelOf({ endpoint: 'Catalog', model: 'bare' })).toBeUndefined();
+    expect(await labelOf({ endpoint: 'Catalog', model: 'bare' })).toBe('Bare');
     expect(await labelOf({ endpoint: 'Other', model: 'x' })).toBeUndefined();
   });
 

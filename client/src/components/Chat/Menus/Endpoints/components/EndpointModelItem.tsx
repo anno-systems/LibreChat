@@ -8,8 +8,11 @@ import type { Endpoint } from '~/common';
 import { resolveProviderIcon } from '~/hooks/Endpoint/useProviderIcon';
 import { createEndpointIcon } from '~/hooks/Endpoint/useEndpoints';
 import { useModelSelectorContext } from '../ModelSelectorContext';
+import { locationOfEntry, vendorOfEntry } from '../vendors';
 import { CustomMenuItem as MenuItem } from '../CustomMenu';
 import useActiveItem from '../useActiveItem';
+import ModelHosting from './ModelHosting';
+import VendorIcon from './VendorIcon';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
 
@@ -79,18 +82,23 @@ function EndpointModelItemComponent({
   const isAgentOrAssistant =
     isAgentsEndpoint(endpoint.value) || isAssistantsEndpoint(endpoint.value);
 
+  /** Fork: a catalog model's vendor, which the operator may have set over the detected one. */
+  const vendor = endpoint.hosting && modelId ? vendorOfEntry(endpoint, modelId) : 'other';
+
   /** A gateway lists models from many makers, so each row shows its own maker's mark. */
-  const modelIcon = useMemo(
-    () =>
-      isAgentOrAssistant || !modelId
-        ? null
-        : createEndpointIcon(
-            endpoint.value,
-            resolveProviderIcon({ endpoint: endpoint.value, endpointsConfig }),
-            modelId,
-          ),
-    [isAgentOrAssistant, endpoint.value, endpointsConfig, modelId],
-  );
+  const modelIcon = useMemo(() => {
+    if (isAgentOrAssistant || !modelId) {
+      return null;
+    }
+    if (vendor !== 'other') {
+      return React.createElement(VendorIcon, { vendor });
+    }
+    return createEndpointIcon(
+      endpoint.value,
+      resolveProviderIcon({ endpoint: endpoint.value, endpointsConfig }),
+      modelId,
+    );
+  }, [isAgentOrAssistant, endpoint.value, endpointsConfig, modelId, vendor]);
 
   const renderAvatar = () => {
     if (avatarUrl) {
@@ -126,7 +134,17 @@ function EndpointModelItemComponent({
     >
       <div className="flex w-full min-w-0 items-center gap-2 px-1 py-1">
         {renderAvatar()}
-        <span className="truncate">{modelName}</span>
+        {endpoint.hosting && modelId ? (
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate">{modelName}</span>
+            <ModelHosting
+              label={endpoint.hosting.label}
+              location={locationOfEntry(endpoint, modelId)}
+            />
+          </span>
+        ) : (
+          <span className="truncate">{modelName}</span>
+        )}
         {isGlobal && <EarthIcon className="text-surface-submit ms-1 size-4" />}
       </div>
       <button

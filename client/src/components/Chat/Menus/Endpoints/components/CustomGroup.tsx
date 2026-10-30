@@ -7,11 +7,13 @@ import GroupIcon from './GroupIcon';
 
 interface CustomGroupProps {
   groupName: string;
+  /** Fork: the heading, when it is not the group's name. */
+  groupLabel?: string;
   specs: TModelSpec[];
   groupIcon?: string;
 }
 
-export function CustomGroup({ groupName, specs, groupIcon }: CustomGroupProps) {
+export function CustomGroup({ groupName, groupLabel, specs, groupIcon }: CustomGroupProps) {
   const { selectedValues } = useModelSelectorContext();
   const { modelSpec: selectedSpec } = selectedValues;
 
@@ -32,7 +34,7 @@ export function CustomGroup({ groupName, specs, groupIcon }: CustomGroupProps) {
                 <GroupIcon iconURL={groupIcon} groupName={groupName} />
               </div>
             )}
-            <span className="truncate text-start">{groupName}</span>
+            <span className="truncate text-start">{groupLabel ?? groupName}</span>
           </div>
         </div>
       }
@@ -47,6 +49,8 @@ export function CustomGroup({ groupName, specs, groupIcon }: CustomGroupProps) {
 export function renderCustomGroups(
   modelSpecs: TModelSpec[],
   mappedEndpoints: Array<{ value: string }>,
+  /** Fork: headings by group name, e.g. the label of a vendor-grouped endpoint the group names. */
+  groupLabels?: Record<string, string>,
 ) {
   // Get all endpoint values to exclude them from custom groups
   const endpointValues = new Set(mappedEndpoints.map((ep) => ep.value));
@@ -73,6 +77,12 @@ export function renderCustomGroups(
 
   // Render each custom group
   return Object.entries(customGroups).map(([groupName, { specs, groupIcon }]) => (
-    <CustomGroup key={groupName} groupName={groupName} specs={specs} groupIcon={groupIcon} />
+    <CustomGroup
+      key={groupName}
+      groupName={groupName}
+      groupLabel={groupLabels?.[groupName]}
+      specs={specs}
+      groupIcon={groupIcon}
+    />
   ));
 }

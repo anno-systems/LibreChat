@@ -172,6 +172,45 @@ describe('per-model APIs and keyless providers', () => {
   });
 });
 
+describe('model vendors', () => {
+  it("stores an operator's vendor and reads documents without one, or with an unknown one, without it", async () => {
+    const saved = await methods.upsertPlatformProvider({
+      ...mistral,
+      models: [{ id: 'house-model', vendor: 'mistral' }, { id: 'claude-sonnet-5-5' }],
+    });
+    expect(saved.models).toEqual([
+      { id: 'house-model', vendor: 'mistral' },
+      { id: 'claude-sonnet-5-5' },
+    ]);
+
+    await mongoose.models.PlatformProvider.collection.insertOne({
+      name: 'Old',
+      label: 'Old',
+      baseURL: 'https://api.example/v1',
+      apiKey: 'v3:encrypted',
+      models: ['mistral-medium-3-5', { id: 'gpt-6.1-terra', vendor: 'acme' }],
+      allTenants: false,
+    });
+    const [old] = await methods.findPlatformProviders(['Old']);
+    /** Without a stored vendor, readers detect it from the id (`vendorOf`). */
+    expect(old.models).toEqual([{ id: 'mistral-medium-3-5' }, { id: 'gpt-6.1-terra' }]);
+  });
+
+  it("keeps the vendor of a tenant's own models", async () => {
+    await methods.setTenantAssignments('tenant-v', { byok: true, providers: [] });
+    const stored = await methods.upsertOwnEndpoint('tenant-v', {
+      name: 'Own',
+      baseURL: 'https://llm.example/v1',
+      apiKey: 'v3:encrypted',
+      models: [{ id: 'mine', vendor: 'meta' }],
+    });
+    expect(stored.own[0].models).toEqual([{ id: 'mine', vendor: 'meta' }]);
+    expect((await methods.getTenantCatalog('tenant-v'))?.own[0].models).toEqual([
+      { id: 'mine', vendor: 'meta' },
+    ]);
+  });
+});
+
 describe('tenant catalogs', () => {
   it('is null until the operator sets it', async () => {
     expect(await methods.getTenantCatalog('tenant-a')).toBeNull();

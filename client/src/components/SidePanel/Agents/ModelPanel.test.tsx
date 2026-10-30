@@ -13,6 +13,7 @@ import ModelPanel from './ModelPanel';
 const mockWebSearchAllowed = jest.fn(() => true);
 
 const mockStartupConfig = jest.fn<Partial<TStartupConfig>, []>(() => ({}));
+const mockEndpointsConfig = jest.fn<Record<string, unknown>, []>(() => ({}));
 
 jest.mock('@librechat/client', () => ({
   Alert: ({ children, role = 'alert' }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -34,7 +35,7 @@ jest.mock('@librechat/client', () => ({
   }: {
     ariaLabel: string;
     disabled?: boolean;
-    items: Array<{ label: string; value: string }>;
+    items: Array<{ label: string; value: string; description?: string }>;
     selectId?: string;
     selectedValue: string;
     selectPlaceholder?: string;
@@ -55,6 +56,7 @@ jest.mock('@librechat/client', () => ({
           onClick={() => setValue(item.value)}
         >
           {item.label}
+          {item.description && <small>{item.description}</small>}
         </button>
       ))}
     </div>
@@ -80,7 +82,7 @@ jest.mock('~/components/SidePanel/Parameters/components', () => {
 });
 
 jest.mock('~/data-provider', () => ({
-  useGetEndpointsQuery: () => ({ data: {} }),
+  useGetEndpointsQuery: () => ({ data: mockEndpointsConfig() }),
   useGetStartupConfig: () => ({ data: mockStartupConfig() }),
   useReasoningCapabilitiesQuery: () => ({ data: undefined }),
 }));
@@ -146,6 +148,7 @@ describe('ModelPanel', () => {
   beforeEach(() => {
     localStorage.clear();
     mockStartupConfig.mockReturnValue({});
+    mockEndpointsConfig.mockReturnValue({});
     mockWebSearchAllowed.mockReturnValue(true);
   });
 
@@ -214,6 +217,73 @@ describe('ModelPanel', () => {
 
     expect(getByTestId('com_ui_provider-custom')).toBeDisabled();
     expect(getByTestId('com_ui_model-custom-model')).toBeDisabled();
+  });
+
+  it('offers vendor groups with a hosting line and stores the real provider and model', () => {
+    const azure = 'azure-anno-systems-westeurope';
+    mockEndpointsConfig.mockReturnValue({
+      [azure]: {
+        order: 1,
+        type: 'custom',
+        modelLabels: {
+          'mistral-medium-3-5': 'Mistral Medium 3.5',
+          'gpt-6.1-terra': 'GPT-6.1 Terra',
+          'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+        },
+        modelVendors: {
+          'mistral-medium-3-5': 'mistral',
+          'gpt-6.1-terra': 'openai',
+          'claude-sonnet-5-5': 'anthropic',
+        },
+        hosting: { label: 'Azure', location: { type: 'global' } },
+      },
+      [EModelEndpoint.openAI]: { order: 0, userProvide: false },
+    });
+    const formRef: React.MutableRefObject<UseFormReturn<AgentForm> | null> = { current: null };
+    const { getByTestId, queryByTestId } = render(
+      <TestForm
+        defaultProvider={azure}
+        defaultModel="claude-sonnet-5-5"
+        formRef={formRef}
+        models={{
+          [azure]: ['mistral-medium-3-5', 'gpt-6.1-terra', 'claude-sonnet-5-5'],
+          [EModelEndpoint.openAI]: ['gpt-4o'],
+          custom: ['custom-model'],
+        }}
+        modelsReady={true}
+        providers={[
+          { label: azure, value: azure },
+          { label: EModelEndpoint.openAI, value: EModelEndpoint.openAI },
+          { label: 'Custom', value: 'custom' },
+        ]}
+      />,
+    );
+
+    expect(getByTestId('com_ui_provider-selected')).toHaveTextContent('vendor:anthropic');
+    expect(getByTestId('com_ui_provider-vendor:mistral')).toHaveTextContent('Mistral');
+    expect(getByTestId('com_ui_provider-custom')).toHaveTextContent('Custom');
+    expect(queryByTestId(`com_ui_provider-${azure}`)).toBeNull();
+    expect(queryByTestId(`com_ui_provider-${EModelEndpoint.openAI}`)).toBeNull();
+    expect(getByTestId(`com_ui_model-${azure}:claude-sonnet-5-5`)).toHaveTextContent(
+      'Claude Sonnet 5.5Azure · com_ui_model_location_global',
+    );
+
+    fireEvent.click(getByTestId('com_ui_provider-vendor:openai'));
+    expect(formRef.current?.getValues(['provider', 'model'])).toEqual([azure, 'gpt-6.1-terra']);
+    expect(getByTestId(`com_ui_model-${EModelEndpoint.openAI}:gpt-4o`)).toHaveTextContent(
+      'GPT-4ocom_ui_model_hosting_direct',
+    );
+
+    fireEvent.click(getByTestId(`com_ui_model-${EModelEndpoint.openAI}:gpt-4o`));
+    expect(formRef.current?.getValues(['provider', 'model'])).toEqual([
+      EModelEndpoint.openAI,
+      'gpt-4o',
+    ]);
+    expect(localStorage.getItem('lastAgentProvider')).toBe(EModelEndpoint.openAI);
+    expect(localStorage.getItem('lastAgentModel')).toBe('gpt-4o');
+
+    fireEvent.click(getByTestId('com_ui_provider-custom'));
+    expect(formRef.current?.getValues(['provider', 'model'])).toEqual(['custom', 'custom-model']);
   });
 
   it('selects and saves the first model when the provider changes', () => {

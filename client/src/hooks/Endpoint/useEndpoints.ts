@@ -19,7 +19,8 @@ import type {
 } from 'librechat-data-provider';
 import type { ProviderIconResolution } from './useProviderIcon';
 import type { Endpoint } from '~/common';
-import { useHasAccess, useShowMarketplace } from '~/hooks';
+import { vendorFieldsOf } from '~/components/Chat/Menus/Endpoints/vendors';
+import { useHasAccess, useLocalize, useShowMarketplace } from '~/hooks';
 import { resolveProviderIcon } from './useProviderIcon';
 import { useGetEndpointsQuery } from '~/data-provider';
 import { mapEndpoints } from '~/utils';
@@ -84,6 +85,11 @@ export const useEndpoints = ({
     permission: Permissions.USE,
   });
   const showAgentMarketplace = useShowMarketplace();
+  const localize = useLocalize();
+  const directLabel = useCallback(
+    (vendorName: string) => localize('com_ui_model_hosting_direct', { 0: vendorName }),
+    [localize],
+  );
 
   const assistants: Assistant[] = useMemo(
     () => Object.values(assistantsMap?.[EModelEndpoint.assistants] ?? {}),
@@ -217,6 +223,19 @@ export const useEndpoints = ({
         if (modelNames) {
           result.modelNames = modelNames;
         }
+        /**
+         * Fork: catalog endpoints and built-in endpoints of one vendor show their models by
+         * vendor; a catalog endpoint is named by its provider's label, not its internal name.
+         */
+        const vendorFields = vendorFieldsOf(
+          ep,
+          endpointsConfig?.[ep],
+          modelsQuery.data?.[ep] ?? [],
+          directLabel,
+        );
+        if (vendorFields) {
+          Object.assign(result, vendorFields);
+        }
       }
 
       acc.push(result);
@@ -230,6 +249,7 @@ export const useEndpoints = ({
     filteredEndpoints,
     modelsQuery.data,
     showAgentMarketplace,
+    directLabel,
   ]);
 
   return {

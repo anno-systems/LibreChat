@@ -93,12 +93,74 @@ describe('catalogEndpoints', () => {
     expect(own).not.toHaveProperty('modelLimits');
   });
 
-  it('leaves models without limits unqueued and names labelled models', () => {
+  it('leaves models without limits unqueued and names every model, by label or by its id', () => {
     const [platform, own] = catalogEndpoints('tenant-a', catalog, [provider], decrypt);
 
     expect(platform).not.toHaveProperty('modelLimits');
-    expect(platform).toEqual(expect.objectContaining({ modelLabels: { small: 'Mistral Small' } }));
+    expect(platform).toEqual(
+      expect.objectContaining({ modelLabels: { small: 'Mistral Small', large: 'Large' } }),
+    );
     expect(own).toEqual(expect.objectContaining({ modelLabels: { m: 'Mine' } }));
+  });
+
+  it("names each model's vendor and the provider's label and location for the selector", () => {
+    const azure: PlatformProvider = {
+      name: 'azure-anno-systems-westeurope',
+      label: 'Azure',
+      apiKey: 'enc:operator-key',
+      location: { type: 'global' },
+      models: [
+        { id: 'mistral-medium-3-5', baseURL: 'https://x.example/openai/v1' },
+        { id: 'Mistral-Large-3', label: 'Mistral Large', baseURL: 'https://x.example/openai/v1' },
+        { id: 'gpt-6.1-terra', api: 'responses', baseURL: 'https://x.example/openai/v1' },
+        {
+          id: 'claude-sonnet-5-5',
+          api: 'anthropic',
+          baseURL: 'https://x.example/anthropic/v1',
+          location: { type: 'country', code: 'SE' },
+        },
+        { id: 'house-model', vendor: 'mistral', baseURL: 'https://x.example/openai/v1' },
+        { id: 'phi-4', location: { type: 'global' }, baseURL: 'https://x.example/openai/v1' },
+      ],
+      allTenants: true,
+    };
+    const [platform, own] = catalogEndpoints(
+      'tenant-a',
+      { ...catalog, providers: [], own: [{ ...catalog.own[0], location: { type: 'eu' } }] },
+      [azure],
+      decrypt,
+    );
+
+    expect(platform).toEqual(
+      expect.objectContaining({
+        modelVendors: {
+          'mistral-medium-3-5': 'mistral',
+          'Mistral-Large-3': 'mistral',
+          'gpt-6.1-terra': 'openai',
+          'claude-sonnet-5-5': 'anthropic',
+          'house-model': 'mistral',
+          'phi-4': 'other',
+        },
+        modelLabels: {
+          'mistral-medium-3-5': 'Mistral Medium 3.5',
+          'Mistral-Large-3': 'Mistral Large',
+          'gpt-6.1-terra': 'GPT-6.1 Terra',
+          'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+          'house-model': 'House Model',
+          'phi-4': 'Phi 4',
+        },
+        hosting: { label: 'Azure', location: { type: 'global' } },
+        modelLocations: { 'claude-sonnet-5-5': { type: 'country', code: 'SE' } },
+        modelDisplayLabel: 'Azure',
+      }),
+    );
+    expect(own).toEqual(
+      expect.objectContaining({
+        modelVendors: { m: 'other' },
+        hosting: { label: 'Own', location: { type: 'eu' } },
+      }),
+    );
+    expect(own).not.toHaveProperty('modelLocations');
   });
 
   it('leaves out the tenant endpoints without BYOK and assignments without models', () => {

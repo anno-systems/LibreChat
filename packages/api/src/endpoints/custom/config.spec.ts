@@ -379,6 +379,70 @@ describe('hasCustomModels', () => {
   });
 });
 
+describe('loadCustomEndpointsConfig – catalog vendors and hosting (fork)', () => {
+  it('serves vendors, hosting and model locations of a catalog endpoint, without URLs or keys', async () => {
+    const { catalogEndpoints } = await import('~/platform/catalog');
+    const [endpoint] = catalogEndpoints(
+      'tenant-a',
+      null,
+      [
+        {
+          name: 'azure-anno-systems-westeurope',
+          label: 'Azure',
+          apiKey: 'operator-secret',
+          location: { type: 'global' },
+          allTenants: true,
+          models: [
+            { id: 'mistral-medium-3-5', baseURL: 'https://secret-host.example/openai/v1' },
+            { id: 'Mistral-Large-3', baseURL: 'https://secret-host.example/openai/v1' },
+            {
+              id: 'gpt-6.1-terra',
+              api: 'responses',
+              baseURL: 'https://secret-host.example/openai/v1',
+            },
+            {
+              id: 'claude-sonnet-5-5',
+              api: 'anthropic',
+              baseURL: 'https://secret-host.example/anthropic/v1',
+              location: { type: 'country', code: 'DE' },
+            },
+          ],
+        },
+      ],
+      (value) => value,
+    );
+    const config = loadCustomEndpointsConfig([
+      endpoint,
+      { ...baseEndpoint, name: 'Yaml' },
+    ] as unknown as TCustomEndpoints);
+    const served = config?.['azure-anno-systems-westeurope'];
+
+    expect(served).toEqual(
+      expect.objectContaining({
+        modelDisplayLabel: 'Azure',
+        modelVendors: {
+          'mistral-medium-3-5': 'mistral',
+          'Mistral-Large-3': 'mistral',
+          'gpt-6.1-terra': 'openai',
+          'claude-sonnet-5-5': 'anthropic',
+        },
+        modelLabels: {
+          'mistral-medium-3-5': 'Mistral Medium 3.5',
+          'Mistral-Large-3': 'Mistral Large 3',
+          'gpt-6.1-terra': 'GPT-6.1 Terra',
+          'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+        },
+        hosting: { label: 'Azure', location: { type: 'global' } },
+        modelLocations: { 'claude-sonnet-5-5': { type: 'country', code: 'DE' } },
+      }),
+    );
+    expect(JSON.stringify(served)).not.toMatch(/secret-host|operator-secret/);
+    for (const field of ['modelVendors', 'hosting', 'modelLocations']) {
+      expect(config?.Yaml).not.toHaveProperty(field);
+    }
+  });
+});
+
 describe('loadCustomEndpointsConfig – model labels (fork)', () => {
   it('serves the model display names and leaves them out when none are set', () => {
     const config = loadCustomEndpointsConfig([
