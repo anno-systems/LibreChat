@@ -557,6 +557,18 @@ describe('setupOpenId', () => {
 
       expect(params.has('audience')).toBe(false);
     });
+
+    it('forwards a valid login_hint from the login start and drops an invalid one', () => {
+      const strategy = getLoginStrategy();
+      const hinted = strategy.authorizationRequestParams(
+        { query: { login_hint: 'platform-test@acme.invalid' } },
+        {},
+      );
+      expect(hinted.get('login_hint')).toBe('platform-test@acme.invalid');
+
+      const invalid = strategy.authorizationRequestParams({ query: { login_hint: 'a\nb' } }, {});
+      expect(invalid.has('login_hint')).toBe(false);
+    });
   });
 
   it('should create a new user with correct username when preferred_username claim exists', async () => {

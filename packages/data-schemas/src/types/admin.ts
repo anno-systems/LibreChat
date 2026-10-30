@@ -1348,6 +1348,10 @@ export const AUDIT_ACTIONS = [
   /** Fork: the operator deleted a tenant and all of its data; platform chain, target
    * `{ type: 'tenant', id }`, metadata the counts. */
   'tenant.purged',
+  /** Fork: the operator opened the tenant with its platform test account (operator API, set by
+   * the admin app before it hands out the account's fresh password); the tenant's own chain,
+   * `{ type: 'service' }` actor, target `{ type: 'test_account', id: loginName, name }`. */
+  'tenant.test_account_opened',
   /** Fork: a model migration (`methods/modelMigration.ts`): a redirect from one model to
    * another was saved and what used the old model rewritten. Recorded in each tenant's chain
    * whose documents changed or that made it, and in the platform chain for the operator's.
@@ -1413,6 +1417,7 @@ export const AUDIT_ACTION_CATEGORY: Record<AuditAction, AuditCategory> = {
   'mcp_server.subscribed': 'mcp',
   'mcp_server.unsubscribed': 'mcp',
   'tenant.purged': 'user',
+  'tenant.test_account_opened': 'auth',
   'model.migrated': 'config',
   'model.redirect_deleted': 'config',
 };

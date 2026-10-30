@@ -2,6 +2,7 @@ const express = require('express');
 const {
   requirePlatformToken,
   createTenantAdminHandler,
+  createTestAccountAuditHandler,
   createPlatformBannerHandlers,
   createPlatformPricingHandlers,
   createMcpPricingHandlers,
@@ -27,6 +28,10 @@ const putTenantAdmin = createTenantAdminHandler({
   auditFailClosed: process.env.AUDIT_LOG_FAIL_CLOSED === 'true',
 });
 
+const postTestAccountOpened = createTestAccountAuditHandler({
+  recordAuditEntry: db.recordAuditEntry,
+});
+
 const banners = createPlatformBannerHandlers(db);
 const pricing = createPlatformPricingHandlers(db);
 const mcpPricing = createMcpPricingHandlers({
@@ -46,6 +51,7 @@ router.delete('/providers/:name', handlers.deleteProvider);
 router.get('/tenants/:tenantId/catalog', handlers.getTenantCatalog);
 router.put('/tenants/:tenantId/catalog', handlers.putTenantCatalog);
 router.put('/tenants/:tenantId/admins/:subject', putTenantAdmin);
+router.post('/tenants/:tenantId/audit/test-account-opened', postTestAccountOpened);
 router.delete('/tenants/:tenantId', deleteTenant);
 router.get('/banners', banners.listBanners);
 router.put('/banners/:id', banners.putBanner);
