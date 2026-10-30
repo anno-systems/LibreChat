@@ -17,6 +17,11 @@ import type { ConfigOverrideIssue } from '@librechat/data-schemas';
  * - `endpoints.agents` may set only `pullRequests.enabled`, the boolean that switches the
  *   conversation pull request chip on or off for the scope. Where pull requests are looked up,
  *   with which token and which repositories, stays as the operator configured it.
+ * - `webSearch` may set only `maxPagesPerSearch`, a whole number of at least 0, which can only
+ *   lower the operator's cap on the pages one search fetches (platform pricing). Providers, URLs,
+ *   keys and options stay as the operator configured them, so searches and their page fetches
+ *   keep going through the operator's metered gateway. A tombstone under `webSearch` may only
+ *   target `webSearch.maxPagesPerSearch`.
  */
 
 export type CatalogIssueCode =
@@ -34,6 +39,10 @@ const MCP_SECTIONS = ['mcpServers', 'mcpConfig'] as const;
 const MCP_SWITCHES: ReadonlySet<string> = new Set(['enabled', 'chatMenu']);
 
 const ENV_REFERENCE = /\$\{[^}]*\}/;
+
+/** The only web search field an admin may set under the lock, and its tombstone path. */
+const WEB_SEARCH = 'webSearch';
+const WEB_SEARCH_PAGES = 'maxPagesPerSearch';
 
 /** The agents endpoint fields an admin may set under the lock: section, then its booleans. */
 const AGENTS_SWITCHES: Readonly<Record<string, ReadonlySet<string>>> = {
@@ -185,6 +194,25 @@ function checkMCPServers(
   }
 }
 
+function isPageCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function checkWebSearch(webSearch: unknown, issues: ConfigOverrideIssue[]): void {
+  if (webSearch === undefined) {
+    return;
+  }
+  if (!isRecord(webSearch)) {
+    issues.push(issue([WEB_SEARCH], 'catalog_field_locked'));
+    return;
+  }
+  for (const [key, value] of Object.entries(webSearch)) {
+    if (key !== WEB_SEARCH_PAGES || !isPageCount(value)) {
+      issues.push(issue([WEB_SEARCH, key], 'catalog_field_locked'));
+    }
+  }
+}
+
 function checkAgentsEndpoint(agents: unknown, issues: ConfigOverrideIssue[]): void {
   const segments = ['endpoints', 'agents'];
   if (!isRecord(agents)) {
@@ -207,11 +235,17 @@ function checkAgentsEndpoint(agents: unknown, issues: ConfigOverrideIssue[]): vo
 
 /**
  * Returns the catalog-lock violation of an admin config tombstone, or `null` when allowed.
- * Only MCP sections are restricted: there a tombstone may target `<section>.<name>.enabled` or
- * `<section>.<name>.chatMenu`, nothing broader or deeper.
+ * In MCP sections a tombstone may target `<section>.<name>.enabled` or
+ * `<section>.<name>.chatMenu`, nothing broader or deeper; under `webSearch` only
+ * `webSearch.maxPagesPerSearch`.
  */
 export function getCatalogLockTombstoneIssue(fieldPath: string): ConfigOverrideIssue | null {
   const segments = fieldPath.split('.');
+  if (segments[0] === WEB_SEARCH) {
+    return segments.length === 2 && segments[1] === WEB_SEARCH_PAGES
+      ? null
+      : issue(segments, 'catalog_field_locked');
+  }
   if (!(MCP_SECTIONS as readonly string[]).includes(segments[0])) {
     return null;
   }
@@ -268,8 +302,8 @@ export interface CatalogLockChange {
 /**
  * The catalog-lock violations of one change of the atomic changes endpoint: a `set` is judged as a
  * PATCH entry, an `upsertEntry` as the array holding that one entry, a `tombstone` as the tombstone
- * route, and a `rename` under `endpoints` or an MCP section is refused, since a renamed entry
- * would no longer name a catalog endpoint or server. `unset` and `removeEntry` only narrow.
+ * route, and a `rename` under `endpoints`, `webSearch` or an MCP section is refused, since a
+ * renamed entry would no longer name a catalog endpoint or server, or would set a locked field. `unset` and `removeEntry` only narrow.
  */
 export function getCatalogLockChangeIssues(
   change: CatalogLockChange,
@@ -287,6 +321,7 @@ export function getCatalogLockChangeIssues(
     }
     case 'rename':
       return segments[0] === 'endpoints' ||
+        segments[0] === WEB_SEARCH ||
         (MCP_SECTIONS as readonly string[]).includes(segments[0])
         ? [issue(segments, 'catalog_field_locked')]
         : [];
@@ -301,6 +336,7 @@ function checkOverrides(
 ): ConfigOverrideIssue[] {
   const issues: ConfigOverrideIssue[] = [];
   collectEnvReferences(overrides, [], issues);
+  checkWebSearch(overrides.webSearch, issues);
   for (const section of MCP_SECTIONS) {
     if (overrides[section] !== undefined) {
       checkMCPServers(section, overrides[section], baseYaml.mcpServers, issues);

@@ -2361,6 +2361,15 @@ describe('allowedAddressesSchema', () => {
 });
 
 describe('webSearchSchema', () => {
+  it('accepts a page limit per search that is a whole number of at least 0 (fork)', () => {
+    expect(webSearchSchema.parse({ maxPagesPerSearch: 0 }).maxPagesPerSearch).toBe(0);
+    expect(webSearchSchema.parse({ maxPagesPerSearch: 3 }).maxPagesPerSearch).toBe(3);
+    expect(webSearchSchema.parse({}).maxPagesPerSearch).toBeUndefined();
+    for (const maxPagesPerSearch of [-1, 2.5, '3']) {
+      expect(webSearchSchema.safeParse({ maxPagesPerSearch }).success).toBe(false);
+    }
+  });
+
   it('accepts Tavily string modes for answer and raw content options', () => {
     const result = webSearchSchema.parse({
       tavilySearchOptions: {

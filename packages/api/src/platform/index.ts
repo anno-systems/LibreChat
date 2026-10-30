@@ -43,7 +43,7 @@ export { createPlatformPricingHandlers, withPricingCurrency } from './pricing';
 export type { PlatformPricingHandlers, PlatformPricingStore } from './pricing';
 export { createMcpPricingHandlers, listConfiguredMcpServers } from './mcpPricing';
 export type { McpPricingHandlers, McpPricingHandlerDeps, McpPricingStore } from './mcpPricing';
-export { createWebSearchCharge } from './searchCharge';
+export { createWebSearchCharge, countFetchedPages, isNewsSearch } from './searchCharge';
 export type { WebSearchCharge, WebSearchChargeDeps } from './searchCharge';
 export { createPlatformAgentService, isActiveFor, targetsTenant, withRunEndpoint } from './agents';
 export type {

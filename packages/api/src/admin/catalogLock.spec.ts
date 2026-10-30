@@ -112,6 +112,51 @@ describe('getCatalogLockIssues', () => {
     ]);
   });
 
+  it('accepts a page limit per search that is a whole number of at least 0 (fork)', () => {
+    expect(codes({ 'webSearch.maxPagesPerSearch': 0 })).toEqual([]);
+    expect(codes({ webSearch: { maxPagesPerSearch: 3 } })).toEqual([]);
+  });
+
+  it.each([[-1], [2.5], ['3'], [null], [true]])(
+    'refuses a page limit per search of %j (fork)',
+    (pages) => {
+      expect(codes({ 'webSearch.maxPagesPerSearch': pages })).toEqual([
+        { path: 'webSearch.maxPagesPerSearch', code: 'catalog_field_locked' },
+      ]);
+      expect(
+        getCatalogLockEntryIssues(['webSearch', 'maxPagesPerSearch'], pages, catalog).map(
+          ({ path, code }) => ({ path, code }),
+        ),
+      ).toEqual([{ path: 'webSearch.maxPagesPerSearch', code: 'catalog_field_locked' }]);
+    },
+  );
+
+  it('refuses every other web search field, and a web search that is no object (fork)', () => {
+    expect(
+      codes({
+        webSearch: {
+          maxPagesPerSearch: 1,
+          searchProvider: 'serper',
+          searxngInstanceUrl: 'https://search.example',
+          serperApiKey: 'own-key',
+          allowedAddresses: ['10.0.0.1:80'],
+        },
+      }),
+    ).toEqual([
+      { path: 'webSearch.searchProvider', code: 'catalog_field_locked' },
+      { path: 'webSearch.searxngInstanceUrl', code: 'catalog_field_locked' },
+      { path: 'webSearch.serperApiKey', code: 'catalog_field_locked' },
+      { path: 'webSearch.allowedAddresses', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ 'webSearch.firecrawlOptions.timeout': 5 })).toEqual([
+      { path: 'webSearch.firecrawlOptions', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ webSearch: null })).toEqual([
+      { path: 'webSearch', code: 'catalog_field_locked' },
+    ]);
+    expect(codes({ webSearch: {} })).toEqual([]);
+  });
+
   it('refuses narrowing an endpoint whose models are fetched at runtime', () => {
     expect(
       codes({ 'endpoints.custom': [{ name: 'Fetched', models: { default: ['a'] } }] }),
@@ -127,6 +172,7 @@ describe('getCatalogLockIssues', () => {
     ).toEqual([
       { path: 'webSearch.serperApiKey', code: 'catalog_env_reference' },
       { path: 'mcpServers.x.headers.Authorization', code: 'catalog_env_reference' },
+      { path: 'webSearch.serperApiKey', code: 'catalog_field_locked' },
       { path: 'mcpServers.x', code: 'catalog_unknown_mcp_server' },
     ]);
   });
@@ -206,6 +252,15 @@ describe('getCatalogLockTombstoneIssue', () => {
       expect.objectContaining({ code: 'catalog_field_locked' }),
     );
   });
+
+  it('allows under webSearch only a tombstone of the page limit (fork)', () => {
+    expect(getCatalogLockTombstoneIssue('webSearch.maxPagesPerSearch')).toBeNull();
+    for (const path of ['webSearch', 'webSearch.serperApiKey', 'webSearch.maxPagesPerSearch.x']) {
+      expect(getCatalogLockTombstoneIssue(path)).toEqual(
+        expect.objectContaining({ path, code: 'catalog_field_locked' }),
+      );
+    }
+  });
 });
 
 describe('getCatalogLockEntryIssues', () => {
@@ -234,6 +289,7 @@ describe('getCatalogLockEntryIssues', () => {
   it('judges a whole document for empty segments', () => {
     expect(entryCodes([], { webSearch: { serperApiKey: '${JWT_SECRET}' } })).toEqual([
       { path: 'webSearch.serperApiKey', code: 'catalog_env_reference' },
+      { path: 'webSearch.serperApiKey', code: 'catalog_field_locked' },
     ]);
   });
 });
@@ -281,6 +337,12 @@ describe('getCatalogLockChangeIssues', () => {
     expect(changeCodes({ op: 'rename', segments: ['mcpServers'] })).toEqual([
       { path: 'mcpServers', code: 'catalog_field_locked' },
     ]);
+    expect(changeCodes({ op: 'rename', segments: ['webSearch', 'maxPagesPerSearch'] })).toEqual([
+      { path: 'webSearch.maxPagesPerSearch', code: 'catalog_field_locked' },
+    ]);
+    expect(
+      changeCodes({ op: 'set', segments: ['webSearch', 'scraperProvider'], value: 'firecrawl' }),
+    ).toEqual([{ path: 'webSearch.scraperProvider', code: 'catalog_field_locked' }]);
   });
 
   it('lets unsets and entry removals through, which only narrow', () => {

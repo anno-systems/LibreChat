@@ -1,14 +1,17 @@
 import type { PipelineStage } from 'mongoose';
 
 /**
- * What a tenant's usage cost (fork-only), from its ledger: the credits its users spent on tokens
- * and on web searches (transactions of context `web_search`), per day, per model and, when asked,
- * per user and per group. Credits are USD-based (1,000,000 credits = 1 USD) and already carry the
+ * What a tenant's usage cost (fork-only), from its ledger: the credits its users spent on tokens,
+ * on web searches (transactions of context `web_search`) and on the pages they fetched (one
+ * transaction of context `web_scrape` per page), per day, per model and, when asked, per user and
+ * per group. Credits are USD-based (1,000,000 credits = 1 USD) and already carry the
  * operator's markup, since that is what was charged. Runs in the caller's tenant; tenant
  * isolation scopes every query as well.
  */
 
 export const WEB_SEARCH_CONTEXT = 'web_search';
+/** One page a web search fetched (scraped), charged on its own. */
+export const WEB_FETCH_CONTEXT = 'web_scrape';
 
 export type TenantCostPeriod = { days: 7 | 30 | 90 } | { month: string };
 
@@ -28,6 +31,10 @@ export interface TenantCostAmounts {
   /** Credits spent on web searches. */
   searchCredits: number;
   searches: number;
+  /** Credits spent on pages fetched by web searches. */
+  fetchCredits: number;
+  /** Pages fetched by web searches and charged. */
+  fetches: number;
 }
 
 export interface TenantCostDay extends TenantCostAmounts {
@@ -113,12 +120,15 @@ const dayKey = (timeZone: string) => ({
 
 const spent = { $multiply: [-1, { $ifNull: ['$tokenValue', 0] }] };
 const isSearch = { $eq: ['$context', WEB_SEARCH_CONTEXT] };
+const isFetch = { $eq: ['$context', WEB_FETCH_CONTEXT] };
 const isToken = { $in: ['$tokenType', ['prompt', 'completion']] };
 
 const amountFields = {
   tokenCredits: { $sum: { $cond: [isToken, spent, 0] } },
   searchCredits: { $sum: { $cond: [isSearch, spent, 0] } },
   searches: { $sum: { $cond: [isSearch, 1, 0] } },
+  fetchCredits: { $sum: { $cond: [isFetch, spent, 0] } },
+  fetches: { $sum: { $cond: [isFetch, 1, 0] } },
 };
 
 interface AmountRow {
@@ -126,6 +136,8 @@ interface AmountRow {
   tokenCredits?: number;
   searchCredits?: number;
   searches?: number;
+  fetchCredits?: number;
+  fetches?: number;
 }
 
 interface ModelRow {
@@ -148,13 +160,21 @@ interface GroupDoc {
   memberIds?: string[];
 }
 
-const zero = (): TenantCostAmounts => ({ tokenCredits: 0, searchCredits: 0, searches: 0 });
+const zero = (): TenantCostAmounts => ({
+  tokenCredits: 0,
+  searchCredits: 0,
+  searches: 0,
+  fetchCredits: 0,
+  fetches: 0,
+});
 
 function amountsOf(row: AmountRow): TenantCostAmounts {
   return {
     tokenCredits: Math.round(row.tokenCredits ?? 0),
     searchCredits: Math.round(row.searchCredits ?? 0),
     searches: row.searches ?? 0,
+    fetchCredits: Math.round(row.fetchCredits ?? 0),
+    fetches: row.fetches ?? 0,
   };
 }
 
@@ -162,9 +182,12 @@ function add(into: TenantCostAmounts, from: TenantCostAmounts): void {
   into.tokenCredits += from.tokenCredits;
   into.searchCredits += from.searchCredits;
   into.searches += from.searches;
+  into.fetchCredits += from.fetchCredits;
+  into.fetches += from.fetches;
 }
 
-const total = (amounts: TenantCostAmounts) => amounts.tokenCredits + amounts.searchCredits;
+const total = (amounts: TenantCostAmounts) =>
+  amounts.tokenCredits + amounts.searchCredits + amounts.fetchCredits;
 
 export function createTenantCostMethods(mongoose: typeof import('mongoose')): TenantCostMethods {
   async function run<T>(modelName: string, pipeline: PipelineStage[]): Promise<T[]> {
@@ -203,7 +226,7 @@ export function createTenantCostMethods(mongoose: typeof import('mongoose')): Te
             createdAt: { $gte: since, $lt: until },
             $or: [
               { tokenType: { $in: ['prompt', 'completion'] } },
-              { context: WEB_SEARCH_CONTEXT },
+              { context: { $in: [WEB_SEARCH_CONTEXT, WEB_FETCH_CONTEXT] } },
             ],
           },
         },

@@ -17,9 +17,10 @@ import {
 import type { TWebSearchKeys, TWebSearchCategories } from '@librechat/data-schemas';
 import type { TCustomConfig, TWebSearchConfig } from 'librechat-data-provider';
 import type { KeenableScraperConfig } from '@librechat/agents';
+import type { SearchRun } from './tenant';
 import { isSSRFTarget, resolveHostnameSSRF, getEffectivePort } from '../auth';
 import { resolveStoredConfigSecret } from '~/admin/secrets';
-import { withTenantId } from './tenant';
+import { withSearchCredentials } from './tenant';
 
 /**
  * URL keys that require explicit admin opt-in before user-provided values may pass through.
@@ -410,6 +411,7 @@ function getKeenableScraperOptions(
 export async function loadWebSearchAuth({
   userId,
   tenantId,
+  searchRun,
   webSearchConfig,
   loadAuthValues,
   throwError = true,
@@ -417,6 +419,8 @@ export async function loadWebSearchAuth({
   userId: string;
   /** Fills `{{LIBRECHAT_TENANT_ID}}` in the resolved keys and URLs (see `./tenant`). */
   tenantId?: string;
+  /** Fills `{{LIBRECHAT_SEARCH_RUN}}` and `{{LIBRECHAT_SEARCH_PAGES}}` (see `./tenant`). */
+  searchRun?: SearchRun;
   webSearchConfig: TCustomConfig['webSearch'];
   loadAuthValues: (params: {
     userId: string;
@@ -901,7 +905,7 @@ export async function loadWebSearchAuth({
 
   return {
     authTypes,
-    authResult: withTenantId(authResult, tenantId),
+    authResult: withSearchCredentials(authResult, { tenantId, run: searchRun }),
     authenticated,
   };
 }

@@ -47,18 +47,21 @@ const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Fil
 const { preflightCodeOutputBatch } = require('~/server/services/Files/Code/preflight');
 const { saveBase64Image, saveMCPFileOutput } = require('~/server/services/Files/process');
 
-/** Fork: a completed web search costs the operator's search price (platform pricing). Built on
- *  first use, so loading this module does not load the models; never rejects. */
+/** Fork: a completed web search costs the operator's search price, and each page it fetched the
+ *  page price (platform pricing). Built on first use, so loading this module does not load the
+ *  models; never rejects. */
 let webSearchCharge;
-async function chargeWebSearch(req, conversationId) {
+async function chargeWebSearch(req, conversationId, result, input) {
   if (!webSearchCharge) {
     const db = require('~/models');
     webSearchCharge = createWebSearchCharge({
       webSearchCredits: (tenantId) => db.webSearchCredits(tenantId),
+      webFetchCredits: (tenantId) => db.webFetchCredits(tenantId),
+      maxPagesPerSearch: (tenantId) => db.resolvePricing(tenantId).maxPagesPerSearch,
       createTransaction: (tx) => db.createTransaction(tx),
     });
   }
-  return webSearchCharge(req, conversationId);
+  return webSearchCharge(req, conversationId, result, input);
 }
 
 function isHostFileAuthoringArtifact(artifact) {
@@ -1018,9 +1021,11 @@ function createToolEndCallback({ req, res, artifactPromises, streamId = null, jo
     }
 
     if (output.artifact[Tools.web_search]) {
-      chargeWebSearch(req, metadata.thread_id).catch((error) => {
-        logger.error('Error charging a web search:', error);
-      });
+      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search], data.input).catch(
+        (error) => {
+          logger.error('Error charging a web search:', error);
+        },
+      );
       artifactPromises.push(
         (async () => {
           const attachment = {
@@ -1410,9 +1415,11 @@ function createResponsesToolEndCallback({ req, res, tracker, artifactPromises })
     }
 
     if (output.artifact[Tools.web_search]) {
-      chargeWebSearch(req, metadata.thread_id).catch((error) => {
-        logger.error('Error charging a web search:', error);
-      });
+      chargeWebSearch(req, metadata.thread_id, output.artifact[Tools.web_search], data.input).catch(
+        (error) => {
+          logger.error('Error charging a web search:', error);
+        },
+      );
       artifactPromises.push(
         (async () => {
           const attachment = {

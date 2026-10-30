@@ -18,7 +18,9 @@ import { getSafeErrorMetadata } from '~/utils/errors';
 /**
  * What the caller's tenant spent (fork-only): `GET /api/admin/usage/costs?days=7|30|90` or
  * `?month=YYYY-MM`, for the admin app's cost view. Amounts are credits (1,000,000 = 1 USD) as
- * charged, with the operator's markup; `currency` converts them for display. The per-user and
+ * charged, with the operator's markup; `currency` converts them for display. Web searches and the
+ * pages they fetched are reported apart (`searchCredits`/`searches`, `fetchCredits`/`fetches`) in
+ * the totals, per day, per user and per group. The per-user and
  * per-group lists are included only for callers who may read users (`READ_USERS`), since they
  * name people; the operator's markup itself is never part of the answer.
  *

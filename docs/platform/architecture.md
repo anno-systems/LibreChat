@@ -469,6 +469,34 @@ the display currency with a fixed USD rate. Decisions:
   is derived from the current markup; record it per transaction before the first invoice run if a
   markup changes mid-period.
 
+### Page fetches per search (2026-10-30)
+
+Serper bills a page fetch (scrape) at twice a search, and LibreChat's search tool fetches up to 5
+pages per search (plus 5 top stories for news), so one search could cost the platform 11 credits
+while the tenant paid for one search. Decisions:
+
+- **Page fetches have their own price**, `fetchPer1000` next to `searchPer1000`, as default and per
+  tenant. Each page the gateway let through is one ledger transaction of context `web_scrape`,
+  including pages that returned no text; refused pages are not charged. The tool's artifact cannot
+  tell a fetched page from a refused one (the tool strips each source's highlights and content), so
+  LibreChat counts the pages the tool attempted, as the tool picks them (the first 5 distinct
+  results and, for a news call, up to 5 top stories that are no result), and charges the smaller of
+  that and the page limit, which is exactly what the gateway lets through. A page that failed at
+  Serper after the gateway let it through is charged too. Tenant costs report `fetchCredits` and
+  `fetches` apart from searches. Without a price, fetches cost nothing.
+- **The operator caps the pages per search** (`maxPagesPerSearch`, 0 to 10, default 5) as default
+  and per tenant; a tenant admin can only go lower (`webSearch.maxPagesPerSearch` in the tenant's
+  config, the only `webSearch` field the catalog lock lets tenants write). **A call that searches
+  news gets twice the limit**, in the gateway and in the charge (LibreChat reads `news` from the
+  tool call's arguments; the gateway sees the call's search of category `news`).
+- **The search gateway enforces it**, because the search tool cannot be told: LibreChat sends a
+  run id and the page limit in the gateway key (`{{LIBRECHAT_SEARCH_RUN}}`,
+  `{{LIBRECHAT_SEARCH_PAGES}}`). Each search starts a fresh budget for its run (twice the limit for
+  a news search; the web and news searches of one call, sent together before any fetch, keep the
+  larger budget), and fetches over it are refused before Serper and not metered. Budgets are rows
+  in the gateway's PostgreSQL (`search_page_budgets`, tenant and run, remaining pages and expiry,
+  10 minutes), so every replica shares them; queries and URLs are never stored.
+
 ### MCP server prices (2026-10-27)
 
 Tenants pay a fixed monthly price for each platform MCP server they use, for example 20 EUR per

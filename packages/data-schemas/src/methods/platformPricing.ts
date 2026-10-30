@@ -3,9 +3,9 @@ import type { Model } from 'mongoose';
 import { SYSTEM_TENANT_ID } from '~/config/tenantContext';
 
 /**
- * The platform operator's prices (fork-only): a markup on every model's token rates and a price
- * for web searches, as a platform default with optional overrides per tenant, and the currency
- * prices are shown in. Rates stay USD-based credits (1,000,000 credits = 1 USD); the markup
+ * The platform operator's prices (fork-only): a markup on every model's token rates, a price for
+ * web searches and one for the pages they fetch, and a cap on the pages one search may fetch, as a
+ * platform default with optional overrides per tenant, and the currency prices are shown in. Rates stay USD-based credits (1,000,000 credits = 1 USD); the markup
  * scales them, so balances, balance checks and the costs shown in chat all carry it.
  *
  * Documents live platform-wide, without a tenant: `scope` is `default` or a tenant id. Token
@@ -14,6 +14,11 @@ import { SYSTEM_TENANT_ID } from '~/config/tenantContext';
  */
 
 export const DEFAULT_PRICING_SCOPE = 'default';
+
+/** Pages one web search may fetch without an operator cap: what the search tool fetches today. */
+export const DEFAULT_MAX_PAGES_PER_SEARCH = 5;
+/** The highest cap: the search tool fetches at most 5 result pages and 5 top stories. */
+export const MAX_PAGES_PER_SEARCH = 10;
 
 export interface PricingCurrency {
   /** ISO 4217 code, e.g. `EUR`. */
@@ -28,6 +33,10 @@ export interface PlatformPricing {
   tokenMarkup?: number;
   /** Price of 1,000 web searches in the display currency. */
   searchPer1000?: number;
+  /** Price of 1,000 pages fetched by web searches in the display currency. */
+  fetchPer1000?: number;
+  /** Most pages one web search may fetch, 0 to `MAX_PAGES_PER_SEARCH`. */
+  maxPagesPerSearch?: number;
   /** Display currency; the default document's applies to every tenant. */
   currency?: PricingCurrency;
   updatedAt?: Date;
@@ -37,6 +46,9 @@ export interface PlatformPricing {
 export interface ResolvedPricing {
   tokenMarkup: number;
   searchPer1000: number;
+  fetchPer1000: number;
+  /** The operator's cap; `DEFAULT_MAX_PAGES_PER_SEARCH` when neither document sets one. */
+  maxPagesPerSearch: number;
   currency?: PricingCurrency;
 }
 
@@ -52,6 +64,8 @@ export interface PlatformPricingMethods {
   resolvePricing(tenantId?: string): ResolvedPricing;
   /** Credits one web search costs `tenantId`; 0 when no search price or currency is set. */
   webSearchCredits(tenantId?: string): number;
+  /** Credits one fetched page costs `tenantId`; 0 when no fetch price or currency is set. */
+  webFetchCredits(tenantId?: string): number;
 }
 
 const currencySchema = new Schema<PricingCurrency>(
@@ -67,6 +81,13 @@ const platformPricingSchema = new Schema<PlatformPricing>(
     scope: { type: String, required: true, unique: true },
     tokenMarkup: { type: Number, min: 0, max: 10 },
     searchPer1000: { type: Number, min: 0, max: 10_000 },
+    fetchPer1000: { type: Number, min: 0, max: 10_000 },
+    maxPagesPerSearch: {
+      type: Number,
+      min: 0,
+      max: MAX_PAGES_PER_SEARCH,
+      validate: { validator: Number.isInteger, message: 'maxPagesPerSearch must be an integer' },
+    },
     currency: { type: currencySchema, default: undefined },
   },
   { timestamps: true },
@@ -74,11 +95,21 @@ const platformPricingSchema = new Schema<PlatformPricing>(
 
 const CREDITS_PER_USD = 1_000_000;
 
+/** Credits of one unit priced per 1,000 in `currency`; 0 without a price or currency. */
+function creditsPerUnit(per1000: number, currency?: PricingCurrency): number {
+  if (!per1000 || !currency) {
+    return 0;
+  }
+  return Math.round((per1000 / 1000 / currency.rate) * CREDITS_PER_USD);
+}
+
 function toPricing(doc: PlatformPricing): PlatformPricing {
   return {
     scope: doc.scope,
     ...(doc.tokenMarkup != null && { tokenMarkup: doc.tokenMarkup }),
     ...(doc.searchPer1000 != null && { searchPer1000: doc.searchPer1000 }),
+    ...(doc.fetchPer1000 != null && { fetchPer1000: doc.fetchPer1000 }),
+    ...(doc.maxPagesPerSearch != null && { maxPagesPerSearch: doc.maxPagesPerSearch }),
     ...(doc.currency && { currency: { code: doc.currency.code, rate: doc.currency.rate } }),
     ...(doc.updatedAt && { updatedAt: doc.updatedAt }),
   };
@@ -129,6 +160,9 @@ export function createPlatformPricingMethods(
     return {
       tokenMarkup: own?.tokenMarkup ?? base?.tokenMarkup ?? 0,
       searchPer1000: own?.searchPer1000 ?? base?.searchPer1000 ?? 0,
+      fetchPer1000: own?.fetchPer1000 ?? base?.fetchPer1000 ?? 0,
+      maxPagesPerSearch:
+        own?.maxPagesPerSearch ?? base?.maxPagesPerSearch ?? DEFAULT_MAX_PAGES_PER_SEARCH,
       ...(base?.currency && { currency: base.currency }),
     };
   }
@@ -140,16 +174,21 @@ export function createPlatformPricingMethods(
     },
 
     async setPlatformPricing(pricing) {
-      const { scope, tokenMarkup, searchPer1000, currency } = pricing;
+      const { scope, tokenMarkup, searchPer1000, fetchPer1000, maxPagesPerSearch, currency } =
+        pricing;
       const set = {
         scope,
         ...(tokenMarkup != null && { tokenMarkup }),
         ...(searchPer1000 != null && { searchPer1000 }),
+        ...(fetchPer1000 != null && { fetchPer1000 }),
+        ...(maxPagesPerSearch != null && { maxPagesPerSearch }),
         ...(currency && { currency }),
       };
       const unset = {
         ...(tokenMarkup == null && { tokenMarkup: 1 }),
         ...(searchPer1000 == null && { searchPer1000: 1 }),
+        ...(fetchPer1000 == null && { fetchPer1000: 1 }),
+        ...(maxPagesPerSearch == null && { maxPagesPerSearch: 1 }),
         ...(currency == null && { currency: 1 }),
       };
       const doc = await Pricing.findOneAndUpdate(
@@ -173,10 +212,12 @@ export function createPlatformPricingMethods(
 
     webSearchCredits(tenantId) {
       const { searchPer1000, currency } = resolvePricing(tenantId);
-      if (!searchPer1000 || !currency) {
-        return 0;
-      }
-      return Math.round((searchPer1000 / 1000 / currency.rate) * CREDITS_PER_USD);
+      return creditsPerUnit(searchPer1000, currency);
+    },
+
+    webFetchCredits(tenantId) {
+      const { fetchPer1000, currency } = resolvePricing(tenantId);
+      return creditsPerUnit(fetchPer1000, currency);
     },
   };
 }
