@@ -28,6 +28,7 @@ jest.mock('@librechat/api', () => ({
   isAdminPanelRedirect: (...args) => mockIsAdminPanelRedirect(...args),
   generateAdminExchangeCode: (...args) => mockGenerateAdminExchangeCode(...args),
   getTenantDomains: (...args) => mockGetTenantDomains(...args),
+  createSignInRecorder: () => () => undefined,
 }));
 
 jest.mock('~/server/services/PermissionService', () => ({

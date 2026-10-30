@@ -6,13 +6,20 @@ const {
   getTenantDomains,
   isAdminPanelRedirect,
   generateAdminExchangeCode,
+  createSignInRecorder,
 } = require('@librechat/api');
 const { syncUserEntraGroupMemberships } = require('~/server/services/PermissionService');
 const { setAuthTokens } = require('~/server/services/AuthService');
 const { sendOpenIDAuthResponse } = require('~/server/services/OpenIDRefreshRecovery');
 const getLogStores = require('~/cache/getLogStores');
 const { checkBan } = require('~/server/middleware');
-const { generateToken } = require('~/models');
+const { generateToken, recordPlatformSignIn } = require('~/models');
+
+/** Fork: chat sign-ins for the operator's platform overview (`packages/api/src/platform/usage.ts`). */
+const recordSignIn = createSignInRecorder({
+  enabled: Boolean(process.env.PLATFORM_API_TOKEN),
+  recordPlatformSignIn: (entry) => recordPlatformSignIn(entry),
+});
 
 const domains = {
   client: process.env.DOMAIN_CLIENT,
@@ -103,6 +110,7 @@ function createOAuthHandler(fixedRedirectUri) {
           req.session.openidLogoutIdToken = req.user.tokenset?.id_token;
         }
       }
+      recordSignIn(req.user);
       res.redirect(redirectUri);
     } catch (err) {
       logger.error('Error in setting authentication tokens:', err);

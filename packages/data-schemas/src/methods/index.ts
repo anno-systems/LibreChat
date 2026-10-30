@@ -78,6 +78,7 @@ export type {
   EnableSuccessorInput,
 } from './modelMigration';
 export type { TenantUsage, TenantUsageDays, TenantUsageDay, TenantUsageModel } from './tenantUsage';
+export type { PlatformUsage, PlatformUsageDay, PlatformUsageDays } from './platformUsage';
 import type {
   FileMethods,
   FileOwnerScope,
@@ -173,6 +174,7 @@ import { createMcpPricingMethods, type McpPricingMethods } from './mcpPricing';
 import { createTenantPurgeMethods, type TenantPurgeMethods } from './tenantPurge';
 import { createModelMigrationMethods, type ModelMigrationMethods } from './modelMigration';
 import { createTenantUsageMethods, type TenantUsageMethods } from './tenantUsage';
+import { createPlatformUsageMethods, type PlatformUsageMethods } from './platformUsage';
 import { createToolCallMethods, type ToolCallMethods } from './toolCall';
 import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
@@ -393,6 +395,7 @@ export type AllMethods = SubagentContentMethods &
   TenantPurgeMethods &
   ModelMigrationMethods &
   TenantUsageMethods &
+  PlatformUsageMethods &
   TenantCostMethods &
   ToolCallMethods &
   CategoriesMethods &
@@ -660,6 +663,7 @@ export function createMethods(
     ...createTenantPurgeMethods(mongoose),
     ...createModelMigrationMethods(mongoose),
     ...createTenantUsageMethods(mongoose),
+    ...createPlatformUsageMethods(mongoose),
     ...createTenantCostMethods(mongoose),
     ...createToolCallMethods(mongoose),
     ...createCategoriesMethods(mongoose),
@@ -746,6 +750,7 @@ export type {
   TenantPurgeMethods,
   ModelMigrationMethods,
   TenantUsageMethods,
+  PlatformUsageMethods,
   TenantCostMethods,
   ToolCallMethods,
   CategoriesMethods,
