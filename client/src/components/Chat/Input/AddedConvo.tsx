@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { isAgentsEndpoint } from 'librechat-data-provider';
+import { isAgentsEndpoint, getModelDisplayLabel } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
 import type { SetterOrUpdater } from 'recoil';
 import { useGetEndpointsQuery } from '~/data-provider';
@@ -26,9 +26,12 @@ export default function AddedConvo({
       return `+ ${agent?.name || localize('com_ui_agent')}`;
     }
 
-    const endpointConfig = endpointsConfig?.[addedConvo?.endpoint ?? ''];
+    const endpointConfig = endpointsConfig?.[addedConvo?.endpoint ?? ''] ?? undefined;
     const displayLabel =
-      endpointConfig?.modelDisplayLabel || addedConvo?.modelLabel || addedConvo?.model || 'AI';
+      getModelDisplayLabel(endpointConfig, addedConvo?.model) ||
+      addedConvo?.modelLabel ||
+      addedConvo?.model ||
+      'AI';
 
     return `+ ${displayLabel}`;
   }, [addedConvo, agentsMap, endpointsConfig, localize]);

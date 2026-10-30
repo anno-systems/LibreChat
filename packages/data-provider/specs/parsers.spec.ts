@@ -6,6 +6,7 @@ import {
   parseCompactConvo,
   replaceSpecialVars,
   getEphemeralSender,
+  getModelDisplayLabel,
   getResponseSender,
   isConfiguredSender,
   encodeEphemeralAgentId,
@@ -1007,5 +1008,26 @@ describe('isConfiguredSender', () => {
 
       expect(isConfiguredSender({ ...(endpointOption as never), sender })).toBe(sender === 'Acme');
     }
+  });
+});
+
+describe('getModelDisplayLabel', () => {
+  const endpointConfig = {
+    modelDisplayLabel: 'Azure',
+    modelLabels: { 'claude-sonnet-5-5': 'Claude Sonnet 5.5' },
+  };
+
+  test("prefers the model's own label over the endpoint's", () => {
+    expect(getModelDisplayLabel(endpointConfig, 'claude-sonnet-5-5')).toBe('Claude Sonnet 5.5');
+  });
+
+  test("falls back to the endpoint's label for models without one", () => {
+    expect(getModelDisplayLabel(endpointConfig, 'other-model')).toBe('Azure');
+    expect(getModelDisplayLabel(endpointConfig, undefined)).toBe('Azure');
+    expect(getModelDisplayLabel(endpointConfig, 'toString')).toBe('Azure');
+  });
+
+  test('returns undefined without a config', () => {
+    expect(getModelDisplayLabel(undefined, 'claude-sonnet-5-5')).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@ import {
   isEphemeralAgentId,
   getEphemeralSender,
   appendAgentIdSuffix,
+  getModelDisplayLabel,
   encodeEphemeralAgentId,
   resolveMCPAppsPolicy,
 } from 'librechat-data-provider';
@@ -170,7 +171,10 @@ export async function loadAddedAgent(
     const sender = getEphemeralSender({
       modelLabel: rest.modelLabel,
       specLabel: modelSpec?.label,
-      modelDisplayLabel: endpointConfig?.modelDisplayLabel as string | undefined,
+      modelDisplayLabel: getModelDisplayLabel(
+        endpointConfig as Parameters<typeof getModelDisplayLabel>[0],
+        model,
+      ),
     });
     const ephemeralId = encodeEphemeralAgentId({ endpoint, model, sender, index: 1 });
 
@@ -300,7 +304,10 @@ export async function loadAddedAgent(
   const sender = getEphemeralSender({
     modelLabel: rest.modelLabel,
     specLabel: modelSpec?.label,
-    modelDisplayLabel: endpointConfig?.modelDisplayLabel as string | undefined,
+    modelDisplayLabel: getModelDisplayLabel(
+      endpointConfig as Parameters<typeof getModelDisplayLabel>[0],
+      model,
+    ),
   });
   const ephemeralId = encodeEphemeralAgentId({ endpoint, model, sender, index: 1 });
 
