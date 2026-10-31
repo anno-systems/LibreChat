@@ -38,6 +38,7 @@ const {
   requiresAdminMfa,
   ADMIN_MFA_REQUIRED,
   applyLoginHint,
+  isHintedLoginStart,
 } = require('@librechat/api');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { resizeAvatar } = require('~/server/services/Files/images/avatar');
@@ -156,6 +157,13 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
       ? getTenantDomains(getTenantId(), process.env).server
       : process.env.DOMAIN_SERVER;
     return new URL(`${hostAndProtocol}${req.originalUrl ?? req.url}`);
+  }
+
+  authenticate(req, options) {
+    if (isHintedLoginStart(req.method, req.query)) {
+      return this.authorizationRequest(req, options);
+    }
+    return super.authenticate(req, options);
   }
 
   authorizationRequestParams(req, options) {

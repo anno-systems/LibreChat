@@ -1,4 +1,4 @@
-import { applyLoginHint, getLoginHint } from './hint';
+import { applyLoginHint, getLoginHint, isHintedLoginStart } from './hint';
 
 describe('getLoginHint', () => {
   it.each([
@@ -43,5 +43,20 @@ describe('applyLoginHint', () => {
     applyLoginHint(params, undefined);
     expect(params.has('login_hint')).toBe(false);
     expect(params.has('prompt')).toBe(false);
+  });
+});
+
+describe('isHintedLoginStart', () => {
+  it('recognises a GET that carries only a login hint, valid or not', () => {
+    expect(isHintedLoginStart('GET', { login_hint: 'platform-test@acme.invalid' })).toBe(true);
+    expect(isHintedLoginStart('GET', { login_hint: 'a b' })).toBe(true);
+  });
+
+  it('leaves callbacks and other requests to the strategy', () => {
+    expect(isHintedLoginStart('GET', {})).toBe(false);
+    expect(isHintedLoginStart('GET', undefined)).toBe(false);
+    expect(isHintedLoginStart('GET', { code: 'c', state: 's' })).toBe(false);
+    expect(isHintedLoginStart('GET', { login_hint: 'a@b.c', code: 'c' })).toBe(false);
+    expect(isHintedLoginStart('POST', { login_hint: 'a@b.c' })).toBe(false);
   });
 });
