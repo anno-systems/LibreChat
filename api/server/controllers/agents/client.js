@@ -215,6 +215,7 @@ const {
   runProviderQueuedTurn,
   isProviderQueueTimeout,
   getProviderQueueErrorText,
+  approvedToolCallIds,
 } = require('@librechat/api');
 const {
   Run,
@@ -5989,6 +5990,10 @@ class AgentClient extends BaseClient {
       if (userMCPAuthMap != null) {
         config.configurable.userMCPAuthMap = userMCPAuthMap;
       }
+      // Fork: the tool calls the user approved, so their MCP calls carry a signed approval.
+      config.configurable.approvedToolCallIds = [
+        ...approvedToolCallIds(reviewedToolApprovals?.decisions),
+      ];
 
       /** @deprecated Agent Chain */
       config.configurable.last_agent_id = agents[agents.length - 1].id;

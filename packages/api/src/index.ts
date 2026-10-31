@@ -35,6 +35,7 @@ export * from './mcp/oauth';
 export * from './mcp/auth';
 export * from './mcp/zod';
 export * from './mcp/callContext';
+export * from './mcp/signature';
 export * from './mcp/files';
 export * from './mcp/errors';
 export * from './mcp/audit';

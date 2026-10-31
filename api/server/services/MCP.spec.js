@@ -29,6 +29,15 @@ const mockIsMCPDomainAllowed = jest.fn(() => Promise.resolve(true));
 
 const mockGetAppConfig = jest.fn(() => Promise.resolve({}));
 
+jest.mock('~/server/services/mcpApproval', () => {
+  const { generateKeyPairSync } = jest.requireActual('node:crypto');
+  const { createMCPApprovalSigner } = jest.requireActual('@librechat/api');
+  const { privateKey } = generateKeyPairSync('ed25519');
+  return {
+    signer: createMCPApprovalSigner(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()),
+  };
+});
+
 jest.mock('@librechat/api', () => {
   const actual = jest.requireActual('@librechat/api');
   return {
@@ -2038,6 +2047,62 @@ describe('User parameter passing tests', () => {
       );
 
       expect(callTool).toHaveBeenCalledWith(expect.objectContaining({ meta }));
+    });
+
+    it('signs the approval of a tool call the user approved, and only that one (fork)', async () => {
+      const mockUser = {
+        id: 'approval-user',
+        role: 'USER',
+        openidId: 'sub-1',
+        tenantId: 'tenant-a',
+      };
+      const { getRoleByName } = require('~/models');
+      getRoleByName.mockResolvedValue({
+        permissions: { [PermissionTypes.MCP_SERVERS]: { [Permissions.USE]: true } },
+      });
+      const callTool = jest.fn().mockResolvedValue([[{ type: 'text', text: 'ok' }], undefined]);
+      mockGetMCPManager.mockReturnValue({ callTool });
+      const mcpTool = await createMCPTool({
+        res: { write: jest.fn(), flush: jest.fn() },
+        user: mockUser,
+        config: { url: 'https://approval.example.com/mcp' },
+        toolKey: `test-tool${D}test-server`,
+        provider: 'openai',
+        userMCPAuthMap: {},
+        availableTools: {
+          [`test-tool${D}test-server`]: {
+            function: {
+              description: 'Cached tool',
+              parameters: { type: 'object', properties: { a: { type: 'string' } } },
+            },
+          },
+        },
+      });
+      const invoke = (id) =>
+        mcpTool.invoke(
+          { a: 'x' },
+          {
+            configurable: { user: mockUser, approvedToolCallIds: ['call-approved'] },
+            metadata: { provider: 'openai', thread_id: 'thread-1', run_id: 'run-1' },
+            toolCall: { id },
+          },
+        );
+
+      await invoke('call-approved');
+      await invoke('call-other');
+
+      const approval = callTool.mock.calls[0][0].meta?.['librechat/approval'];
+      expect(typeof approval).toBe('string');
+      const claims = JSON.parse(Buffer.from(approval.split('.')[0], 'base64url').toString());
+      expect(claims).toEqual(
+        expect.objectContaining({
+          tenantId: 'tenant-a',
+          subject: 'sub-1',
+          server: 'test-server',
+          tool: 'test-tool',
+        }),
+      );
+      expect(callTool.mock.calls[1][0].meta?.['librechat/approval']).toBeUndefined();
     });
 
     it('preserves AbortError from the MCP tool implementation', async () => {
