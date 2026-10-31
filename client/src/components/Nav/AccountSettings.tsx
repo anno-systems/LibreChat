@@ -2,7 +2,7 @@ import { useState, memo, useRef } from 'react';
 import { useSetAtom } from 'jotai';
 import { useSetRecoilState } from 'recoil';
 import * as Menu from '@ariakit/react/menu';
-import { GearIcon, DropdownMenuSeparator, Avatar } from '@librechat/client';
+import { GearIcon, Avatar } from '@librechat/client';
 import {
   Archive,
   ChevronRight,
@@ -73,7 +73,9 @@ function HelpSubmenu({
           <Keyboard className="icon-md" aria-hidden="true" />
           {localize('com_shortcut_keyboard_shortcuts')}
         </Menu.MenuItem>
-        {showLegalDivider && (hasTos || hasPrivacy) && <DropdownMenuSeparator />}
+        {showLegalDivider && (hasTos || hasPrivacy) && (
+          <Menu.MenuSeparator className="bg-surface-hover -mx-1 my-1 h-px border-0" />
+        )}
         {hasTos && (
           <Menu.MenuItem
             onClick={() => openInNewTab(termsOfServiceURL)}
@@ -149,7 +151,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
         <div className="text-text-secondary ms-3 me-2 py-2 text-sm" role="note">
           {user?.email ?? localize('com_nav_user')}
         </div>
-        <DropdownMenuSeparator />
+        <Menu.MenuSeparator className="bg-surface-hover -mx-1 my-1 h-px border-0" />
         <HelpSubmenu
           helpAndFaqURL={startupConfig?.helpAndFaqURL}
           termsOfServiceURL={termsOfServiceUrl}
@@ -193,7 +195,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
             {localize('com_ui_admin_panel')}
           </Menu.MenuItem>
         )}
-        <DropdownMenuSeparator />
+        <Menu.MenuSeparator className="bg-surface-hover -mx-1 my-1 h-px border-0" />
         <Menu.MenuItem onClick={() => logout()} className="select-item text-sm">
           <LogOut className="icon-md" aria-hidden="true" />
           {localize('com_nav_log_out')}

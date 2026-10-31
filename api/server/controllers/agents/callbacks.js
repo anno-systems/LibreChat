@@ -41,6 +41,7 @@ const {
   stampCommandExecutor,
   MCP_FILE_OUTPUTS_ARTIFACT_KEY,
   createWebSearchCharge,
+  writeGuarded,
 } = require('@librechat/api');
 const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput, runPreviewFinalize } = require('~/server/services/Files/Code/process');
@@ -868,7 +869,7 @@ function writeAttachment(res, streamId, attachment, expectedCreatedAt) {
       { expectedCreatedAt },
     );
   } else {
-    res.write(`event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
+    writeGuarded(res, `event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
   }
 }
 

@@ -30,6 +30,7 @@ const {
   resolveAppConfigForUser,
   getOpenIdProxyDispatcher,
   getOpenIdRoleSyncOptions,
+  preserveAdminOAuthState,
   getOpenIdRolesForOpenIdSync,
   getLibreChatRolesForOpenIdSync,
   syncOpenIdGroups,
@@ -204,6 +205,16 @@ class CustomOpenIDStrategy extends OpenIDStrategy {
     }
 
     return params;
+  }
+}
+
+/** Admin sign-in strategy: keeps the admin route's `state`, which keys the admin panel's PKCE challenge. */
+class AdminOpenIDStrategy extends CustomOpenIDStrategy {
+  authorizationRequestParams(req, options) {
+    return preserveAdminOAuthState(
+      super.authorizationRequestParams(req, options),
+      this._config.serverMetadata(),
+    );
   }
 }
 
@@ -970,7 +981,7 @@ const setupOpenIdAdmin = (openidConfig) => {
       throw new Error('OpenID configuration not initialized');
     }
 
-    const openidAdminLogin = new CustomOpenIDStrategy(
+    const openidAdminLogin = new AdminOpenIDStrategy(
       {
         config: openidConfig,
         scope: process.env.OPENID_SCOPE,

@@ -21,6 +21,7 @@ import {
   DEFAULT_MAX_CANDIDATE_PULL_REQUESTS,
   pullRequestUserAgent,
 } from './shared';
+import { logDiscoveryDiagnostic } from './diagnostics';
 import { PullRequestSourceError } from './types';
 
 export const DEFAULT_GITLAB_HOST = 'gitlab.com';
@@ -247,13 +248,19 @@ export function createGitLabPullRequestSource({
        */
       const contains = async (sha: string): Promise<boolean> => {
         if (recorded == null || sha === recorded) return true;
-        if (comparisons >= lookup.maxHeadComparisons) return false;
+        if (comparisons >= lookup.maxHeadComparisons) {
+          logDiscoveryDiagnostic('gitlab', 'COMPARISON_LIMIT');
+          return false;
+        }
         comparisons += 1;
         const base = await getJson(
           `/repository/merge_base?refs[]=${recorded}&refs[]=${encodeURIComponent(sha)}`,
           [400],
         );
-        if (base == null) return false;
+        if (base == null) {
+          logDiscoveryDiagnostic('gitlab', 'COMPARISON_UNAVAILABLE');
+          return false;
+        }
         if (!isRecord(base) || typeof base.id !== 'string') {
           throw new PullRequestSourceError('UPSTREAM_ERROR');
         }

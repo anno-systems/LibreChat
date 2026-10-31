@@ -25,6 +25,7 @@ const { Constants, ContentTypes, EModelEndpoint, ErrorTypes } = require('librech
 const {
   GenerationJobManager,
   createStreamServices,
+  createToolExecuteHandler,
   registerToolApprovalHook,
   clearToolApprovalHooks,
   getPluginHookSource,
@@ -1083,6 +1084,46 @@ describe('AgentClient - interrupt discovery persistence', () => {
   });
 
   it('makes the run discovery snapshot durable when the run pauses', async () => {
+    const skillId = new (require('mongoose').Types.ObjectId)();
+    const authoredSkill = { _id: skillId, name: 'new-skill', body: '# Authored', version: 1 };
+    const authorReq = {
+      user: { id: 'user-123', _id: new (require('mongoose').Types.ObjectId)() },
+      config: {},
+    };
+    const toolHandler = createToolExecuteHandler({
+      loadTools: async () => ({
+        loadedTools: [],
+        configurable: {
+          req: authorReq,
+          accessibleSkillIds: [],
+          skillAuthoringAvailable: true,
+          fileAuthoringToolNames: new Set(['create_file', 'edit_file']),
+        },
+      }),
+      getSkillByName: async () => null,
+      canCreateSkill: async () => true,
+      createSkill: async () => ({ skill: authoredSkill, warnings: [] }),
+      grantSkillOwner: async () => undefined,
+    });
+    const [created] = await new Promise((resolve, reject) =>
+      toolHandler.handle('on_tool_execute', {
+        agentId: 'agent-123',
+        configurable: { req: authorReq },
+        toolCalls: [
+          {
+            id: 'create-skill',
+            name: 'create_file',
+            args: {
+              path: 'skills/new-skill/SKILL.md',
+              content: '---\nname: new-skill\ndescription: Resume\n---\n# Authored\n',
+            },
+          },
+        ],
+        resolve,
+        reject,
+      }),
+    );
+    expect(created.status).toBe('success');
     const streamId = 'conversation-discovered-pause';
     const job = await GenerationJobManager.createJob(streamId, 'user-123', streamId);
     const client = new AgentClient({
@@ -1103,6 +1144,7 @@ describe('AgentClient - interrupt discovery persistence', () => {
       artifactPromises: [],
     });
     client.conversationId = streamId;
+    client.options.eventHandlers = { on_tool_execute: toolHandler };
     client.responseMessageId = 'response-discovered-pause';
     client.jobCreatedAt = job.createdAt;
     client.compactionSemanticIndexSnapshot = {
@@ -1138,6 +1180,14 @@ describe('AgentClient - interrupt discovery persistence', () => {
     const paused = await GenerationJobManager.getJob(streamId);
     expect(paused?.status).toBe('requires_action');
     expect(paused?.metadata.discoveredTools).toEqual(['save_issue_mcp_linear']);
+    expect(paused?.metadata.authoredSkills).toEqual([
+      {
+        agentId: 'agent-123',
+        name: 'new-skill',
+        id: skillId.toString(),
+        primed: true,
+      },
+    ]);
     expect(paused?.metadata.compactionSemanticIndex).toEqual({
       version: 1,
       entries: client.compactionSemanticIndexSnapshot.entries,
@@ -8888,9 +8938,56 @@ describe('AgentClient - titleConvo', () => {
       expect(parallelAgent2.additional_instructions ?? '').not.toContain(memoryContent);
     });
 
-    it('tells the primary read-only agent about persistent memory when the store is empty', async () => {
+    it('keeps empty-store memory guidance out of an agent that cannot use memory', async () => {
       const { memoryInstructions } = require('@librechat/api');
       client.useMemory = jest.fn().mockResolvedValue({ withKeys: '', withoutKeys: '' });
+      client.agentConfigs = new Map();
+
+      await client.buildMessages(
+        [
+          {
+            messageId: 'msg-1',
+            parentMessageId: null,
+            sender: 'User',
+            text: 'Translate this',
+            isCreatedByUser: true,
+          },
+        ],
+        null,
+        { instructions: 'Base instructions', additional_instructions: null },
+      );
+
+      expect(client.options.agent.additional_instructions ?? '').not.toContain(memoryInstructions);
+    });
+
+    it('tells a primary agent with memory tools about persistent memory when the store is empty', async () => {
+      const { memoryInstructions } = require('@librechat/api');
+      client.useMemory = jest.fn().mockResolvedValue({ withKeys: '', withoutKeys: '' });
+      client.options.agent.memoryToolsRegistered = true;
+      client.agentConfigs = new Map();
+
+      await client.buildMessages(
+        [
+          {
+            messageId: 'msg-1',
+            parentMessageId: null,
+            sender: 'User',
+            text: 'Remember that I like tea',
+            isCreatedByUser: true,
+          },
+        ],
+        null,
+        { instructions: 'Base instructions', additional_instructions: null },
+      );
+
+      expect(client.options.agent.additional_instructions).toContain(memoryInstructions);
+      expect(client.options.agent.additional_instructions).not.toContain('# Existing memory');
+    });
+
+    it('tells the primary read-only agent about persistent memory when the store is empty and automatic extraction is on', async () => {
+      const { memoryInstructions } = require('@librechat/api');
+      client.useMemory = jest.fn().mockResolvedValue({ withKeys: '', withoutKeys: '' });
+      mockReq.config.memory.agent = { enabled: true, id: 'memory-agent' };
       const parallelAgent = {
         id: 'parallel-agent-1',
         instructions: 'Parallel instructions',
@@ -8915,7 +9012,6 @@ describe('AgentClient - titleConvo', () => {
       expect(client.options.agent.additional_instructions).toContain(memoryInstructions);
       expect(client.options.agent.additional_instructions).not.toContain('# Existing memory');
       expect(client.options.agent.additional_instructions).not.toContain('set_memory');
-      expect(parallelAgent.additional_instructions ?? '').not.toContain(memoryInstructions);
     });
 
     it('keeps memory guidance out of agents when memory was unavailable', async () => {

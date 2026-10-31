@@ -1,30 +1,30 @@
 import axios from 'axios';
 import { logger } from '@librechat/data-schemas';
+import type { TFileConfig } from 'librechat-data-provider';
+import type { AppConfig } from '@librechat/data-schemas';
 import type { AxiosInstance } from 'axios';
+import { outboundRequestBudget, getOutboundTimeoutMs } from '~/utils/timeouts';
+import { createConcurrencyLimiter } from '~/utils/promise';
 import { generateShortLivedToken } from '~/crypto/jwt';
-import { isMissingStorageError } from './storage';
+import { getSafeErrorMetadata } from '~/utils/errors';
 
 interface DeleteRagFileParams {
   /** The user ID. Required for authentication. If not provided, the function returns false and logs an error. */
   userId: string;
+  /** The `timeouts` block of the app config; the default RAG budget applies when absent. */
+  timeouts?: AppConfig['timeouts'];
+  fileConfig?: Pick<TFileConfig, 'vectorOwnershipTrackingStart' | 'vectorDeletionConcurrency'>;
   /** The file object. Must have `embedded` and `file_id` properties. */
   file: {
     file_id: string;
     embedded?: boolean;
-    metadata?: { embeddedEntities?: string[] } | null;
+    context?: string;
+    embeddingOwnersComplete?: boolean;
+    embeddingOwnersTrackedAt?: Date | string;
+    /** Internal rollback descriptor, never persisted on File. */
+    unrecordedUpload?: true;
+    metadata?: { embeddedEntities?: string[] };
   };
-}
-
-/**
- * The RAG API owns an agent's chunks by the agent (`entity_id`) and deletes them only when the
- * request names it; without it the API answers 404 and keeps them. One delete per namespace the
- * file was embedded under, or one without an entity when it names none.
- */
-export function ragDeleteScopes(file: DeleteRagFileParams['file']): Array<string | undefined> {
-  const entities = (file.metadata?.embeddedEntities ?? []).filter(
-    (entity): entity is string => typeof entity === 'string' && entity.length > 0,
-  );
-  return entities.length > 0 ? [...new Set(entities)] : [undefined];
 }
 
 /**
@@ -34,48 +34,34 @@ export function ragDeleteScopes(file: DeleteRagFileParams['file']): Array<string
  *
  * @param params - The parameters object.
  * @param params.userId - The user ID for authentication.
+ * @param params.timeouts - Configured outbound budgets; defaults apply when omitted.
  * @param params.file - The file object. Must have `embedded` and `file_id` properties.
  * @returns Returns true if deletion was successful or skipped, false if there was an error.
  */
-export async function deleteRagFile({ userId, file }: DeleteRagFileParams): Promise<boolean> {
-  if (!file.embedded || !process.env.RAG_API_URL) {
-    return true;
-  }
-
+export async function deleteRagFile({
+  userId,
+  file,
+  fileConfig,
+  timeouts,
+}: DeleteRagFileParams): Promise<boolean> {
+  if (!file.embedded) return true;
   if (!userId) {
     logger.error('[deleteRagFile] No user ID provided');
     return false;
   }
-
-  const jwtToken = generateShortLivedToken(userId);
-  let ok = true;
-
-  for (const entityId of ragDeleteScopes(file)) {
-    try {
-      await axios.delete(`${process.env.RAG_API_URL}/documents`, {
-        headers: {
-          Authorization: `Bearer ${jwtToken}`,
-          'Content-Type': 'application/json',
-          accept: 'application/json',
-        },
-        ...(entityId ? { params: { entity_id: entityId } } : {}),
-        data: [file.file_id],
-      });
-      logger.debug(`[deleteRagFile] Successfully deleted document ${file.file_id} from RAG API`);
-    } catch (error) {
-      const axiosError = error as { response?: { status?: number }; message?: string };
-      if (axiosError.response?.status === 404) {
-        logger.warn(
-          `[deleteRagFile] Document ${file.file_id} not found in RAG API, may have been deleted already`,
-        );
-      } else {
-        logger.error('[deleteRagFile] Error deleting document from RAG API:', axiosError.message);
-        ok = false;
-      }
-    }
+  try {
+    const deleted = await createVectorFileDeleter({
+      baseUrl: process.env.RAG_API_URL,
+      httpClient: axios,
+      generateToken: generateShortLivedToken,
+      ownershipTrackingStart: fileConfig?.vectorOwnershipTrackingStart,
+      namespaceConcurrency: fileConfig?.vectorDeletionConcurrency,
+    })({ user: { id: userId }, config: { timeouts } }, file);
+    return deleted?.deleted === true;
+  } catch (error) {
+    logger.error('[deleteRagFile] Vector deletion was not confirmed', getSafeErrorMetadata(error));
+    return false;
   }
-
-  return ok;
 }
 
 /**
@@ -133,27 +119,94 @@ export function createVectorFileDeleter({
   baseUrl,
   httpClient,
   generateToken,
+  namespaceConcurrency = 4,
+  ownershipTrackingStart,
 }: {
   baseUrl?: string;
-  httpClient: Pick<AxiosInstance, 'delete'>;
+  httpClient: Pick<AxiosInstance, 'delete' | 'get'>;
   generateToken: (userId: string) => string;
+  namespaceConcurrency?: number;
+  ownershipTrackingStart?: string;
 }): (
-  req: { user: { id: string } },
-  file: { file_id: string; embedded?: boolean },
+  req: { user: { id: string }; config?: Pick<AppConfig, 'timeouts'> },
+  file: DeleteRagFileParams['file'],
 ) => Promise<{ deleted: true } | undefined> {
+  const limit = createConcurrencyLimiter(namespaceConcurrency);
   return async (req, file) => {
     if (!file.embedded || !baseUrl) return undefined;
-    try {
-      await httpClient.delete(`${baseUrl}/documents`, {
-        headers: {
-          Authorization: `Bearer ${generateToken(req.user.id)}`,
-          'Content-Type': 'application/json',
-          accept: 'application/json',
-        },
-        data: [file.file_id],
+    if (!req.user.id) throw new Error('Invalid vector deletion principal');
+    const entities = file.metadata?.embeddedEntities;
+    if (
+      entities != null &&
+      (!Array.isArray(entities) || entities.some((id) => typeof id !== 'string' || !id))
+    ) {
+      throw new Error('Invalid file embedding snapshot');
+    }
+    if (file.embeddingOwnersComplete !== true) {
+      throw new Error('Complete vector ownership must be recorded before deletion');
+    }
+    if (file.unrecordedUpload !== true) {
+      const start = ownershipTrackingStart == null ? NaN : Date.parse(ownershipTrackingStart);
+      const tracked = file.embeddingOwnersTrackedAt;
+      let trackedAt = NaN;
+      if (tracked instanceof Date) trackedAt = tracked.getTime();
+      else if (typeof tracked === 'string') trackedAt = Date.parse(tracked);
+      const now = Date.now();
+      // Old writers can preserve the boolean while dropping owners. Exclude the overlap era.
+      if (
+        !Number.isFinite(start) ||
+        start > now ||
+        !Number.isFinite(trackedAt) ||
+        trackedAt < start ||
+        trackedAt > now
+      ) {
+        throw new Error('Vector ownership predates the safe writer rollout');
+      }
+    }
+    const headers = () => ({
+      Authorization: `Bearer ${generateToken(req.user.id)}`,
+      'Content-Type': 'application/json',
+      accept: 'application/json',
+    });
+    // Unscoped embeds can live in RAG's public scope even when metadata records a user ID.
+    const namespaces = [...new Set(entities ?? []), undefined];
+    const results = await Promise.allSettled(
+      namespaces.map((entity_id) =>
+        limit(async () => {
+          const config = entity_id ? { params: { entity_id } } : {};
+          try {
+            await httpClient.delete(`${baseUrl}/documents`, {
+              ...config,
+              headers: headers(),
+              data: [file.file_id],
+              ...outboundRequestBudget(getOutboundTimeoutMs(req.config, 'ragMs'), 'ragMs'),
+            });
+          } catch (error) {
+            // A 404 can mean a wrong scope. Only a successful inventory can establish absence,
+            // including when a prior attempt removed just some of the namespaces.
+            if (getSafeErrorMetadata(error).status !== 404) throw error;
+            const { data } = await httpClient.get<string[]>(`${baseUrl}/ids`, {
+              ...config,
+              headers: headers(),
+              ...outboundRequestBudget(getOutboundTimeoutMs(req.config, 'ragMs'), 'ragMs'),
+            });
+            if (
+              !Array.isArray(data) ||
+              data.some((id) => typeof id !== 'string') ||
+              data.includes(file.file_id)
+            ) {
+              throw new Error('Vector absence was not confirmed');
+            }
+          }
+        }),
+      ),
+    );
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') {
+      // Do not expose a provider 404 to generic storage cleanup, which forgives missing blobs.
+      throw new Error('Vector deletion was not confirmed', {
+        cause: getSafeErrorMetadata(failure.reason),
       });
-    } catch (error) {
-      if (!isMissingStorageError(error)) throw error;
     }
     return { deleted: true };
   };

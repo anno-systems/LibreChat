@@ -212,5 +212,20 @@ agentSchema.index({ 'edges.to': 1 });
 agentSchema.index({ platformAgentId: 1, tenantId: 1 }, { sparse: true });
 /** Fork: model migrations count and rewrite agents per model (`methods/modelMigration.ts`). */
 agentSchema.index({ tenantId: 1, provider: 1, model: 1 });
+/** Reference checks before code environment removal match either field; each `$or` branch needs its own index. */
+agentSchema.index(
+  { code_environment_id: 1 },
+  {
+    name: 'agent_code_environment_id',
+    partialFilterExpression: { code_environment_id: { $exists: true } },
+  },
+);
+agentSchema.index(
+  { code_environment_ids: 1 },
+  {
+    name: 'agent_code_environment_ids',
+    partialFilterExpression: { code_environment_ids: { $exists: true } },
+  },
+);
 
 export default agentSchema;

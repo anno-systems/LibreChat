@@ -163,6 +163,7 @@ const processAddedConvo = async ({
           names: selectedModelSpec.skills,
           accessibleSkillIds,
           getSkillByName: skillDbMethods.getSkillByName,
+          appConfig: req.config,
         });
         addedAgent.skills_enabled = true;
         addedAgent.skills = resolvedSkillIds.map((id) => id.toString());
