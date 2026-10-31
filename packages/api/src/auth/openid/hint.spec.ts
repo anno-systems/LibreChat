@@ -33,6 +33,7 @@ describe('applyLoginHint', () => {
     const params = new URLSearchParams({ scope: 'openid' });
     applyLoginHint(params, { login_hint: 'platform-test@acme.invalid' });
     expect(params.get('login_hint')).toBe('platform-test@acme.invalid');
+    expect(params.get('prompt')).toBe('login');
     expect(params.get('scope')).toBe('openid');
   });
 
@@ -41,5 +42,6 @@ describe('applyLoginHint', () => {
     applyLoginHint(params, { login_hint: 'a b' });
     applyLoginHint(params, undefined);
     expect(params.has('login_hint')).toBe(false);
+    expect(params.has('prompt')).toBe(false);
   });
 });

@@ -565,9 +565,11 @@ describe('setupOpenId', () => {
         {},
       );
       expect(hinted.get('login_hint')).toBe('platform-test@acme.invalid');
+      expect(hinted.get('prompt')).toBe('login');
 
       const invalid = strategy.authorizationRequestParams({ query: { login_hint: 'a\nb' } }, {});
       expect(invalid.has('login_hint')).toBe(false);
+      expect(invalid.has('prompt')).toBe(false);
     });
   });
 
