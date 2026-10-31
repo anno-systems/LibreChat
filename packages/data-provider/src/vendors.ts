@@ -23,9 +23,7 @@ export const VENDOR_IDS = [
 
 export type VendorId = (typeof VENDOR_IDS)[number];
 
-export const vendorIdSchema: z.ZodEnum<
-  ['mistral', 'openai', 'anthropic', 'google', 'meta', 'deepseek', 'xai', 'cohere', 'qwen', 'other']
-> = z.enum(VENDOR_IDS);
+export const vendorIdSchema: z.ZodEnum<{ [K in VendorId]: K }> = z.enum(VENDOR_IDS);
 
 export interface VendorInfo {
   id: VendorId;

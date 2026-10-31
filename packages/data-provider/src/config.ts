@@ -2354,22 +2354,22 @@ export const endpointSchema = baseEndpointSchema.merge(
      */
     limits: providerLimitsSchema.optional(),
     /** Fork: limits of single models, over `limits`; a model with neither has no queue. */
-    modelLimits: z.record(providerLimitsSchema).optional(),
+    modelLimits: z.record(z.string(), providerLimitsSchema).optional(),
     /** Fork: display names of models in the model selector, by model id. */
-    modelLabels: z.record(z.string().min(1).max(128)).optional(),
+    modelLabels: z.record(z.string(), z.string().min(1).max(128)).optional(),
     /**
      * Fork: the vendor of each model of a catalog endpoint (a platform provider or a tenant's own
      * endpoint), by model id. Its presence marks the endpoint as a catalog endpoint, whose models
      * the selector groups by vendor.
      */
-    modelVendors: z.record(vendorIdSchema).optional(),
+    modelVendors: z.record(z.string(), vendorIdSchema).optional(),
     /** Fork: a catalog endpoint's provider as the selector names it under each model. */
     hosting: z
       .object({ label: z.string().min(1).max(128), location: locationSchema.optional() })
       .strict()
       .optional(),
     /** Fork: models whose location differs from `hosting.location`, by model id. */
-    modelLocations: z.record(locationSchema).optional(),
+    modelLocations: z.record(z.string(), locationSchema).optional(),
     /**
      * Fork: how single models are reached, by model id, over the endpoint's own fields: another
      * base URL, the native Anthropic client (`provider: anthropic`), the OpenAI Responses API
@@ -2379,6 +2379,7 @@ export const endpointSchema = baseEndpointSchema.merge(
      */
     modelRoutes: z
       .record(
+        z.string(),
         z
           .object({
             baseURL: z.string().optional(),

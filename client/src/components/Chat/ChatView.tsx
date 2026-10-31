@@ -209,10 +209,10 @@ function ChatPane({
                         >
                           {isLandingPage && <ConversationStarters />}
                           <ChatModelMigrationNotice
-                            key={`${conversationId ?? ''}:${chatHelpers.conversation?.agent_id ?? ''}`}
+                            key={`${conversationId ?? ''}:${chat.conversation?.agent_id ?? ''}`}
                             conversationId={conversationId ?? ''}
-                            endpoint={chatHelpers.conversation?.endpoint}
-                            agentId={chatHelpers.conversation?.agent_id}
+                            endpoint={chat.conversation?.endpoint}
+                            agentId={chat.conversation?.agent_id}
                           />
                           {isSubagentThreadReadOnly ? (
                             <div

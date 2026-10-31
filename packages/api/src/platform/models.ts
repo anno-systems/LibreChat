@@ -56,7 +56,7 @@ export const pastedURLSchema: z.ZodType<string> = z
   .refine((value) => /^https?:$/.test(new URL(value).protocol), 'must be http or https');
 
 /** Request fields a model rejects, e.g. `user`; an advanced override of the built-in rules. */
-export const dropParamsSchema: z.ZodType<string[], z.ZodTypeDef, string[]> = z
+export const dropParamsSchema: z.ZodType<string[], string[]> = z
   .array(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/))
   .max(32)
   .transform((params) => [...new Set(params)]);
@@ -118,13 +118,13 @@ function uniqueIds<T extends { id: string }>(models: T[]): boolean {
   return new Set(models.map((model) => model.id)).size === models.length;
 }
 
-export const providerModelsSchema: z.ZodType<CatalogModel[], z.ZodTypeDef, unknown> = z
+export const providerModelsSchema: z.ZodType<CatalogModel[], unknown> = z
   .array(providerModelSchema)
   .min(1)
   .max(MAX_MODELS)
   .refine(uniqueIds, 'model ids must be unique');
 
-export const ownModelsSchema: z.ZodType<OwnModel[], z.ZodTypeDef, unknown> = z
+export const ownModelsSchema: z.ZodType<OwnModel[], unknown> = z
   .array(ownModelSchema)
   .min(1)
   .max(MAX_MODELS)
