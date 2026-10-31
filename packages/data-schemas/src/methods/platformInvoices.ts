@@ -130,7 +130,8 @@ export function createPlatformInvoiceMethods(
       ];
       const [rows, subscriptions] = await Promise.all([
         Transaction
-          ? runAsSystem(() => Transaction.aggregate<Row>(pipeline))
+          ? // `exec()` inside, so the query runs in the system context, not when awaited outside it.
+            runAsSystem(() => Transaction.aggregate<Row>(pipeline).exec())
           : Promise.resolve([] as Row[]),
         deps.listMcpSubscriptions(),
       ]);
