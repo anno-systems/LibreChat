@@ -32,3 +32,14 @@ export function applyLoginHint(params: URLSearchParams, query: unknown): void {
   params.set('login_hint', hint);
   params.set('prompt', 'login');
 }
+
+/**
+ * Whether a request is a login start that carries only `login_hint`. openid-client's passport
+ * strategy treats any GET with query parameters as the provider's callback, so such a start would
+ * fail its state check with 401 instead of redirecting to the provider.
+ */
+export function isHintedLoginStart(method: string | undefined, query: unknown): boolean {
+  if (method !== 'GET' || !query || typeof query !== 'object') return false;
+  const keys = Object.keys(query);
+  return keys.length === 1 && keys[0] === 'login_hint';
+}

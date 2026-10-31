@@ -159,6 +159,8 @@ jest.mock('openid-client/passport', () => {
     this.verify = verify;
   });
   mockStrategy.prototype.authorizationRequestParams = jest.fn(() => new URLSearchParams());
+  mockStrategy.prototype.authorizationRequest = jest.fn();
+  mockStrategy.prototype.authenticate = jest.fn();
 
   return {
     Strategy: mockStrategy,
@@ -570,6 +572,24 @@ describe('setupOpenId', () => {
       const invalid = strategy.authorizationRequestParams({ query: { login_hint: 'a\nb' } }, {});
       expect(invalid.has('login_hint')).toBe(false);
       expect(invalid.has('prompt')).toBe(false);
+    });
+
+    it('starts the login for a hinted start instead of treating it as a callback', () => {
+      const { Strategy } = require('openid-client/passport');
+      const strategy = getLoginStrategy();
+      Strategy.prototype.authorizationRequest.mockClear();
+      Strategy.prototype.authenticate.mockClear();
+      const options = { state: 'login-state' };
+
+      const start = { method: 'GET', query: { login_hint: 'platform-test@acme.invalid' } };
+      strategy.authenticate(start, options);
+      expect(Strategy.prototype.authorizationRequest).toHaveBeenCalledWith(start, options);
+      expect(Strategy.prototype.authenticate).not.toHaveBeenCalled();
+
+      const callback = { method: 'GET', query: { code: 'c', state: 's' } };
+      strategy.authenticate(callback, options);
+      expect(Strategy.prototype.authenticate).toHaveBeenCalledWith(callback, options);
+      expect(Strategy.prototype.authorizationRequest).toHaveBeenCalledTimes(1);
     });
   });
 
