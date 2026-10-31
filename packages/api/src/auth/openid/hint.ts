@@ -1,8 +1,10 @@
 /**
  * Login hint passthrough (fork-only). A link that starts the OpenID login with
  * `?login_hint=<login name>` (the admin app's "Open chat" for a tenant's test account) has the
- * identity provider's sign-in page prefilled. Only a plain login name or address is forwarded;
- * anything else is dropped and the login starts as without a hint.
+ * identity provider's sign-in page prefilled. Such a link also asks for `prompt=login`, so the
+ * provider shows its sign-in page instead of reusing the session of whoever is already signed in
+ * there (the operator who opened the test account). Only a plain login name or address is
+ * forwarded; anything else is dropped and the login starts as without a hint.
  */
 
 /** RFC 5321's longest address, which bounds any login name the provider accepts. */
@@ -20,8 +22,13 @@ export function getLoginHint(query: unknown): string | undefined {
   return hint;
 }
 
-/** Sets `login_hint` on the authorization request's parameters from the login start's query. */
+/**
+ * Sets `login_hint` and `prompt=login` on the authorization request's parameters from the login
+ * start's query.
+ */
 export function applyLoginHint(params: URLSearchParams, query: unknown): void {
   const hint = getLoginHint(query);
-  if (hint) params.set('login_hint', hint);
+  if (!hint) return;
+  params.set('login_hint', hint);
+  params.set('prompt', 'login');
 }
