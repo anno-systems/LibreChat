@@ -21,6 +21,20 @@ export function toDisabledServerMarker(rawConfig: MCPOptions): ParsedServerConfi
 }
 
 /**
+ * The config-tier entry for a librechat.yaml server that is off by default (`enabled: false`)
+ * and that a scope switches on without changing anything else: the YAML entry without its
+ * switch, so the merged list and every lookup that is handed that list entry back (tool
+ * discovery, for one) see the server as on. Undefined when the YAML entry is not switched off.
+ */
+export function optedInYamlEntry(
+  yamlEntry: ParsedServerConfig | undefined,
+): ParsedServerConfig | undefined {
+  if (!yamlEntry || !isMCPServerDisabled(yamlEntry)) return undefined;
+  const { enabled: _enabled, ...entry } = yamlEntry as ParsedServerConfig & { enabled?: boolean };
+  return entry as ParsedServerConfig;
+}
+
+/**
  * Fork (MCP pricing): tells whether a priced platform server is off for the caller's tenant
  * because the tenant has not subscribed to it. It must answer from memory: it runs on every
  * resolution of a request's MCP servers.

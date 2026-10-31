@@ -163,7 +163,19 @@ describe('MCPServersRegistry — per-scope enabled switch', () => {
       expect(inspectSpy).not.toHaveBeenCalled();
       const all = await registry.getAllServerConfigs('user-1', configServers);
       expect(Object.keys(all).sort()).toEqual(['drive', 'gmail']);
+      expect(all.gmail).not.toHaveProperty('enabled');
       expect(await registry.getServerConfig('gmail', 'user-1', configServers)).toEqual(
+        expect.objectContaining({ url: gmail.url }),
+      );
+    });
+
+    it('finds it again from its list entry, as tool discovery looks it up', async () => {
+      const configServers = await registry.ensureConfigServers({
+        gmail: { ...offByDefault, enabled: true },
+      });
+      const all = await registry.getAllServerConfigs('user-1', configServers);
+
+      expect(await registry.getServerConfig('gmail', 'user-1', { gmail: all.gmail! })).toEqual(
         expect.objectContaining({ url: gmail.url }),
       );
     });
