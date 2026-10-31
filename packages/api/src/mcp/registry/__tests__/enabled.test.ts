@@ -180,6 +180,22 @@ describe('MCPServersRegistry — per-scope enabled switch', () => {
       );
     });
 
+    it('is no MCP App target for a tenant that did not switch it on', async () => {
+      const allowlists = { allowedDomains: null, allowedAddresses: null };
+      const resolve = (gmailConfig: t.MCPOptions) =>
+        registry.resolveCachedAppServerConfig({
+          serverName: 'gmail',
+          userId: 'user-1',
+          mcpConfig: { gmail: gmailConfig, drive },
+          ...allowlists,
+        });
+
+      await expect(resolve(offByDefault)).resolves.toBeUndefined();
+      await expect(resolve({ ...offByDefault, enabled: true })).resolves.toEqual(
+        expect.objectContaining({ serverConfig: expect.objectContaining({ url: gmail.url }) }),
+      );
+    });
+
     it('keeps tenants apart: one opted in, the other still sees nothing', async () => {
       const optedIn = await registry.ensureConfigServers({
         gmail: { ...offByDefault, enabled: true },
