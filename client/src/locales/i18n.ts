@@ -70,7 +70,13 @@ const localeLoaders: Record<
   ca: () => import('./ca/translation.json'),
   cs: () => import('./cs/translation.json'),
   da: () => import('./da/translation.json'),
-  de: () => withOverlay(import('./de/translation.json'), import('./de/fork.json')),
+  // Fork: German for keys upstream has not translated yet sits under upstream's file (upstream
+  // wins once it has them), the fork's own keys over it.
+  de: () =>
+    withOverlay(
+      withOverlay(import('./de/backfill.json'), import('./de/translation.json')),
+      import('./de/fork.json'),
+    ),
   es: () => import('./es/translation.json'),
   et: () => import('./et/translation.json'),
   fa: () => import('./fa/translation.json'),
