@@ -46,6 +46,7 @@ const {
   bindScheduledMCPBearerInvocation,
   createMCPPermissionDeniedError,
   buildMCPCallMeta,
+  withMCPApproval,
   createMCPStructuredTool,
   buildMCPDomainValidationConfig,
   OpenIDReauthRequiredError,
@@ -88,6 +89,7 @@ const {
   invalidateCachedTools,
 } = require('./Config');
 const { getLogStores } = require('~/cache');
+const { signer: approvalSigner } = require('./mcpApproval');
 const {
   clearMCPAuthorizationFenceRetry,
   persistMCPAuthorizationFenceRetry,
@@ -1443,10 +1445,22 @@ function createToolInstance({
         upstreamTokenProviderResolver: capturedUpstreamTokenProviderResolver,
         oboIdentityContext: capturedOboIdentityContext,
         mcpApps: capturedMCPApps,
-        meta: buildMCPCallMeta(capturedServerConfig, {
-          ...capturedCallContext,
-          requestBody: config?.configurable?.requestBody ?? capturedRequestBody,
-        }),
+        meta: withMCPApproval(
+          buildMCPCallMeta(capturedServerConfig, {
+            ...capturedCallContext,
+            requestBody: config?.configurable?.requestBody ?? capturedRequestBody,
+          }),
+          {
+            signer: approvalSigner,
+            approved:
+              toolCall.id != null &&
+              (config?.configurable?.approvedToolCallIds ?? []).includes(toolCall.id),
+            user: effectiveUser,
+            server: serverName,
+            tool: serverToolName,
+            toolArguments,
+          },
+        ),
       });
       return result;
     } catch (error) {
