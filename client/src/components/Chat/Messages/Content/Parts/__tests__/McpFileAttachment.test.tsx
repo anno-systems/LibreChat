@@ -26,9 +26,9 @@ jest.mock('../LogLink', () => ({
   },
 }));
 
-jest.mock('~/components/Chat/Input/Files/FileContainer', () => ({
-  __esModule: true,
-  default: ({ file, onClick }: { file: { filename?: string }; onClick?: () => void }) => (
+jest.mock('@librechat/chat/components', () => ({
+  ...jest.requireActual('@librechat/chat/components'),
+  FileContainer: ({ file, onClick }: { file: { filename?: string }; onClick?: () => void }) => (
     <button type="button" data-testid="file-container" onClick={onClick}>
       {file.filename ?? ''}
     </button>

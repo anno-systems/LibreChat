@@ -15,7 +15,7 @@ const requireManageRoles = requireCapability(SystemCapabilities.MANAGE_ROLES);
 const handlers = createAdminRolesHandlers({
   listRoles: db.listRoles,
   countRoles: db.countRoles,
-  getRoleByName: db.getRoleByName,
+  getRoleByName: db.getPartitionRole,
   createRoleByName: db.createRoleByName,
   updateRoleByName: db.updateRoleByName,
   updateAccessPermissions: db.updateAccessPermissions,
@@ -28,7 +28,7 @@ const handlers = createAdminRolesHandlers({
   listUsersByRole: db.listUsersByRole,
   countUsersByRole: db.countUsersByRole,
   deleteConfig: db.deleteConfig,
-  deleteAclEntries: db.deleteAclEntries,
+  deleteAclEntries: db.deletePrincipalAclEntries,
   deleteGrantsForPrincipal: db.deleteGrantsForPrincipal,
   restoreConfig: db.restoreConfig,
   findConfigByPrincipal: db.findConfigByPrincipal,
@@ -44,7 +44,7 @@ const handlers = createAdminRolesHandlers({
 });
 
 /** Fork: admins keep every permission of the role ADMIN (admin lockout guard). */
-const lockout = createAdminRolesLockoutGuards({ getRoleByName: db.getRoleByName });
+const lockout = createAdminRolesLockoutGuards({ getRoleByName: db.getPartitionRole });
 
 router.use(requireJwtAuth, requireAdminAccess);
 

@@ -23,3 +23,4 @@ export type { AboutInfo } from './about';
 export type { BuildInfo } from './build';
 export { buildPreLoginInterface, withSafePolicyLinks } from './interface';
 export { brandedStartupFields } from './branding';
+export * from './migrations';

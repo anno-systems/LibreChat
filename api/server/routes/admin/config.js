@@ -65,7 +65,7 @@ const readHandlers = createAdminConfigReadHandlers({
   hasCapability,
   resolveConfigLayers,
   principalExists: db.principalExists,
-  findPartitionUser: db.findPartitionUser,
+  findPrincipalUser: db.findPrincipalUser,
   getUserPrincipals: db.getUserPrincipals,
   getApplicableConfigs: db.getApplicableConfigs,
 });
@@ -82,6 +82,7 @@ const catalogHandlers = createAdminConfigCatalogHandlers({
   toolManifest: availableTools,
   toolkits,
   principalExists: db.principalExists,
+  findConfigByPrincipal: db.findConfigByPrincipal,
   listAllConfigs: db.listAllConfigs,
   overrideEnvAllowlist: process.env.CONFIG_OVERRIDE_ENV_ALLOWLIST,
 });

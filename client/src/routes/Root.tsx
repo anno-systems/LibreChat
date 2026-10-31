@@ -35,8 +35,11 @@ import {
   CodeHighlightThrottleContext,
   normalizeCodeHighlightThrottleMs,
 } from '~/components/Chat/Messages/Content/Parts/useLazyHighlight';
+import { ComposerHostProvider, appComposerHost } from '~/Providers/ComposerHostContext';
+import { StreamHostProvider, appStreamHost } from '~/Providers/StreamHostContext';
 import KeyboardShortcutsDialog from '~/components/Nav/KeyboardShortcutsDialog';
 import { SteerHostProvider, appSteerHost } from '~/Providers/SteerHostContext';
+import { ChatHostProvider, appChatHost } from '~/Providers/ChatHostContext';
 import KeyboardDeleteDialog from '~/components/Nav/KeyboardDeleteDialog';
 import { useUserTermsQuery, useGetStartupConfig } from '~/data-provider';
 import { MobileDrawerScrim } from '~/components/UnifiedSidebar/mobile';
@@ -253,7 +256,10 @@ function RootLayout() {
               <KeyboardShortcutsProvider />
               <ReplyNotifications />
               <MessagesRetention />
-              <AnalyticsConsent gtmId={config?.analyticsGtmId} />
+              <AnalyticsConsent
+                gtmId={config?.analyticsGtmId}
+                consentRequired={config?.interface?.analyticsConsent !== false}
+              />
             </AgentsMapContext.Provider>
             {config?.interface?.termsOfService?.modalAcceptance === true && (
               <TermsAndConditionsModal
@@ -276,7 +282,13 @@ export default function Root() {
   return (
     <ChatSettingsProvider>
       <SteerHostProvider host={appSteerHost}>
-        <RootLayout />
+        <ChatHostProvider host={appChatHost}>
+          <StreamHostProvider host={appStreamHost}>
+            <ComposerHostProvider host={appComposerHost}>
+              <RootLayout />
+            </ComposerHostProvider>
+          </StreamHostProvider>
+        </ChatHostProvider>
       </SteerHostProvider>
     </ChatSettingsProvider>
   );
