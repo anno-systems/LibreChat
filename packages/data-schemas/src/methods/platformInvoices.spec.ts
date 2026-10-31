@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { runAsSystem, tenantStorage } from '../config/tenantContext';
+import { resetTenantStrictCache } from '../tenant/policy';
 import { invoiceMonth } from './platformInvoices';
 import { createModels } from '../models';
 import { createMethods } from './index';
@@ -129,6 +130,23 @@ describe('monthly statement', () => {
         mcp: [{ server: 'lexware', price: 19, currency: 'EUR' }],
       }),
     );
+  });
+
+  it('works under strict tenant isolation, outside any tenant', async () => {
+    const previous = process.env.TENANT_ISOLATION_STRICT;
+    process.env.TENANT_ISOLATION_STRICT = 'true';
+    resetTenantStrictCache();
+    try {
+      const statement = await methods.getPlatformInvoices({ month });
+      expect(statement.tenants.map((t) => t.tenantId)).toEqual([
+        'tenant-a',
+        'tenant-b',
+        'tenant-c',
+      ]);
+    } finally {
+      process.env.TENANT_ISOLATION_STRICT = previous;
+      resetTenantStrictCache();
+    }
   });
 
   it('leaves out other months and refuses a value that is not a month', async () => {
