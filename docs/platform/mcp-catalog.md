@@ -108,6 +108,24 @@ useful, but smaller reach or a harder API. "Writes" names the actions that need 
 | 49  | Deutsche Bahn (timetable, disruptions)                    | Open    | C        | Connections and delays for business travel                                   | None   |
 | 50  | Public holidays and school holidays per state             | Open    | B        | Holidays per Bundesland for planning, deadlines and absence questions        | None   |
 
+## Industries
+
+Built 2026-10-31 (`anno-systems/mcp-servers` #27):
+
+| Server                                    | Sign-in                                    | What it does                                                               | Writes                            |
+| ----------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------- |
+| Federal law (rechtsinformationen.bund.de) | Open                                       | Federal laws with one paragraph's current wording, federal court decisions | None                              |
+| advoware (law firms)                      | User (Kürzel and online services password) | Files, parties, document list, own appointments and deadlines              | Follow-ups, when allowed          |
+| casavi (property management)              | Tenant                                     | Properties, units, contacts, tickets, posts                                | Ticket comments and status        |
+| untermStrich (planning offices)           | Tenant, users link their staff id          | Projects, fees, addresses, own times and target hours                      | Booking time, when allowed        |
+| PlanRadar (construction)                  | User (personal token)                      | Projects, tickets, documents                                               | Comments and status, when allowed |
+
+Not built: RA-MICRO (a REST interface is announced, not published), DATEV Anwalt classic
+(DATEVconnect runs locally in the firm), the beA (open only to law firm software vendors),
+Aareon Wodis/RELion (partner contract through Aareon Connect), maklerverwaltungsprogramme
+(BiPRO is insurer-to-broker SOAP; no public APIs found) and utilities' core systems (per-customer
+projects).
+
 ## Notes
 
 - **ELSTER** (from the owner's list) is not in this catalog's build plan for now: filing needs the
