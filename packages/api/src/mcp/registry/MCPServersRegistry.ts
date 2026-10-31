@@ -611,6 +611,14 @@ export class MCPServersRegistry {
       return undefined;
     }
     const rawConfig = mcpConfig[serverName];
+    /** Fork: a server switched off (or unpaid) for this scope is no App target either. */
+    if (
+      rawConfig &&
+      !(base && isUserSourced(base)) &&
+      isMCPServerSwitchedOff(serverName, rawConfig, this.billingGate)
+    ) {
+      return undefined;
+    }
     let selectedConfig = base;
 
     if (rawConfig && base?.source !== 'user' && !isProcessMCPServerConfig(base)) {
