@@ -30,6 +30,8 @@ export {
 } from './platformPricing';
 export type { PlatformPricing, PricingCurrency, ResolvedPricing } from './platformPricing';
 export { isCostMonth, WEB_SEARCH_CONTEXT, WEB_FETCH_CONTEXT } from './tenantCosts';
+export { invoiceMonth } from './platformInvoices';
+export type { PlatformInvoices, PlatformInvoiceTenant } from './platformInvoices';
 export type { TenantCosts, TenantCostPeriod } from './tenantCosts';
 export { createMcpToolPolicyMethods } from './mcpToolPolicy';
 export { billingMonth, chargedMonths, mcpChargesBetween, FREE_MCP_SERVERS } from './mcpPricing';
@@ -164,10 +166,12 @@ import { createPlatformBannerMethods, type PlatformBannerMethods } from './platf
 import { createPlatformAgentMethods, type PlatformAgentMethods } from './platformAgent';
 import {
   withTokenMarkup,
+  withMarkupRecord,
   createPlatformPricingMethods,
   type PlatformPricingMethods,
 } from './platformPricing';
 import { createTenantCostMethods, type TenantCostMethods } from './tenantCosts';
+import { createPlatformInvoiceMethods, type PlatformInvoiceMethods } from './platformInvoices';
 import { getTenantId } from '~/config/tenantContext';
 import { createMcpToolPolicyMethods, type McpToolPolicyMethods } from './mcpToolPolicy';
 import { createMcpPricingMethods, type McpPricingMethods } from './mcpPricing';
@@ -356,6 +360,7 @@ export {
 };
 
 export type AllMethods = SubagentContentMethods &
+  PlatformInvoiceMethods &
   ToolApprovalGrantStorage &
   UserMethods &
   SessionMethods &
@@ -457,6 +462,7 @@ export function createMethods(
   };
   /* Fork: the operator's markup on token rates, per the caller's tenant (platformPricing.ts). */
   const pricingMethods = createPlatformPricingMethods(mongoose);
+  const mcpPricingMethods = createMcpPricingMethods(mongoose);
   const baseTxMethods = createTxMethods(mongoose, txDeps);
   const txMethods = {
     ...baseTxMethods,
@@ -467,10 +473,14 @@ export function createMethods(
   };
 
   // Tier 3: transaction methods need tx's getMultiplier/getCacheMultiplier
-  const transactionMethods = createTransactionMethods(mongoose, {
-    getMultiplier: txMethods.getMultiplier,
-    getCacheMultiplier: txMethods.getCacheMultiplier,
-  });
+  /* Fork: each token transaction records the markup its rate carries (platformPricing.ts). */
+  const transactionMethods = withMarkupRecord(
+    createTransactionMethods(mongoose, {
+      getMultiplier: txMethods.getMultiplier,
+      getCacheMultiplier: txMethods.getCacheMultiplier,
+    }),
+    () => pricingMethods.resolvePricing(getTenantId()).tokenMarkup,
+  );
 
   // Tier 3: spendTokens methods need transaction methods
   const spendTokensMethods = createSpendTokensMethods(mongoose, {
@@ -659,7 +669,12 @@ export function createMethods(
     ...createPlatformAgentMethods(mongoose),
     ...pricingMethods,
     ...createMcpToolPolicyMethods(mongoose),
-    ...createMcpPricingMethods(mongoose),
+    ...mcpPricingMethods,
+    ...createPlatformInvoiceMethods(mongoose, {
+      tokenMarkup: (tenantId) => pricingMethods.resolvePricing(tenantId).tokenMarkup,
+      listMcpSubscriptions: () => mcpPricingMethods.listMcpSubscriptions(),
+      listMcpCharges: (input) => mcpPricingMethods.listMcpCharges(input),
+    }),
     ...createTenantPurgeMethods(mongoose),
     ...createModelMigrationMethods(mongoose),
     ...createTenantUsageMethods(mongoose),

@@ -62,3 +62,5 @@ export { createPlatformAgentLock, markPlatformAgents, platformAgentListFilter } 
 export type { PlatformAgentLock, PlatformAgentLockDeps } from './agentLock';
 export { createPlatformUsageHandler, createSignInRecorder } from './usage';
 export type { PlatformUsageDeps, SignInRecorderDeps } from './usage';
+export { createPlatformInvoiceHandler } from './invoices';
+export type { PlatformInvoiceDeps } from './invoices';

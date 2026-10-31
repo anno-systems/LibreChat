@@ -254,3 +254,39 @@ export function withTokenMarkup<
   }) as C;
   return { getMultiplier, getCacheMultiplier };
 }
+
+interface MarkupRecordable {
+  tokenType?: string;
+  markup?: number;
+}
+
+/**
+ * Transaction writes that record the markup their rate carries on every token transaction (fork),
+ * so the operator's margin of a period is exact even when a markup changes within it. Credit
+ * transactions (refills, search charges) are left as they are.
+ */
+export function withMarkupRecord<
+  M extends {
+    createTransaction: (tx: never) => unknown;
+    createStructuredTransaction: (tx: never) => unknown;
+    bulkInsertTransactions: (docs: never[]) => unknown;
+  },
+>(methods: M, markup: () => number): M {
+  const stamp = <T>(tx: T): T => {
+    const doc = tx as MarkupRecordable | null | undefined;
+    if (!doc || doc.markup != null) return tx;
+    if (doc.tokenType !== 'prompt' && doc.tokenType !== 'completion') return tx;
+    return { ...doc, markup: Math.max(0, markup() || 0) } as T;
+  };
+  return {
+    ...methods,
+    createTransaction: ((tx: never) =>
+      methods.createTransaction(stamp(tx))) as M['createTransaction'],
+    createStructuredTransaction: ((tx: never) =>
+      methods.createStructuredTransaction(stamp(tx))) as M['createStructuredTransaction'],
+    bulkInsertTransactions: ((docs: never[]) =>
+      methods.bulkInsertTransactions(
+        (Array.isArray(docs) ? docs.map(stamp) : docs) as never[],
+      )) as M['bulkInsertTransactions'],
+  };
+}

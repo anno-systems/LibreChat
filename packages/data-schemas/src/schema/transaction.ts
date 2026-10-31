@@ -18,6 +18,8 @@ export interface ITransaction extends Document {
   createdAt?: Date;
   updatedAt?: Date;
   tenantId?: string;
+  /** Fork: the operator's token markup applied to `rate` (0.15 = 15 %), on token transactions. */
+  markup?: number;
 }
 
 const transactionSchema: Schema<ITransaction> = new Schema(
@@ -59,6 +61,7 @@ const transactionSchema: Schema<ITransaction> = new Schema(
       type: String,
       index: true,
     },
+    markup: { type: Number },
   },
   {
     timestamps: true,
