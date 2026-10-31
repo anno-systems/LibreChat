@@ -1,11 +1,15 @@
 const express = require('express');
-const { createBannerResolver } = require('@librechat/api');
+const { createBannerResolver, isEnabled } = require('@librechat/api');
 const { logger, getTenantId } = require('@librechat/data-schemas');
 const optionalJwtAuth = require('~/server/middleware/optionalJwtAuth');
 const { getBanner, findActivePlatformBanner } = require('~/models');
 
 /** Fork: the tenant's banner or the platform operator's, whichever started later. */
-const currentBanner = createBannerResolver({ getBanner, findActivePlatformBanner });
+const currentBanner = createBannerResolver({
+  getBanner,
+  findActivePlatformBanner,
+  ownWithoutTenant: !isEnabled(process.env.TENANT_ISOLATION_STRICT),
+});
 
 const router = express.Router();
 

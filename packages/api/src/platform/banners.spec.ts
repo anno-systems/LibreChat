@@ -172,6 +172,26 @@ describe('banner resolver', () => {
     expect((await shown({ ...platform, kind: 'warning' }, later))?.kind).toBeUndefined();
   });
 
+  it('skips the tenant banner for a request without a tenant under strict isolation', async () => {
+    const getBanner = jest.fn(async () => own);
+    const resolve = createBannerResolver({
+      getBanner,
+      findActivePlatformBanner: async () => ({ ...platform, isPublic: true }),
+      ownWithoutTenant: false,
+    });
+
+    expect((await resolve(undefined, undefined))?.bannerId).toBe('platform');
+    expect(getBanner).not.toHaveBeenCalled();
+    expect((await resolve(undefined, 'tenant-a'))?.bannerId).toBe('platform');
+    expect(getBanner).toHaveBeenCalledTimes(1);
+    // Without the option (single-tenant), the banner is looked up as upstream does.
+    const upstream = createBannerResolver({
+      getBanner,
+      findActivePlatformBanner: async () => null,
+    });
+    expect((await upstream(undefined, undefined))?.bannerId).toBe('own');
+  });
+
   it('asks for the platform banner of the given tenant, and shows nothing without any', async () => {
     const findActivePlatformBanner = jest.fn(async () => null);
     const resolve = createBannerResolver({ getBanner: async () => null, findActivePlatformBanner });

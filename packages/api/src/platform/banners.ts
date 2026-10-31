@@ -134,6 +134,12 @@ export interface BannerResolverDeps<T extends ShownBanner> {
   /** Upstream's banner of the request's tenant, already filtered for signed-out callers. */
   getBanner(user?: unknown): Promise<T | null>;
   findActivePlatformBanner(tenantId: string | undefined): Promise<PlatformBanner | null>;
+  /**
+   * Whether the tenant's own banner may be looked up for a request without a tenant (a
+   * single-tenant deployment). Off under strict tenant isolation, where such a lookup is refused:
+   * the request gets only a platform banner for every tenant. Default true, as upstream.
+   */
+  ownWithoutTenant?: boolean;
 }
 
 /**
@@ -145,8 +151,9 @@ export function createBannerResolver<T extends ShownBanner>(deps: BannerResolver
     user: unknown,
     tenantId: string | undefined,
   ): Promise<T | ShownBanner | null> {
+    const ownAllowed = tenantId !== undefined || deps.ownWithoutTenant !== false;
     const [own, platform] = await Promise.all([
-      deps.getBanner(user),
+      ownAllowed ? deps.getBanner(user) : null,
       deps.findActivePlatformBanner(tenantId),
     ]);
     const shown =
