@@ -24,6 +24,7 @@ jest.mock('~/server/services/Config', () => ({
 
 jest.mock('~/models', () => ({
   getRoleByName: (...args) => mockGetRoleByName(...args),
+  getPartitionRole: (...args) => mockGetRoleByName(...args),
   createRoleByName: (...args) => mockCreateRoleByName(...args),
   updateAccessPermissions: (...args) => mockUpdateAccessPermissions(...args),
   recordAuditEntry: (...args) => mockRecordAuditEntry(...args),

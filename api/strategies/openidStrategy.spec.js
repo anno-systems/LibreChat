@@ -461,6 +461,8 @@ describe('setupOpenId', () => {
 
     it("sends the admin login to the tenant's own admin callback and organization", () => {
       const admin = require('openid-client/passport').__getStrategyByName('openidAdmin');
+      /** The mocked strategy has no client config; a provider with PKCE keeps the params as built. */
+      admin._config = { serverMetadata: () => ({ supportsPKCE: () => true }) };
       expect(admin.authorizationRequestParams({}, {}).get('redirect_uri')).toBe(
         'https://example.com/api/admin/oauth/openid/callback',
       );

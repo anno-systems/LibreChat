@@ -44,7 +44,7 @@ const handlers = createAdminRolesHandlers({
 });
 
 /** Fork: admins keep every permission of the role ADMIN (admin lockout guard). */
-const lockout = createAdminRolesLockoutGuards({ getRoleByName: db.getRoleByName });
+const lockout = createAdminRolesLockoutGuards({ getRoleByName: db.getPartitionRole });
 
 router.use(requireJwtAuth, requireAdminAccess);
 

@@ -1,4 +1,4 @@
-import { SystemRoles } from 'librechat-data-provider';
+import { SystemRoles, partialWithoutDefaults } from 'librechat-data-provider';
 import type { NextFunction, Request, Response } from 'express';
 import type { AdminRolesDeps, RolePermissionsUpdateConfig } from './roles';
 
@@ -113,7 +113,7 @@ export function createAdminLockoutGuard(schema: RolePermissionsUpdateConfig['sch
     }
     let updates: Record<string, boolean | undefined>;
     try {
-      updates = schema.partial().parse(req.body);
+      updates = partialWithoutDefaults(schema).parse(req.body);
     } catch {
       next();
       return;
