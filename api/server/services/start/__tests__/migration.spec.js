@@ -4,6 +4,7 @@ const mockCheckPromptPermissionsMigration = jest.fn();
 
 jest.mock('@librechat/data-schemas', () => ({
   logger: { error: jest.fn() },
+  runAsSystem: (fn) => fn(),
   warnOnMissingSearchTokens: (...args) => mockWarnOnMissingSearchTokens(...args),
 }));
 jest.mock('@librechat/api', () => ({
