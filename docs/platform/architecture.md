@@ -665,8 +665,14 @@ anything changes. An account Zitadel fails to delete stays deactivated, and the 
 ask the operator. The admin app's service user is `ORG_USER_MANAGER` in each tenant organization
 for this.
 
-Still open: pseudonymizing the user in the MCP audit logs (the subject is replaced by a keyed
-pseudonym whose key is deleted, so the hash chain stays valid).
+The MCP audit log names users only by a pseudonym (2026-10-31): each row stores a random
+`p_…` id per user and tenant, and `audit_subjects` in the server's schema keeps whom it stands for
+(token subject and email). Reading the log joins it back. Erasing a user runs every schema's
+`purge_subject(tenant, subject)` in one transaction with the user's Zitadel account id: it deletes
+that mapping, their connected accounts, connect links and personal grants. Their entries stay in
+the hash chain unchanged, still verify, and show as "Deleted user". Logs from before were
+converted once at start, re-hashing each tenant's chain only where it verified. A failure at the
+MCP servers does not undo the LibreChat erasure; the admin is told to ask the operator.
 
 ## Usage, limits and dashboards
 
@@ -1138,7 +1144,7 @@ not optimisations:
 
 | Component | Today                                                        | Change                                                                      |
 | --------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| Admin app | Sessions in memory (`createMemorySessionStore`)              | Sessions in Redis; otherwise every deploy signs every admin out             |
+| Admin app | Sessions in PostgreSQL (`SESSION_DATABASE_URL`), done        | None; without the URL they fall back to memory (one replica only)           |
 | LibreChat | No Redis; `SCHEDULES_SINGLE_PROCESS=true` in the local stack | `USE_REDIS`: sessions, rate limits, bans, resumable streams, scheduler lock |
 | LibreChat | Uploads on a local volume, logs to a volume                  | File strategy S3 (STACKIT object storage), logs to stdout                   |
 | LibreChat | Provider wait queue in memory (`createMemoryQueueStore`)     | A Redis queue store, so provider limits hold across replicas                |
@@ -1337,15 +1343,22 @@ Decided:
   tenant, and the operator API refuses to drop a model in use without a successor; a tenant
   migration with `exceptGroups` (a model restricted to groups) moves only non-members and keeps
   no redirect (see [Model migration](#model-migration-2026-10-30)).
+- MCP audit pseudonyms (2026-10-31): audit rows carry a random pseudonym per user and tenant
+  instead of subject and email; erasing a user deletes the pseudonym's mapping in every server
+  schema, so the append-only hash chain stays intact and verifiable while the person can no
+  longer be identified (see [Deleting a user](#deleting-a-user-data-protection)).
 
 Open:
 
-- A signed approval from LibreChat, so MCP servers can verify a `confirm` call was approved.
-- The ZUGFeRD PDF/A-3 container (today the server produces the XML).
+- A signed approval from LibreChat, so MCP servers can verify a `confirm` call was approved
+  (next, after the audit pseudonyms).
+- LibreChat's startup migrations of agent and prompt permissions fail under
+  `TENANT_ISOLATION_STRICT=true` ("Query attempted without tenant context") and are skipped; they
+  need to run as system like the Meilisearch sync.
 
 - When to move from the forwarded token to an audience-bound exchanged token.
-- How tenants export the MCP audit log, and whether entries are also mirrored to an external
-  append-only store.
+- Tenant admins export the MCP audit log from the admin app (decided 2026-10-31, to build).
+  Open: whether entries are also mirrored to an external append-only store.
 - GitOps tool for production (Argo CD or Flux).
 - Whether STACKIT servers expose `/dev/kvm` for the code interpreter's microVMs (ask STACKIT or
   test one server with `ls /dev/kvm`), and if not, whether a gVisor runtime class or a dedicated

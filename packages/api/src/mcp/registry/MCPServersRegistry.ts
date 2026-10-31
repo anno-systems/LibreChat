@@ -16,11 +16,16 @@ import {
   CONFIG_CACHE_NAMESPACE,
 } from './cache/ServerConfigsCacheFactory';
 import {
+  optedInYamlEntry,
+  isMCPServerDisabled,
+  isMCPServerSwitchedOff,
+  toDisabledServerMarker,
+} from './enabled';
+import {
   MCPCommittedWriteError,
   MCPInspectionFailedError,
   isMCPDomainNotAllowedError,
 } from '~/mcp/errors';
-import { isMCPServerDisabled, isMCPServerSwitchedOff, toDisabledServerMarker } from './enabled';
 import { normalizeLegacyHeaderMaps, normalizeLegacyHeaderMapsIn } from './compat';
 import { canBackfillSharedServerInstructions, isUserSourced } from '~/mcp/utils';
 import { ReadThroughAllCache } from './cache/ReadThroughAllCache';
@@ -1398,6 +1403,8 @@ export class MCPServersRegistry {
           return;
         }
         if (this.isUnmodifiedYamlServer(yamlSnapshot, serverName, rawConfig)) {
+          const optedIn = optedInYamlEntry(yamlSnapshot[serverName]);
+          if (optedIn) result[serverName] = optedIn;
           return;
         }
         const parsed = await this.ensureSingleConfigServer(
