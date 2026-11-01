@@ -95,13 +95,15 @@ so the talks start once it is founded. The order is by reach in the lists:
 5. Lightspeed Restaurant, Gastrofix, protel, SiteMinder, Cubilis, resmio, OpenTable: hospitality
    distribution and restaurants.
 6. Transporeon, CargoSoft, Webfleet .connect, Transics, Blue Yonder, Descartes: logistics.
-7. 365FarmNet, Lely: agriculture.
-8. SAP Ariba, TrackWise, MasterControl, Addison OneClick, Haufe X360, FlowFact, itslearning,
+7. 365FarmNet, Lely, agrirouter (DKE: app approval, membership from €1,000 a year, and a
+   background consumer for its event stream): agriculture.
+8. Untis (WebUntis Platform): school timetables; the WebUntis API is open only to partners.
+9. SAP Ariba, TrackWise, MasterControl, Addison OneClick, Haufe X360, FlowFact, itslearning,
    ImmoScout24 production approval: each on a customer's request.
-9. Wilken, powercloud/Hansen, ZEMA, Allegro: utilities, on a customer's request.
-10. Dealer DMS (CDK, Incadea, Locosoft), SupplyOn, Adobe Firefly Services: only with a large
+10. Wilken, powercloud/Hansen, ZEMA, Allegro: utilities, on a customer's request.
+11. Dealer DMS (CDK, Incadea, Locosoft), SupplyOn, Adobe Firefly Services: only with a large
     customer behind them.
-11. Banking and insurance cores (Guidewire, Sapiens, Temenos, Avaloq, OSPlus, agree21) and BiPRO:
+12. Banking and insurance cores (Guidewire, Sapiens, Temenos, Avaloq, OSPlus, agree21) and BiPRO:
     recorded, but not pursued; they are projects for a single institution.
 
 ## On-premises bridge
@@ -170,7 +172,8 @@ mid-sized customers, so Business Central comes before SAP:
 | 8     | Asana, monday.com, Trello                      | 2     | #38, #39 |                                                                                               |
 | 9     | Autodesk Platform Services (ACC, Docs, Fusion) | 4     | new      | Self-service OAuth app; covers construction and manufacturing                                 |
 
-**Wave 2: industry packages (cloud, self-service).** Each package can be sold as an industry
+**Wave 2: industry packages (cloud, self-service).** Built 2026-11-01 (anno-systems/mcp-servers#34),
+with Dynamics 365 Supply Chain in the Microsoft server. Each package can be sold as an industry
 bundle:
 
 | Package                          | Servers                                                                                     |
@@ -181,12 +184,12 @@ bundle:
 | IT service providers             | ServiceNow, NinjaOne, ConnectWise PSA, TeamViewer, N-able N-sight and N-central             |
 | Marketing and media              | WordPress, Drupal, CleverReach (#26), Figma, Canva, Bynder, Frame.io, AEM Assets            |
 | Logistics                        | Sendcloud (#45), Webfleet, project44, DSV, Dynamics 365 SCM                                 |
-| Education and public sector      | Moodle, d.velop documents (#34), WebUntis (est.)                                            |
+| Education and public sector      | Moodle, d.velop documents (#34); WebUntis moved to partner talks (Untis Platform)           |
 | Pharma and chemicals             | Veeva Vault                                                                                 |
-| Agriculture                      | HI-Tier (livestock register), agrirouter (data hub)                                         |
+| Agriculture                      | HI-Tier (livestock register); agrirouter moved to partner talks (DKE)                       |
 | Utilities                        | Esri ArcGIS                                                                                 |
 | Electronics                      | Altium 365                                                                                  |
-| Finance                          | finAPI bank accounts (#6, licence from €60 a month)                                         |
+| Finance                          | finAPI bank accounts (#6): built, held back until erasure also deletes its finAPI users     |
 | Manufacturing (larger customers) | Infor ION (the customer's admin registers the app)                                          |
 
 **Wave 3: the bridge and on-prem APIs (`bridge`).** The bridge comes first. Then, in order of
@@ -229,7 +232,7 @@ customer's request:
 | Lexware Warenwirtschaft                        | –         | Desktop, no API (Lexware Office is built)                            | no             |
 | Sage 100                                       | B         | On-prem Web API (sources disagree)                                   | bridge         |
 | weclapp / Xentral                              | A         | Token from the customer                                              | built          |
-| Lightspeed / ready2order / Vectron             | A / A / ? | Lightspeed Retail OAuth, ready2order token; Vectron only via partner | wave 2         |
+| Lightspeed / ready2order / Vectron             | A / A / ? | Lightspeed Retail OAuth, ready2order token; Vectron only via partner | built          |
 | Shopware / Shopify                             | A         | Integration key / OAuth app                                          | built          |
 | CDK / Autosoft, Incadea, Locosoft (dealer DMS) | B / ?     | Partner only; CDK's marketplace is US-focused                        | partner        |
 | DATEV                                          | B         | Partner contract                                                     | partner        |
@@ -271,7 +274,7 @@ customer's request:
 | proALPHA                                   | B      | REST (ray API) or n8n integration platform at the customer | bridge           |
 | abas                                       | B      | REST web services on-prem                                  | bridge           |
 | Dynamics 365 / NAV                         | A / B  | BC online; NAV OData on-prem                               | built / bridge   |
-| Infor CloudSuite Industrial                | A/B    | ION API, the customer's admin creates the app              | wave 2           |
+| Infor CloudSuite Industrial                | A/B    | ION API, the customer's admin creates the app              | built            |
 | Teamcenter / Solid Edge                    | B / C  | See above                                                  | bridge / adapter |
 | SOLIDWORKS PDM                             | B      | PDM Web API on the customer's vault server                 | bridge           |
 | Autodesk Inventor / Vault                  | C / B  | Inventor local; Vault Data API (2025.2+)                   | adapter / bridge |
@@ -289,32 +292,32 @@ customer's request:
 | DOMUS 4000, ALCO HOUSE, KARTHAGO2000  | ? / C / ? | DATEV and Outlook interfaces only              | adapter (ALCO); ask vendor |
 | Haufe ImmobilienVerwaltung            | C         | Desktop, accounting export                     | adapter                    |
 | Aareon Smart Platform / Mareon        | B         | Aareon Connect                                 | partner                    |
-| onOffice                              | A         | API user from the customer (HMAC)              | wave 2                     |
-| ImmoScout24                           | A/B       | OAuth 1.0a consumer key, production approval   | wave 2                     |
-| Propstack, FlowFact (not on the list) | A / B     | Key in settings / unlocked by FlowFact support | wave 2 / partner           |
+| onOffice                              | A         | API user from the customer (HMAC)              | built                      |
+| ImmoScout24                           | A/B       | OAuth 1.0a consumer key, production approval   | built                      |
+| Propstack, FlowFact (not on the list) | A / B     | Key in settings / unlocked by FlowFact support | built / partner            |
 | casavi                                | A         |                                                | built                      |
 
 ### 6. Construction
 
-| Software                            | Rating | Access                                                 | Plan                         |
-| ----------------------------------- | ------ | ------------------------------------------------------ | ---------------------------- |
-| NEVARIS                             | B      | Nevaris Build HTTP API on the customer's installation  | bridge                       |
-| RIB California.pro / iTWO 4.0       | B / ?  | iTWO 4.0 lists "public APIs", no docs                  | ask RIB                      |
-| ORCA AVA                            | C      | GAEB XML, Datanorm                                     | `file` (GAEB server, wave 2) |
-| SIDOUN Globe, BRZ, DBD-BauDaten     | ?      | Only DATEV and GAEB interfaces found                   | `file`                       |
-| Allplan (Bimplus)                   | A      | Developer registration, token                          | wave 2                       |
-| Autodesk Revit / AutoCAD (APS, ACC) | A      | Self-service APS app; the customer's ACC admin adds it | built                        |
-| Microsoft 365                       | A      |                                                        | built                        |
-| DATEV                               | B      |                                                        | partner                      |
-| PlanRadar / Dalux / Capmo           | A      | Personal token / API identity / key                    | built / wave 2 / wave 2      |
-| Powerbau, TOPIX, 123erfasst         | ?      | No docs; 123erfasst is retiring its REST APIs          | ask vendor                   |
+| Software                            | Rating | Access                                                 | Plan                        |
+| ----------------------------------- | ------ | ------------------------------------------------------ | --------------------------- |
+| NEVARIS                             | B      | Nevaris Build HTTP API on the customer's installation  | bridge                      |
+| RIB California.pro / iTWO 4.0       | B / ?  | iTWO 4.0 lists "public APIs", no docs                  | ask RIB                     |
+| ORCA AVA                            | C      | GAEB XML, Datanorm                                     | `file` (GAEB server, built) |
+| SIDOUN Globe, BRZ, DBD-BauDaten     | ?      | Only DATEV and GAEB interfaces found                   | `file`                      |
+| Allplan (Bimplus)                   | A      | Developer registration, token                          | built                       |
+| Autodesk Revit / AutoCAD (APS, ACC) | A      | Self-service APS app; the customer's ACC admin adds it | built                       |
+| Microsoft 365                       | A      |                                                        | built                       |
+| DATEV                               | B      |                                                        | partner                     |
+| PlanRadar / Dalux / Capmo           | A      | Personal token / API identity / key                    | built / built / built       |
+| Powerbau, TOPIX, 123erfasst         | ?      | No docs; 123erfasst is retiring its REST APIs          | ask vendor                  |
 
 ### 7. Chemicals and pharma
 
 | Software                           | Rating | Access                                          | Plan           |
 | ---------------------------------- | ------ | ----------------------------------------------- | -------------- |
 | SAP S/4HANA                        | A / B  |                                                 | built / bridge |
-| Veeva Vault                        | A      | The customer's Vault user or OAuth profile      | wave 2         |
+| Veeva Vault                        | A      | The customer's Vault user or OAuth profile      | built          |
 | LabWare LIMS, Thermo SampleManager | B      | REST at the customer (SampleManager from v21.3) | bridge         |
 | Dynamics 365 (ORDAT)               | A      | Like BC                                         | built          |
 | CSB-System                         | ?      | No REST docs found                              | ask vendor     |
@@ -331,7 +334,7 @@ customer's request:
 | CSB-System                                | ?      |                      | ask vendor     |
 | Dynamics 365 / NAV, Aptean F&B (on BC)    | A / B  | BC API               | built          |
 | GUS-OS, proALPHA                          | B      |                      | bridge         |
-| Infor CloudSuite F&B                      | A/B    | ION API              | wave 2         |
+| Infor CloudSuite F&B                      | A/B    | ION API              | built          |
 | microtech büro+                           | B      | REST, mostly on-prem | bridge         |
 | weclapp                                   | A      |                      | built          |
 | QM for IFS/BRC/HACCP (e.g. SafetyCulture) | ?      | Not confirmed        | check          |
@@ -344,7 +347,7 @@ customer's request:
 | SAP S/4HANA, proALPHA, Dynamics 365  | see above |                                                      | built / bridge             |
 | ORDAT.ERP, TaxMetall                 | ? / C     | No API; TaxMetall only DATEV and GAEB files          | ask vendor / adapter       |
 | Siemens NX / Teamcenter              | C / B     |                                                      | adapter / bridge           |
-| Altium 365                           | A         | Workspace token, GraphQL                             | wave 2                     |
+| Altium 365                           | A         | Workspace token, GraphQL                             | built                      |
 | Trade software (Lexware, Sage, hero) | A / B / ? | Lexware Office built; hero has no public docs        | built / ask hero           |
 | Microsoft 365 / Teams                | A         |                                                      | built / #28                |
 
@@ -353,59 +356,59 @@ customer's request:
 | Software                                  | Rating | Access                                                      | Plan            |
 | ----------------------------------------- | ------ | ----------------------------------------------------------- | --------------- |
 | Jira, Confluence, GitLab, GitHub          | A      |                                                             | built           |
-| ServiceNow                                | A      | The customer's admin registers an OAuth app in its instance | wave 2          |
+| ServiceNow                                | A      | The customer's admin registers an OAuth app in its instance | built           |
 | Microsoft 365 / Teams / Entra             | A      |                                                             | built / #28     |
 | SAP S/4HANA or Dynamics 365               | A      |                                                             | built           |
 | Salesforce / HubSpot                      | A      |                                                             | built           |
-| ConnectWise PSA / NinjaOne / N-able       | A      | Keys or OAuth app from the customer                         | wave 2          |
-| TeamViewer                                | A      | OAuth client app                                            | wave 2          |
+| ConnectWise PSA / NinjaOne / N-able       | A      | Keys or OAuth app from the customer                         | built           |
+| TeamViewer                                | A      | OAuth client app                                            | built           |
 | DATEV or Lexware                          | B / A  |                                                             | partner / built |
 | Telecom BSS/OSS (Amdocs, Netcracker, CSG) | B/C    | Inside the operator's network                               | no              |
 
 ### 11. Business services (consulting, law, tax, advertising)
 
-| Software                                  | Rating | Access                                                               | Plan                                 |
-| ----------------------------------------- | ------ | -------------------------------------------------------------------- | ------------------------------------ |
-| DATEV (firm software, cloud APIs)         | B      | Marketplace partner, go-live approval, fees                          | partner                              |
-| DATEV Anwalt classic/pro                  | C      | DATEVconnect runs in the firm                                        | bridge                               |
-| RA-MICRO                                  | –      | REST interface announced, not published                              | watch                                |
-| Advolux / AnNoText                        | ? / C  | No public API                                                        | ask vendor / adapter                 |
-| advoware                                  | A      |                                                                      | built                                |
-| beA                                       | –      | Only for law firm software vendors; never with write or send rights  | no                                   |
-| Addison (Wolters Kluwer)                  | B      | OneClick API for partners                                            | partner                              |
-| Haufe Suite / X360                        | ? / B  | X360 REST through the implementation partner                         | partner                              |
-| SAP S/4HANA / Business One                | A / B  |                                                                      | built / bridge                       |
-| Microsoft 365 / Teams                     | A      |                                                                      | built                                |
-| Adobe Creative Cloud, Asana, Jira, monday | B / A  | Firefly APIs only with an enterprise contract; Frame.io self-service | Frame.io wave 2; Asana, monday built |
-| Federal law (not on the list)             | A      |                                                                      | built                                |
+| Software                                  | Rating | Access                                                               | Plan                                |
+| ----------------------------------------- | ------ | -------------------------------------------------------------------- | ----------------------------------- |
+| DATEV (firm software, cloud APIs)         | B      | Marketplace partner, go-live approval, fees                          | partner                             |
+| DATEV Anwalt classic/pro                  | C      | DATEVconnect runs in the firm                                        | bridge                              |
+| RA-MICRO                                  | –      | REST interface announced, not published                              | watch                               |
+| Advolux / AnNoText                        | ? / C  | No public API                                                        | ask vendor / adapter                |
+| advoware                                  | A      |                                                                      | built                               |
+| beA                                       | –      | Only for law firm software vendors; never with write or send rights  | no                                  |
+| Addison (Wolters Kluwer)                  | B      | OneClick API for partners                                            | partner                             |
+| Haufe Suite / X360                        | ? / B  | X360 REST through the implementation partner                         | partner                             |
+| SAP S/4HANA / Business One                | A / B  |                                                                      | built / bridge                      |
+| Microsoft 365 / Teams                     | A      |                                                                      | built                               |
+| Adobe Creative Cloud, Asana, Jira, monday | B / A  | Firefly APIs only with an enterprise contract; Frame.io self-service | Frame.io built; Asana, monday built |
+| Federal law (not on the list)             | A      |                                                                      | built                               |
 
 ### 12. Finance and insurance
 
-| Software                                         | Rating | Access                                                     | Plan            |
-| ------------------------------------------------ | ------ | ---------------------------------------------------------- | --------------- |
-| SAP (S/4HANA Finance, Fioneer)                   | B      | Customer's system                                          | bridge          |
-| Guidewire, msg.Insurance Suite, Adcubum, Sapiens | B / ?  | Partner-gated or no docs                                   | partner         |
-| Temenos, Avaloq, FIS                             | B      | Bank-hosted                                                | partner         |
-| Finanz Informatik OSPlus, Atruvia agree21        | B / ?  | Third parties must be validated by FI                      | partner         |
-| Microsoft 365 / Teams                            | A      |                                                            | built           |
-| Salesforce Financial Services Cloud              | A      |                                                            | built           |
-| BiPRO (brokers)                                  | B      | Contract with each insurer                                 | partner         |
-| Broker management software                       | ?      | No APIs found                                              | ask vendor      |
-| Bank accounts via PSD2 (finAPI)                  | A/B    | Licence from €60 a month; GoCardless takes no new sign-ups | #6, with finAPI |
+| Software                                         | Rating | Access                                                     | Plan                       |
+| ------------------------------------------------ | ------ | ---------------------------------------------------------- | -------------------------- |
+| SAP (S/4HANA Finance, Fioneer)                   | B      | Customer's system                                          | bridge                     |
+| Guidewire, msg.Insurance Suite, Adcubum, Sapiens | B / ?  | Partner-gated or no docs                                   | partner                    |
+| Temenos, Avaloq, FIS                             | B      | Bank-hosted                                                | partner                    |
+| Finanz Informatik OSPlus, Atruvia agree21        | B / ?  | Third parties must be validated by FI                      | partner                    |
+| Microsoft 365 / Teams                            | A      |                                                            | built                      |
+| Salesforce Financial Services Cloud              | A      |                                                            | built                      |
+| BiPRO (brokers)                                  | B      | Contract with each insurer                                 | partner                    |
+| Broker management software                       | ?      | No APIs found                                              | ask vendor                 |
+| Bank accounts via PSD2 (finAPI)                  | A/B    | Licence from €60 a month; GoCardless takes no new sign-ups | built, held back (erasure) |
 
 ### 13. Logistics and transport
 
-| Software                                    | Rating  | Access                                         | Plan             |
-| ------------------------------------------- | ------- | ---------------------------------------------- | ---------------- |
-| SAP TM / EWM                                | B       | OData via communication arrangement or on-prem | bridge           |
-| CargoSoft                                   | B       | API users only through CargoSoft               | partner          |
-| WinSped, TraffixSpedi                       | ?       | No API docs                                    | ask vendor       |
-| Transporeon (Trimble)                       | B       | Credentials through Transporeon                | partner          |
-| Blue Yonder TMS, Descartes                  | B       | Customer contract                              | partner          |
-| Dynamics 365 SCM                            | A       | Entra app in the customer's tenant             | wave 2           |
-| Webfleet / Transics                         | A/B / B | API key by form / SOAP via the account manager | wave 2 / partner |
-| project44, DSV, Sendcloud (not on the list) | A       | Customer app / subscription key / keys         | wave 2           |
-| Microsoft 365                               | A       |                                                | built            |
+| Software                                    | Rating  | Access                                         | Plan            |
+| ------------------------------------------- | ------- | ---------------------------------------------- | --------------- |
+| SAP TM / EWM                                | B       | OData via communication arrangement or on-prem | bridge          |
+| CargoSoft                                   | B       | API users only through CargoSoft               | partner         |
+| WinSped, TraffixSpedi                       | ?       | No API docs                                    | ask vendor      |
+| Transporeon (Trimble)                       | B       | Credentials through Transporeon                | partner         |
+| Blue Yonder TMS, Descartes                  | B       | Customer contract                              | partner         |
+| Dynamics 365 SCM                            | A       | Entra app in the customer's tenant             | built           |
+| Webfleet / Transics                         | A/B / B | API key by form / SOAP via the account manager | built / partner |
+| project44, DSV, Sendcloud (not on the list) | A       | Customer app / subscription key / keys         | built           |
+| Microsoft 365                               | A       |                                                | built           |
 
 ### 14. Energy supply
 
@@ -417,62 +420,62 @@ The research ran out of searches for most of this list.
 | Schleupen CS.3                          | B?           | "Web-API" and Developer Campus exist | ask vendor                        |
 | Wilken ENER:GY, powercloud (now Hansen) | B (est.)     | Partner                              | partner                           |
 | Market communication (EDIFACT, AS4)     | –            | Market roles only                    | `file` at most (explain messages) |
-| GIS: Esri ArcGIS / Smallworld           | A / B (est.) | ArcGIS API key or OAuth              | wave 2 / bridge                   |
+| GIS: Esri ArcGIS / Smallworld           | A / B (est.) | ArcGIS API key or OAuth              | built / bridge                    |
 | Energy trading (ZEMA, Allegro)          | B/C (est.)   |                                      | partner                           |
 | Microsoft 365, DATEV, Haufe             | A / B        |                                      | built / partner                   |
 
 ### 15. Metal production and processing
 
-| Software                               | Rating    | Access                  | Plan                    |
-| -------------------------------------- | --------- | ----------------------- | ----------------------- |
-| SAP, proALPHA, Business Central, Infor | see above |                         | built / bridge / wave 2 |
-| ams.erp                                | B?        | REST mentioned, no docs | bridge                  |
-| APplus                                 | B         | SOAP/REST on-prem       | bridge                  |
-| MES (HYDRA, FORCAM)                    | B         |                         | bridge                  |
-| Stahl Control, TRUMPF TruTops          | ? / C     | No API                  | ask vendor / adapter    |
-| CAD/CAM (Inventor, SolidWorks)         | C         | Local SDKs              | adapter                 |
-| Microsoft 365                          | A         |                         | built                   |
+| Software                               | Rating    | Access                  | Plan                   |
+| -------------------------------------- | --------- | ----------------------- | ---------------------- |
+| SAP, proALPHA, Business Central, Infor | see above |                         | built / bridge / built |
+| ams.erp                                | B?        | REST mentioned, no docs | bridge                 |
+| APplus                                 | B         | SOAP/REST on-prem       | bridge                 |
+| MES (HYDRA, FORCAM)                    | B         |                         | bridge                 |
+| Stahl Control, TRUMPF TruTops          | ? / C     | No API                  | ask vendor / adapter   |
+| CAD/CAM (Inventor, SolidWorks)         | C         | Local SDKs              | adapter                |
+| Microsoft 365                          | A         |                         | built                  |
 
 ### 16. Public administration, education and social services
 
-| Software                                                                | Rating        | Access                                                                | Plan                        |
-| ----------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------- | --------------------------- |
-| Municipal IT services' Fachverfahren (AKDB, Komm.ONE, Dataport, ekom21) | C             | XÖV over OSCI/XTA between authorities, not per user                   | no                          |
-| Infoma newsystem                                                        | ?             |                                                                       | ask vendor                  |
-| SAP S/4HANA Public Sector                                               | B             |                                                                       | bridge                      |
-| d.velop documents                                                       | A             | API key in the customer's cloud tenant                                | wave 2 (#34)                |
-| enaio, Fabasoft eAkte                                                   | B             | REST/SOAP at the customer                                             | bridge                      |
-| Kita software (KidiCap, Little Bird, KiTa-Navigator)                    | ? (est.)      | Not researched                                                        | check                       |
-| School administration (SchILD-NRW, Untis, ASV-BW, Schulmanager)         | C / B (est.)  | SchILD and ASV are local databases; WebUntis has a JSON-RPC interface | WebUntis wave 2 after check |
-| Learning platforms (Moodle, ILIAS, itslearning, Teams)                  | A / ? / B / A | Moodle token from the admin; itslearning through sales                | Moodle wave 2               |
-| Microsoft 365 / openDesk                                                | A / B         | openDesk components (Nextcloud #32, OpenProject #40) self-hosted      | built / catalog             |
-| Vivendi, Tau-Office                                                     | C (est.)      |                                                                       | no (care data)              |
+| Software                                                                | Rating        | Access                                                                | Plan                     |
+| ----------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------- | ------------------------ |
+| Municipal IT services' Fachverfahren (AKDB, Komm.ONE, Dataport, ekom21) | C             | XÖV over OSCI/XTA between authorities, not per user                   | no                       |
+| Infoma newsystem                                                        | ?             |                                                                       | ask vendor               |
+| SAP S/4HANA Public Sector                                               | B             |                                                                       | bridge                   |
+| d.velop documents                                                       | A             | API key in the customer's cloud tenant                                | built (#34)              |
+| enaio, Fabasoft eAkte                                                   | B             | REST/SOAP at the customer                                             | bridge                   |
+| Kita software (KidiCap, Little Bird, KiTa-Navigator)                    | ? (est.)      | Not researched                                                        | check                    |
+| School administration (SchILD-NRW, Untis, ASV-BW, Schulmanager)         | C / B (est.)  | SchILD and ASV are local databases; WebUntis has a JSON-RPC interface | WebUntis partner (Untis) |
+| Learning platforms (Moodle, ILIAS, itslearning, Teams)                  | A / ? / B / A | Moodle token from the admin; itslearning through sales                | Moodle built             |
+| Microsoft 365 / openDesk                                                | A / B         | openDesk components (Nextcloud #32, OpenProject #40) self-hosted      | built / catalog          |
+| Vivendi, Tau-Office                                                     | C (est.)      |                                                                       | no (care data)           |
 
 ### 17. Hospitality and tourism
 
-| Software                            | Rating    | Access                                               | Plan                 |
-| ----------------------------------- | --------- | ---------------------------------------------------- | -------------------- |
-| protel PMS                          | B         | Integration partner with certification               | partner              |
-| Oracle Opera Cloud                  | B         | Oracle Partner Network, pay per call                 | partner              |
-| apaleo                              | A         | The hotel's admin creates the app                    | wave 2               |
-| Mews                                | A/B       | Free sandbox; production needs certification         | partner              |
-| Hotelfriend / Casablanca            | ? / B     | Partner interfaces only                              | partner              |
-| SiteMinder / Cubilis / D-EDGE       | B         | Partner contracts                                    | partner              |
-| orderbird / ready2order / Gastrofix | ? / A / B | ready2order token; Gastrofix approves per restaurant | wave 2 (ready2order) |
-| resmio / OpenTable / Quandoo        | B         | Partner approval; Quandoo reportedly winding down    | partner              |
-| Planday / Papershift / Staffomatic  | A         | Keys or OAuth from the customer                      | wave 2               |
-| DATEV                               | B         |                                                      | partner              |
+| Software                            | Rating    | Access                                               | Plan                |
+| ----------------------------------- | --------- | ---------------------------------------------------- | ------------------- |
+| protel PMS                          | B         | Integration partner with certification               | partner             |
+| Oracle Opera Cloud                  | B         | Oracle Partner Network, pay per call                 | partner             |
+| apaleo                              | A         | The hotel's admin creates the app                    | built               |
+| Mews                                | A/B       | Free sandbox; production needs certification         | partner             |
+| Hotelfriend / Casablanca            | ? / B     | Partner interfaces only                              | partner             |
+| SiteMinder / Cubilis / D-EDGE       | B         | Partner contracts                                    | partner             |
+| orderbird / ready2order / Gastrofix | ? / A / B | ready2order token; Gastrofix approves per restaurant | built (ready2order) |
+| resmio / OpenTable / Quandoo        | B         | Partner approval; Quandoo reportedly winding down    | partner             |
+| Planday / Papershift / Staffomatic  | A         | Keys or OAuth from the customer                      | built               |
+| DATEV                               | B         |                                                      | partner             |
 
 ### 18. Rubber and plastics
 
-| Software                                        | Rating    | Access                    | Plan                    |
-| ----------------------------------------------- | --------- | ------------------------- | ----------------------- |
-| SAP, proALPHA, ams.erp, Infor, Business Central | see above |                           | built / bridge / wave 2 |
-| MODUS INDUSTRY                                  | A/B       | Built on Business Central | with BC (built)         |
-| MPDV HYDRA                                      | B         |                           | bridge                  |
-| Sage 100                                        | B         |                           | bridge                  |
-| CAD/simulation (Moldflow, SOLIDWORKS, CATIA)    | C         | Local SDKs                | adapter                 |
-| Microsoft 365 / DATEV                           | A / B     |                           | built / partner         |
+| Software                                        | Rating    | Access                    | Plan                   |
+| ----------------------------------------------- | --------- | ------------------------- | ---------------------- |
+| SAP, proALPHA, ams.erp, Infor, Business Central | see above |                           | built / bridge / built |
+| MODUS INDUSTRY                                  | A/B       | Built on Business Central | with BC (built)        |
+| MPDV HYDRA                                      | B         |                           | bridge                 |
+| Sage 100                                        | B         |                           | bridge                 |
+| CAD/simulation (Moldflow, SOLIDWORKS, CATIA)    | C         | Local SDKs                | adapter                |
+| Microsoft 365 / DATEV                           | A / B     |                           | built / partner        |
 
 ### 19. Agriculture, forestry and fishing
 
@@ -482,26 +485,26 @@ The research ran out of searches for most of this list.
 | 365FarmNet (CLAAS)                                | B            | Partner registration (devcon.365farmnet.com)                   | partner                  |
 | Agrarmanager / Eurosoft (Land-Data)               | C (est.)     | Desktop                                                        | adapter                  |
 | farmdok                                           | ?            | No docs                                                        | ask vendor               |
-| HIT database (HI-Tier)                            | A/B          | REST with OIDC, the farmer's own login; check the terms of use | wave 2                   |
+| HIT database (HI-Tier)                            | A/B          | REST with OIDC, the farmer's own login; check the terms of use | built                    |
 | ELAN state portals                                | – (est.)     | Application portals without an API                             | no                       |
 | Herd management (DairyPlan, Lely Horizon, DelPro) | C / B (est.) | Mostly local; Lely cloud via partner                           | adapter / partner (Lely) |
-| agrirouter (not on the list)                      | A/B          | Developer account, the farmer connects the endpoint            | wave 2                   |
+| agrirouter (not on the list)                      | A/B          | Developer account, the farmer connects the endpoint            | partner (DKE)            |
 | DATEV, Microsoft 365, Google Workspace            | B / A        |                                                                | partner / built          |
 
 ### 20. Media, publishing and creative industries
 
-| Software                                         | Rating        | Access                                                         | Plan                                       |
-| ------------------------------------------------ | ------------- | -------------------------------------------------------------- | ------------------------------------------ |
-| Adobe Creative Cloud                             | B             | Firefly/Photoshop/InDesign APIs need an enterprise contract    | partner (Firefly); Frame.io wave 2         |
-| Editorial systems (Méthode, WoodWing, Censhare)  | B             | REST at the customer's or hosted system                        | bridge                                     |
-| Publishing software (Klopotek)                   | ?             | No API docs                                                    | ask vendor                                 |
-| DAM (Censhare, AEM Assets, Bynder)               | B / A/B / A   | Bynder OAuth; AEM via Adobe Developer Console                  | Bynder wave 2                              |
-| Web CMS (WordPress, TYPO3, Contao, Drupal)       | A / C / – / A | Application passwords / no core API / – / JSON:API             | wave 2 (WordPress, Drupal); bridge (TYPO3) |
-| Project management (Asana, monday, Jira, Trello) | A             |                                                                | built                                      |
-| Acrobat, Pubble, CleverReach                     | B / – / A     | CleverReach OAuth                                              | CleverReach wave 2 (#26)                   |
-| Microsoft 365, Slack, Google Workspace           | A             |                                                                | built                                      |
-| DATEV, lexoffice, sevDesk                        | B / A         |                                                                | partner / built                            |
-| Figma, Canva, Affinity                           | A / A / –     | Figma token or OAuth; Canva Connect (review rules unconfirmed) | wave 2                                     |
+| Software                                         | Rating        | Access                                                         | Plan                                      |
+| ------------------------------------------------ | ------------- | -------------------------------------------------------------- | ----------------------------------------- |
+| Adobe Creative Cloud                             | B             | Firefly/Photoshop/InDesign APIs need an enterprise contract    | partner (Firefly); Frame.io built         |
+| Editorial systems (Méthode, WoodWing, Censhare)  | B             | REST at the customer's or hosted system                        | bridge                                    |
+| Publishing software (Klopotek)                   | ?             | No API docs                                                    | ask vendor                                |
+| DAM (Censhare, AEM Assets, Bynder)               | B / A/B / A   | Bynder OAuth; AEM via Adobe Developer Console                  | Bynder built                              |
+| Web CMS (WordPress, TYPO3, Contao, Drupal)       | A / C / – / A | Application passwords / no core API / – / JSON:API             | built (WordPress, Drupal); bridge (TYPO3) |
+| Project management (Asana, monday, Jira, Trello) | A             |                                                                | built                                     |
+| Acrobat, Pubble, CleverReach                     | B / – / A     | CleverReach OAuth                                              | CleverReach built (#26)                   |
+| Microsoft 365, Slack, Google Workspace           | A             |                                                                | built                                     |
+| DATEV, lexoffice, sevDesk                        | B / A         |                                                                | partner / built                           |
+| Figma, Canva, Affinity                           | A / A / –     | Figma token or OAuth; Canva Connect (review rules unconfirmed) | built                                     |
 
 ## Still to check
 

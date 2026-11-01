@@ -1288,6 +1288,10 @@ Decided:
   later customers' own systems as custom connectors. No server processes patient or care data:
   practice, hospital, care and pharmacy software and the Telematikinfrastruktur stay out
   (§ 393 SGB V would require C5 Type 2 for the platform).
+  Waves 1 and 2 were built on 2026-11-01 (`anno-systems/mcp-servers` #33, #34). finAPI is built
+  but held back: each platform user gets a finAPI user with their bank data, and erasing the user
+  or purging the tenant must delete that finAPI user first. WebUntis and agrirouter moved to
+  partner talks.
 
 - Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
   equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
