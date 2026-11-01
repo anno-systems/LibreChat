@@ -1029,7 +1029,8 @@ Decided with these servers (2026-10-24):
 Not built for now: ELSTER, from the owner's list, because filing needs the ERiC library (native
 binaries for a registered developer) and a company certificate per tenant. Fifty further
 candidates for offices in Germany, with their sign-in pattern and priority, are listed in
-[mcp-catalog.md](mcp-catalog.md). Payroll data (Personio) can include special-category data
+[mcp-catalog.md](mcp-catalog.md); the industry plan with the on-premises bridge is in
+[mcp-industries.md](mcp-industries.md). Payroll data (Personio) can include special-category data
 (GDPR Art. 9) and needs the finest-grained tools.
 
 ## Code interpreter
@@ -1278,6 +1279,15 @@ Decided:
   SharePoint. The second batch (2026-10-24, business, developer and operations tools) brought
   Azure DevOps on the same Entra app, API-key connections and the egress check for tenant URLs
   (see [First servers](#first-servers)).
+- Industry MCP servers (2026-11-01): the owner's list of the top software in the 20 largest German
+  industries is rated in [mcp-industries.md](mcp-industries.md). Every product with a cloud API
+  and self-service access is built (waves 1 and 2). Products behind partner contracts are recorded
+  for partner talks once the company exists, DATEV first. An on-premises bridge (an outbound
+  agent at the customer, a relay at the platform, enrolment and revocation in the admin app) opens
+  on-prem APIs (wave 3), desktop SDKs, local databases and exchange folders (wave 4, adapters) and
+  later customers' own systems as custom connectors. No server processes patient or care data:
+  practice, hospital, care and pharmacy software and the Telematikinfrastruktur stay out
+  (§ 393 SGB V would require C5 Type 2 for the platform).
 
 - Tenant resolution at login: the fork's tenant-aware OpenID settings; Zitadel organization id
   equals the tenant id (2026-10-19). Locally Zitadel runs on HTTPS through Caddy's local CA,
