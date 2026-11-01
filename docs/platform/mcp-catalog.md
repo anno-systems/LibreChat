@@ -1,7 +1,9 @@
 # MCP catalog: candidates for German offices
 
 Fifty further MCP servers worth building for offices in Germany, beyond those built or under way
-(see "First servers" in [architecture.md](architecture.md)). Each row names how the server would
+(see "First servers" in [architecture.md](architecture.md)). The feasibility of the top ten
+products in each of the 20 largest German industries, and the build plan from it, are in
+[mcp-industries.md](mcp-industries.md). Each row names how the server would
 sign in, following the platform's three patterns:
 
 - **User**: each user connects their own account (OAuth or a personal key), like Atlassian.
