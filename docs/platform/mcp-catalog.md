@@ -122,6 +122,11 @@ Built 2026-10-31 (`anno-systems/mcp-servers` #27):
 | untermStrich (planning offices)           | Tenant, users link their staff id          | Projects, fees, addresses, own times and target hours                      | Booking time, when allowed        |
 | PlanRadar (construction)                  | User (personal token)                      | Projects, tickets, documents                                               | Comments and status, when allowed |
 
+Built 2026-11-01 (wave 1 of [mcp-industries.md](mcp-industries.md), `anno-systems/mcp-servers`
+#33): Business Central (#8, on the Entra app), SAP S/4HANA Cloud and Sales Cloud (#10), Salesforce
+(#24), HubSpot (#22), weclapp (#12), Xentral (#11), Shopify (#43), Shopware (#42), Asana (#38),
+monday.com (#39), Trello and Autodesk Construction Cloud.
+
 Not built: RA-MICRO (a REST interface is announced, not published), DATEV Anwalt classic
 (DATEVconnect runs locally in the firm), the beA (open only to law firm software vendors),
 Aareon Wodis/RELion (partner contract through Aareon Connect), maklerverwaltungsprogramme
